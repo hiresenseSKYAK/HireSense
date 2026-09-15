@@ -2,21 +2,25 @@ import time
 
 try:
     from ai.job_description import backfill_missing_summaries, simplify_jobs
+    from ai.skill_extraction import backfill_job_skills, extract_skills_for_jobs
     from crawler.parsers.linkedin import parse_job_linkedin
     from crawler.parsers.handshake import parse_job_handshake
     from database.queries import insert_job
+    from services.updater import update_database
 except ImportError:
     import os
     import sys
 
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
     from ai.job_description import backfill_missing_summaries, simplify_jobs
+    from ai.skill_extraction import backfill_job_skills, extract_skills_for_jobs
     from crawler.parsers.linkedin import parse_job_linkedin
     from crawler.parsers.handshake import parse_job_handshake
     from database.queries import insert_job
+    from services.updater import update_database
 
 # Stop each search URL after this many seconds (paging + job details).
-PER_URL_TIME_LIMIT_SEC = 5 * 60
+PER_URL_TIME_LIMIT_SEC = 10 * 60
 
 def _log_db_target():
     from database.connection import get_connection
@@ -34,6 +38,12 @@ def _log_db_target():
 def run():
     print("[crawl] run() started", flush=True)
     _log_db_target()
+
+    print("[crawl] removing expired postings", flush=True)
+    try:
+        update_database()
+    except Exception as exc:
+        print(f"[crawl] expired-posting cleanup failed: {exc}", flush=True)
 
     jobs = []
 
@@ -103,6 +113,8 @@ def run():
     if jobs:
         print("[crawl] simplifying job descriptions", flush=True)
         simplify_jobs(jobs)
+        print("[crawl] extracting skills with JobBERT", flush=True)
+        extract_skills_for_jobs(jobs)
     else:
         print("[crawl] no new jobs found", flush=True)
 
@@ -125,6 +137,8 @@ def run():
 
     print("[crawl] backfilling any remaining null summaries", flush=True)
     backfill_missing_summaries()
+    print("[crawl] backfilling any empty skill lists", flush=True)
+    backfill_job_skills(only_empty=True)
 
     print(
         f"[crawl] done: processed={len(jobs)} inserted_or_skipped={inserted} failed={failed}",
