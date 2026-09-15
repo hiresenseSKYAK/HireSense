@@ -400,6 +400,71 @@ def update_job_description_summary(job_id, summary):
         conn.close()
 
 
+def fetch_jobs_for_skill_backfill(only_empty=True):
+    """Rows that still need JobBERT skills, or every job with a description."""
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        empty_filter = ""
+        if only_empty:
+            empty_filter = """
+              AND (
+                    skills IS NULL
+                    OR TRIM(skills) = ''
+                    OR TRIM(skills) = '[]'
+              )
+            """
+        cursor.execute(
+            f"""
+            SELECT
+                id,
+                job_title,
+                company,
+                job_description,
+                skills
+            FROM job_data
+            WHERE job_description IS NOT NULL
+              AND TRIM(job_description) <> ''
+              {empty_filter}
+            ORDER BY id DESC
+            """
+        )
+        return cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def update_job_skills(job_id, skills):
+    if job_id is None:
+        return False
+
+    payload = json.dumps(skills or [])
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            UPDATE job_data
+            SET skills = %s
+            WHERE id = %s
+            """,
+            (payload, job_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except mysql.connector.Error as exc:
+        conn.rollback()
+        print(
+            f"[db] update_job_skills FAILED: {exc!r} | id={job_id!r}",
+            flush=True,
+        )
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def get_jobs_to_check():
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
@@ -425,18 +490,34 @@ def delete_job(job_id):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        DELETE FROM job_data
-        WHERE id = %s
-        """,
-        (job_id,),
-    )
-
-    conn.commit()
-
-    cursor.close()
-    conn.close()
+    try:
+        cursor.execute(
+            """
+            DELETE ir FROM interview_responses ir
+            INNER JOIN interview_sessions i ON ir.session_id = i.id
+            WHERE i.job_id = %s
+            """,
+            (job_id,),
+        )
+        cursor.execute(
+            "DELETE FROM interview_sessions WHERE job_id = %s",
+            (job_id,),
+        )
+        cursor.execute("DELETE FROM saved_jobs WHERE job_id = %s", (job_id,))
+        cursor.execute("DELETE FROM applied_jobs WHERE job_id = %s", (job_id,))
+        cursor.execute("DELETE FROM job_data WHERE id = %s", (job_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+    except mysql.connector.Error as exc:
+        conn.rollback()
+        print(
+            f"[db] delete_job FAILED: {exc!r} | id={job_id!r}",
+            flush=True,
+        )
+        return False
+    finally:
+        cursor.close()
+        conn.close()
 
 
 def fetch_all_jobs_from_db():

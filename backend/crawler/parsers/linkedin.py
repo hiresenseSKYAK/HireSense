@@ -6,15 +6,6 @@ from urllib.parse import parse_qs, unquote, urlparse
 import requests
 from bs4 import BeautifulSoup
 
-try:
-    from backend.crawler.parsers.skills_catalog import TECH_SKILLS
-except ImportError:
-    try:
-        from crawler.parsers.skills_catalog import TECH_SKILLS
-    except ImportError:
-        from parsers.skills_catalog import TECH_SKILLS
-
-
 BASE_URL = "https://www.linkedin.com"
 # Guest `seeMoreJobPostings/search` returns ~10 listing cards per request; the UI
 # shows 50+ by loading more pages with increasing `start` (not one giant HTML).
@@ -38,15 +29,6 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
     "Referer": f"{BASE_URL}/jobs/search",
 }
-_SKILL_PATTERNS = [
-    (
-        skill,
-        re.compile(
-            r"(?<![A-Za-z0-9])" + re.escape(skill.lower()) + r"(?![A-Za-z0-9])"
-        ),
-    )
-    for skill in TECH_SKILLS
-]
 
 
 def _safe_text(node):
@@ -134,11 +116,6 @@ def _get_with_retries(session, url, params=None, timeout=15, deadline=None):
         if not _sleep(SEARCH_429_RETRY_SEC * (attempt + 1), deadline):
             return None
     return response
-
-
-def _extract_skills_from_description(description):
-    normalized = _normalize_linkedin_text(description).lower()
-    return [skill for skill, pattern in _SKILL_PATTERNS if pattern.search(normalized)]
 
 
 def _normalize_href(href):
@@ -571,7 +548,7 @@ def _extract_details_from_posting(job_id, session, deadline=None):
         "date_posted": _normalize_relative_date(relative_date),
         "application_link": application_link,
         "job_description": description,
-        "skills": _extract_skills_from_description(description),
+        "skills": [],
         "job_type": criteria.get("employment type"),
         "experience_level": experience_level,
         "work_style": criteria.get("workplace type"),
