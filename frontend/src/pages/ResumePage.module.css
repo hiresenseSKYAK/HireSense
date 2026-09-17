@@ -144,6 +144,18 @@
   margin-bottom: 14px;
 }
 
+.recentActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.recentActions :global(.btn-primary) {
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 0.8rem;
+}
+
 .secondaryButton {
   border: 1px solid var(--border);
   background: var(--surface2);
@@ -643,6 +655,10 @@
   .recentCardHeader {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .recentActions {
+    flex-wrap: wrap;
   }
 
   .snapshotGrid {

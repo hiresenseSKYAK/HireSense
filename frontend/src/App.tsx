@@ -6,6 +6,7 @@ import ResumePage from './pages/ResumePage'
 import JobDetailPage from './pages/JobDetailPage'
 import ProfilePage from './pages/ProfilePage'
 import LoginPage from './pages/LoginPage'
+import PrepareApplicationPage from './features/autofill/PrepareApplicationPage'
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
               <Route path="/resume"  element={<ResumePage />} />
               <Route path="/jobs/:id" element={<JobDetailPage />} />
               <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/application/prepare" element={<PrepareApplicationPage />} />
             </Routes>
           </>
         </ProtectedRoute>
