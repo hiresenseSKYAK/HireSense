@@ -4,28 +4,35 @@ HireSense can be deployed as a static Vite frontend plus a FastAPI service backe
 
 ## Frontend
 
-- Build command: `cd frontend && npm ci && npm run build`
+- Build command from the repository root: `cd frontend && npm ci && npm run build`
 - Publish directory: `frontend/dist`
 - Required environment variable: `VITE_API_BASE_URL=https://<your-api-origin>`
 - Optional browser-bridge variable: `VITE_AUTOFILL_EXTENSION_ID=<unpacked-or-published-extension-id>`
 
 The `VITE_` values are public build-time configuration. Do not place database passwords, API secrets, or auth tokens in them.
 
+The frontend uses `BrowserRouter`. Configure the static host to **rewrite** every path that is not a real asset to `/index.html` with HTTP 200. Without this rule, refreshing routes such as `/resume` or `/application/prepare` returns a host-level 404. This must be a rewrite rather than a redirect.
+
 ## Backend
 
-- Install: `cd backend && python -m pip install -r requirements.txt`
-- Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+- Install the normal web service from the repository root: `cd backend && python -m pip install -r requirements-web.txt`
+- Start from the repository root: `cd backend && python -m uvicorn main:app --host 0.0.0.0 --port $PORT`
 - Health check: `GET /health`
-- Required database variables: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD`
+- Required database variables: `DB_HOST`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD`
+- Optional database variable: `DB_PORT` (defaults to `3306`)
 - Required deployment variable: `CORS_ORIGINS=https://<your-frontend-origin>`
 
 `CORS_ORIGINS` accepts a comma-separated list, so local development can keep `http://localhost:5173` alongside the deployed frontend URL when needed.
 
+The backend must run with `backend` as its working directory because its imports are rooted there. If the host has a separate working-directory setting, set it to `backend` and use `python -m uvicorn main:app --host 0.0.0.0 --port $PORT`.
+
 ## MySQL and runtime considerations
 
-Use any student-budget managed MySQL-compatible database with public network access restricted to the backend host. The application creates its tables at backend startup, so the selected database user needs normal schema access.
+Use any student-budget managed MySQL-compatible database reachable from the backend host. The application runs `Base.metadata.create_all()` and its existing summary-column compatibility check at API startup. The database must already exist, and the configured user needs `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `CREATE`, and `ALTER` permissions. Startup fails if MySQL is unavailable or the required variables are missing. Passwords containing URL-special characters are supported.
 
-The crawler can download large Transformer models on its first run (roughly 700 MB based on the documented defaults) and can consume more memory than a small web service. Keep crawler execution separate from the request-serving process, use the configured schedule, and disable optional summarization/skill extraction in constrained environments with `SUMMARIZE_JOB_DESCRIPTIONS=false` and `EXTRACT_JOB_SKILLS=false`.
+The normal API startup does not import the crawler AI modules or download Transformer models. `requirements-web.txt` also avoids installing Torch, Transformers, BeautifulSoup, Requests, and scheduler packages into the web service.
+
+Run the crawler as a separate scheduled worker only when needed. Install its full environment with `python -m pip install -r requirements.txt`. A low-memory crawler deployment should set `SUMMARIZE_JOB_DESCRIPTIONS=false` and `EXTRACT_JOB_SKILLS=false`; this keeps the deterministic catalog fallback and avoids downloading roughly 700 MB of models. Do not run the crawler inside the Uvicorn web process.
 
 ## Browser bridge production setup
 

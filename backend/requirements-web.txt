@@ -1,0 +1,11 @@
+# Normal FastAPI web service. Crawler/Transformer dependencies stay in requirements.txt.
+fastapi
+uvicorn
+sqlalchemy
+mysql-connector-python
+python-dotenv
+python-multipart
+email-validator
+passlib
+pdfplumber
+python-docx
