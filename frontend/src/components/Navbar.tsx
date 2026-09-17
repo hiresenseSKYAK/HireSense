@@ -1,7 +1,8 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import styles from './Navbar.module.css'
 
 export default function Navbar() {
+  const location = useLocation()
   return (
     <nav className={styles.nav}>
       <div className={styles.inner}>
@@ -16,6 +17,12 @@ export default function Navbar() {
             }
           >
             Upload Resume
+          </NavLink>
+          <NavLink
+            to="/application/prepare"
+            className={`${styles.link} ${location.pathname.startsWith('/application/') ? styles.active : ''}`}
+          >
+            Application Autofill
           </NavLink>
           <NavLink
             to="/profile"

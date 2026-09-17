@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { IconAlert, IconCheck, IconUpload, IconX } from '../components/Icons'
 import {
   uploadResume,
@@ -101,6 +102,7 @@ function getReadinessLabel(score: number) {
 }
 
 export default function ResumePage() {
+  const navigate = useNavigate()
   const [isDragging, setIsDragging] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [selectedFileName, setSelectedFileName] = useState('')
@@ -367,9 +369,19 @@ export default function ResumePage() {
             <div className={styles.recentCardHeader}>
               <div className="section-title">Resume Command Center</div>
               {resumeResult && (
-                <button className={styles.secondaryButton} onClick={resetUpload}>
-                  Upload Another
-                </button>
+                <div className={styles.recentActions}>
+                  {parsed && analysis && (
+                    <button
+                      className="btn-primary"
+                      onClick={() => navigate('/application/prepare')}
+                    >
+                      Prepare Application
+                    </button>
+                  )}
+                  <button className={styles.secondaryButton} onClick={resetUpload}>
+                    Upload Another
+                  </button>
+                </div>
               )}
             </div>
 

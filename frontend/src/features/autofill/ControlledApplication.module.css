@@ -1,0 +1,74 @@
+.header { margin-bottom: 22px; }
+.header h1, .emptyCard h1, .cardHeading h2, .previewCard h2 { font-family: 'Syne', sans-serif; letter-spacing: -0.02em; margin: 0; }
+.header h1 { font-size: 1.8rem; }
+.header p, .layoutPicker p, .safetyNote, .emptyCard p, .emptyPreview { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.6; margin: 6px 0 0; }
+.backLink { color: var(--accent); display: inline-flex; font-size: 0.85rem; font-weight: 700; margin-bottom: 12px; }
+.layoutPicker, .applicationCard, .previewCard, .emptyCard { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+.layoutPicker { align-items: center; display: flex; gap: 16px; justify-content: space-between; margin-bottom: 20px; padding: 18px 20px; }
+.sectionLabel { color: var(--text-muted); display: block; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.pickerButtons, .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.layoutButton, .activeLayout { border: 1px solid var(--border-strong); border-radius: 10px; cursor: pointer; font-size: 0.82rem; font-weight: 700; padding: 9px 12px; }
+.layoutButton { background: var(--surface-strong); color: var(--text-secondary); }
+.activeLayout { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
+.workspace { align-items: start; display: grid; gap: 20px; grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.9fr); }
+.applicationCard, .previewCard { padding: 24px; }
+.cardHeading { align-items: flex-start; display: flex; gap: 12px; justify-content: space-between; margin-bottom: 20px; }
+.cardHeading h2, .previewCard h2 { font-size: 1.1rem; margin-top: 4px; }
+.manualOnly { background: var(--amber-soft); border-radius: 999px; color: var(--amber); font-size: 0.72rem; font-weight: 800; padding: 6px 9px; white-space: nowrap; }
+.form { display: flex; flex-direction: column; gap: 16px; }
+.formSection { background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 16px; }
+.formSection h3, .formSection legend { color: var(--text-primary); font-family: 'Syne', sans-serif; font-size: 0.95rem; font-weight: 700; padding: 0; }
+.formGrid { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.form label { color: var(--text-secondary); display: flex; flex-direction: column; font-size: 0.78rem; font-weight: 700; gap: 6px; }
+.form input, .form select, .form textarea { background: var(--surface-strong); border: 1px solid var(--border-strong); border-radius: 9px; color: var(--text-primary); min-height: 38px; padding: 8px 9px; }
+.form textarea { min-height: 86px; resize: vertical; }
+.form .checkLabel { flex-direction: row; align-items: center; }
+.form .checkLabel input { min-height: auto; }
+.actions { margin-top: 20px; }
+.safetyNote { font-size: 0.8rem; }
+.previewList { display: flex; flex-direction: column; gap: 9px; margin-top: 16px; max-height: 640px; overflow: auto; }
+.previewItem { align-items: flex-start; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 10px; display: flex; gap: 10px; justify-content: space-between; padding: 11px; }
+.previewItem strong { font-size: 0.82rem; text-transform: capitalize; }
+.previewItem p { color: var(--text-secondary); font-size: 0.76rem; line-height: 1.4; margin: 4px 0 0; }
+.outcome { border-radius: 999px; flex-shrink: 0; font-size: 0.68rem; font-weight: 800; padding: 5px 7px; }
+.fill { background: var(--green-soft); color: var(--green); }.preserve { background: var(--accent-light); color: var(--accent); }.missing, .ambiguous, .invalid { background: var(--amber-soft); color: var(--amber); }.unsupported, .sensitive { background: #eef1f6; color: var(--text-muted); }
+.result { background: var(--green-soft); border: 1px solid rgba(31, 183, 106, 0.25); border-radius: var(--radius-sm); color: #147848; display: flex; flex-direction: column; font-size: 0.83rem; gap: 4px; line-height: 1.5; margin-top: 16px; padding: 13px; }
+.emptyCard { max-width: 620px; padding: 32px; }.emptyCard p { margin-bottom: 20px; }
+@media (max-width: 980px) { .workspace { grid-template-columns: 1fr; } .previewList { max-height: none; } }
+@media (max-width: 680px) { .layoutPicker, .cardHeading { align-items: flex-start; flex-direction: column; } .applicationCard, .previewCard { padding: 18px; } .formGrid { grid-template-columns: 1fr; } }
+
+.previewCard { position: sticky; top: 20px; min-width: 0; }
+.cardHeading p { color: var(--text-secondary); margin: 6px 0 0; font-size: .88rem; }
+.previewItem { display: block; padding: 14px; }
+.previewItem strong { text-transform: none; overflow-wrap: anywhere; min-width: 0; }
+.itemHeading { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.previewItem p { margin-top: 8px; }
+.proposedValue { color: var(--text-primary); font-size: .83rem; margin-top: 9px; overflow-wrap: anywhere; }
+.summary { font-size: .83rem; line-height: 1.8; padding: 12px 14px; background: var(--accent-light); border-radius: var(--radius-sm); color: var(--text-secondary); }
+.emptyPreview { padding: 24px 12px 10px; text-align: center; }
+.emptyPreview strong { display: block; color: var(--text-primary); }
+.previewIcon { width: 44px; height: 44px; display: grid; place-items: center; margin: 0 auto 16px; border-radius: 12px; background: var(--accent-light); color: var(--accent); font-size: 26px; }
+.actions { margin-top: 16px; }
+.previewCard .actions button { flex: 1; }
+.previewList { max-height: 520px; padding-right: 4px; }
+.nextAction { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 18px; font-size: .85rem; }
+.nextAction p { color: var(--text-secondary); line-height: 1.6; }
+.nextAction a { color: var(--accent); font-weight: 700; }
+.workspace button:disabled, .layoutPicker button:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
+.workspace button:focus-visible, .layoutPicker button:focus-visible, .form input:focus-visible, .form select:focus-visible, .form textarea:focus-visible { outline: 3px solid var(--accent-light); outline-offset: 2px; border-color: var(--accent); }
+.form input, .form select, .form textarea { width: 100%; min-width: 0; }
+.form input[type="checkbox"] { width: auto; }
+.fill { color: #147848; }
+.missing, .ambiguous, .invalid { color: #865609; }
+.unsupported, .sensitive { color: var(--text-secondary); }
+@media (max-width: 980px) { .previewCard { position: static; } .previewList { max-height: none; } }
+
+.previewCard { top: 80px; }
+
+.previewCard { max-height: calc(100dvh - 100px); overflow-y: auto; }
+.previewList { max-height: none; overflow: visible; }
+.header h1, .result { scroll-margin-top: 90px; }
+.header h1:focus, .result:focus { outline: none; }
+@media (max-width: 980px) { .previewCard { max-height: none; overflow: visible; } }
+
+.form input:disabled, .form input[readonly] { background: #e9eef5; color: var(--text-secondary); cursor: not-allowed; }

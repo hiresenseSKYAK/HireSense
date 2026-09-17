@@ -67,3 +67,8 @@
   color: var(--accent) !important;
   background: rgba(47, 102, 245, 0.12) !important;
 }
+@media (max-width: 600px) {
+  .inner { gap: 10px; padding: 0 12px; height: auto; min-height: 60px; }
+  .links { flex-wrap: wrap; padding: 8px 0; }
+  .link { font-size: .75rem; padding: 6px 8px; }
+}
