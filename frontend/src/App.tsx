@@ -6,6 +6,7 @@ import ResumePage from './pages/ResumePage'
 import JobDetailPage from './pages/JobDetailPage'
 import ProfilePage from './pages/ProfilePage'
 import LoginPage from './pages/LoginPage'
+import PrivacyPage from './pages/PrivacyPage'
 import PrepareApplicationPage from './features/autofill/PrepareApplicationPage'
 import ControlledApplicationPage from './features/autofill/ControlledApplicationPage'
 
@@ -14,6 +15,7 @@ export default function App() {
     <Routes>
       {/* Public */}
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
 
       {/* Protected by sign in */}
       <Route path="/*" element={
