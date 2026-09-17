@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest'
 import { executeAutofill } from './fillExecutor'
+import { calculateMatcherMetrics } from './metrics'
 import { matchApplicationFields } from './semanticMatcher'
 import type { ApplicantProfile } from '../core/types'
 
@@ -167,5 +168,22 @@ describe('semantic application field matcher', () => {
     executeAutofill(document.body, profile)
 
     expect(submissions).toBe(0)
+  })
+
+  it('calculates correctness and coverage from independently authored expectations', () => {
+    document.body.innerHTML = `
+      <label for="email">Email</label><input id="email" type="email" />
+      <label for="unknown">Favorite color</label><input id="unknown" />
+    `
+    const decisions = matchApplicationFields(document.body, profile)
+    const metrics = calculateMatcherMetrics(decisions, [
+      { fieldId: 'email', outcome: 'fill', profileKey: 'email' },
+      { fieldId: 'unknown', outcome: 'unsupported' },
+    ])
+
+    expect(metrics).toEqual({
+      matchingCorrectness: { correctProposedMappings: 1, proposedMappings: 1, rate: 1 },
+      supportedFieldCoverage: { correctProposedFills: 1, eligibleSupportedEmptyFields: 1, rate: 1 },
+    })
   })
 })
