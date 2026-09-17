@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Active resume · HireSense</title><link rel="stylesheet" href="popup.css"></head>
+<body class="resume-page"><main>
+<p class="eyebrow">HIRESENSE · ACTIVE RESUME</p><h1>Choose once. Attach when you decide.</h1>
+<p class="note">Select a PDF or DOCX up to 2 MB. Your file is usable for 30 minutes in extension session memory. Expired data is cleared on the next extension action or when the browser session ends. No permanent file storage.</p>
+<p id="resume-status" role="status" aria-live="polite">Checking the active resume…</p>
+<label for="resume-file">Resume / CV</label><input id="resume-file" type="file" accept=".pdf,.docx"><p id="selected-file">No file chosen</p>
+<button id="save-resume" type="button" disabled>Use this resume for this session</button>
+<button id="clear-resume" type="button" class="secondary">Clear active resume</button>
+<p class="note">Choosing a file here does not upload it to an application. On each application, preview first and choose <strong>Attach resume</strong>. That action may immediately send your file to the application site. Existing attachments are never replaced.</p>
+<p class="note">Return to your application tab when ready. If the site requires its own file picker, use its Attach button instead.</p>
+</main><script src="resume.js"></script></body></html>

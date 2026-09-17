@@ -5,7 +5,7 @@ import { initializeApplicantProfile } from './core/profile'
 
 describe('extension privacy and origin contract', () => {
   const profile = { ...initializeApplicantProfile(null), fullName: 'Ada Lovelace', email: 'ada@example.com' }
-  it('copies only the ten approved applicant fields', () => {
+  it('copies only the fourteen approved applicant fields', () => {
     const payload = { ...profile, token: 'must not transfer', resumeText: 'must not transfer', file: 'private.pdf' }
     expect(transferableProfile(payload)).toEqual(profile)
     expect(transferableProfile(payload)).not.toBe(payload)

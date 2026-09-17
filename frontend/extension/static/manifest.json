@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "HireSense Autofill",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Explicitly fills supported applicant details without submitting applications.",
   "permissions": [
     "activeTab",

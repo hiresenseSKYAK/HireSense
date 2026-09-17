@@ -6,13 +6,17 @@ export const outcomeLabels = {
   ambiguous: 'Needs your review', unsupported: 'Left untouched', sensitive: 'Left for you', invalid: 'Needs your review',
 }
 const resultLabels = {
+  attached: 'Attached to file field',
   filled: 'Filled & verified', preserved: 'Answer preserved', skipped: 'Left for you',
   changed: 'Changed since preview', 'write-failed': 'Could not fill', 'verification-failed': 'Could not verify',
 }
 
 export function reportField(decision: FieldDecision) {
   return {
-    label: displayField(decision.element),
+    label: decision.attachment ? 'Resume / CV' : displayField(decision.element),
+    section: decision.result === 'filled' || decision.result === 'attached' || decision.outcome === 'preserve' ? 'handled'
+      : decision.outcome === 'fill' && !decision.result ? 'ready'
+      : decision.manual || ['missing', 'ambiguous', 'invalid', 'sensitive'].includes(decision.outcome) || ['changed', 'write-failed', 'verification-failed'].includes(decision.result ?? '') ? 'manual' : 'untouched',
     status: decision.result && decision.result !== 'skipped' ? resultLabels[decision.result] : decision.manual ? 'Left for you' : outcomeLabels[decision.outcome],
     reason: decision.reason,
     tone: decision.result === 'filled' ? 'fill' : ['changed', 'write-failed', 'verification-failed'].includes(decision.result ?? '') ? 'invalid' : decision.outcome,
@@ -27,5 +31,5 @@ export function reportField(decision: FieldDecision) {
 export function previewSummary(decisions: FieldDecision[]) {
   const count = (...outcomes: FieldDecision['outcome'][]) => decisions.filter((d) => outcomes.includes(d.outcome)).length
   return count('fill') + ' ready to fill · ' + count('preserve') + ' already answered · ' +
-    (count('missing', 'ambiguous', 'invalid', 'sensitive') + decisions.filter((d) => d.manual).length) + ' need you · ' + decisions.filter((d) => d.outcome === 'unsupported' && !d.manual).length + ' untouched'
+    (count('missing', 'ambiguous', 'invalid', 'sensitive') + decisions.filter((d) => d.manual && !d.attachment).length) + ' questions need you · ' + decisions.filter((d) => d.outcome === 'unsupported' && !d.manual).length + ' untouched'
 }

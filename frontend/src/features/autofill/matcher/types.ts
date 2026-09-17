@@ -23,6 +23,7 @@ export type EvidenceSource =
   | 'placeholder'
   | 'section context'
   | 'input type'
+  | 'question context'
 
 export interface MatchEvidence {
   source: EvidenceSource
@@ -39,7 +40,8 @@ export interface FieldDecision {
   evidence: MatchEvidence[]
   snapshot?: string
   manual?: boolean
-  result?: 'filled' | 'preserved' | 'skipped' | 'changed' | 'write-failed' | 'verification-failed'
+  attachment?: boolean
+  result?: 'filled' | 'attached' | 'preserved' | 'skipped' | 'changed' | 'write-failed' | 'verification-failed'
 }
 
 export interface FillResult {

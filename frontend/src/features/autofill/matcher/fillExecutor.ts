@@ -1,5 +1,6 @@
 import type { ApplicantProfile } from '../core/types'
 import { matchApplicationFields } from './semanticMatcher'
+import { verifiedValue } from './verification'
 import type { ApplicationControl, FieldDecision, FillResult } from './types'
 
 function setControlValue(element: ApplicationControl, value: string) {
@@ -16,9 +17,9 @@ export function summarizeResult(decisions: FieldDecision[]): FillResult {
   const count = (result: FieldDecision['result']) => decisions.filter((d) => d.result === result).length
   return {
     decisions,
-    filled: count('filled'), preserved: count('preserved'), skipped: count('skipped'),
-    needsInput: decisions.filter((d) => d.manual || ['missing', 'ambiguous', 'invalid', 'sensitive'].includes(d.outcome) ||
-      ['changed', 'write-failed', 'verification-failed'].includes(d.result ?? '')).length,
+    filled: count('filled'), preserved: decisions.filter((d) => d.result === 'preserved' && !d.attachment).length, skipped: count('skipped'),
+    needsInput: decisions.filter((d) => !d.attachment && (d.manual || ['missing', 'ambiguous', 'invalid', 'sensitive'].includes(d.outcome) ||
+      ['changed', 'write-failed', 'verification-failed'].includes(d.result ?? ''))).length,
     verificationFailures: count('verification-failed'), writeFailures: count('write-failed'), changed: count('changed'),
   }
 }
@@ -26,6 +27,7 @@ export function summarizeResult(decisions: FieldDecision[]): FillResult {
 export function executeAutofill(root: ParentNode, profile: ApplicantProfile, preview?: FieldDecision[]): FillResult {
   const approved = preview ?? matchApplicationFields(root, profile)
   const decisions = approved.map((decision): FieldDecision => {
+    if (decision.result === 'attached') return decision
     if (decision.outcome !== 'fill') return {
       ...decision, result: decision.outcome === 'preserve' ? 'preserved' : 'skipped',
       reason: decision.outcome === 'preserve' ? 'Your existing answer was preserved.' : decision.reason,
@@ -40,7 +42,7 @@ export function executeAutofill(root: ParentNode, profile: ApplicantProfile, pre
     } catch {
       return { ...decision, result: 'write-failed', reason: 'This page did not accept the write. Enter this answer yourself.' }
     }
-    if (!decision.element.isConnected || decision.element.value !== decision.value) {
+    if (!verifiedValue(decision)) {
       return { ...decision, result: 'verification-failed', reason: 'The page did not retain the expected value. Please check this answer.' }
     }
     return { ...decision, result: 'filled', reason: 'Your profile value was filled and verified.' }
@@ -54,6 +56,6 @@ export async function executeAutofillVerified(root: ParentNode, profile: Applica
   const result = executeAutofill(root, profile, preview)
   await new Promise((resolve) => setTimeout(resolve, 120))
   return summarizeResult(result.decisions.map((decision) => decision.result === 'filled' &&
-    (!decision.element.isConnected || decision.element.value !== decision.value)
+    !verifiedValue(decision)
     ? { ...decision, result: 'verification-failed', reason: 'The page changed this value after filling. Please enter it yourself.' } : decision))
 }

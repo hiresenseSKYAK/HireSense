@@ -21,16 +21,17 @@ async function setupBackground() {
     storage: { session: {
       get: vi.fn(async () => store),
       set: vi.fn(async (values) => { Object.assign(store, values) }),
-      remove: vi.fn(async (key) => { delete store[key] }),
+      remove: vi.fn(async (key) => { for (const name of Array.isArray(key) ? key : [key]) delete store[name] }),
     } },
-    tabs: { query: vi.fn(async () => [{ id: 7, url: 'https://example.com/apply' }]), sendMessage: vi.fn(async () => ({ ok: true, previewId: 'preview' })) },
+    tabs: { query: vi.fn(async () => [{ id: 7, url: 'https://example.com/apply' }]), sendMessage: vi.fn(async (_tabId: number, _message: any) => ({ ok: true, previewId: 'preview' })) },
     scripting: { executeScript: vi.fn(async () => []) },
   }
   vi.stubGlobal('chrome', api)
   await import('../../../extension/src/background')
   const call = (message: unknown) => new Promise<any>((resolve) => internal(message, { url: api.runtime.getURL('popup.html') }, resolve))
+  const resumeCall = (message: unknown) => new Promise<any>((resolve) => internal(message, { url: api.runtime.getURL('resume.html') }, resolve))
   const transfer = (url = 'https://hiresense-9yub.onrender.com/application/prepare') => new Promise<any>((resolve) => external({ type: 'set-confirmed-profile', profile: { ...profile, token: 'secret' } }, { url }, resolve))
-  return { api, store, call, transfer }
+  return { api, store, call, transfer, resumeCall }
 }
 
 describe('extension background handoff and permissions', () => {
@@ -67,6 +68,32 @@ describe('extension background handoff and permissions', () => {
     expect((await call({ type: 'clear-profile' })).ok).toBe(true)
     expect((await call({ type: 'preview-active-tab' })).ok).toBe(false)
     expect(api.scripting.executeScript).not.toHaveBeenCalled()
+  })
+  it('keeps resume bytes session-only and sends them only for an explicit attachment', async () => {
+    const { transfer, call, resumeCall, store, api } = await setupBackground()
+    const file = { name: 'resume.pdf', type: 'application/pdf', size: 4, lastModified: 1, base64: btoa('demo') }
+    await transfer()
+    expect((await resumeCall({ type: 'set-active-resume', file })).ok).toBe(true)
+    const state = await call({ type: 'get-profile' })
+    expect(state.resume.name).toBe('resume.pdf')
+    expect(JSON.stringify(state)).not.toContain(file.base64)
+    await call({ type: 'preview-active-tab' })
+    expect(api.tabs.sendMessage.mock.calls[0][1]).not.toHaveProperty('resume')
+    const token = store.activeResume.token
+    expect((await call({ type: 'attach-active-resume', tabId: 7, resumeToken: 'wrong' })).ok).toBe(false)
+    await call({ type: 'attach-active-resume', tabId: 7, resumeToken: token, previewId: 'preview' })
+    expect(api.tabs.sendMessage.mock.calls[api.tabs.sendMessage.mock.calls.length - 1][1].resume).toEqual(file)
+    await call({ type: 'clear-profile' })
+    expect(store).toEqual({})
+  })
+  it('expires the resume and rejects unauthorized popup file replacements', async () => {
+    const { call, resumeCall, store } = await setupBackground()
+    const file = { name: 'resume.pdf', type: 'application/pdf', size: 4, lastModified: 1, base64: btoa('demo') }
+    expect((await call({ type: 'set-active-resume', file })).ok).toBe(false)
+    await resumeCall({ type: 'set-active-resume', file })
+    store.activeResume.expiresAt = 0
+    expect((await resumeCall({ type: 'get-resume' })).resume).toBeNull()
+    expect(store.activeResume).toBeUndefined()
   })
   it('rejects tab changes and restricted pages', async () => {
     const { transfer, call, api } = await setupBackground()

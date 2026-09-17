@@ -6,6 +6,10 @@ export interface ApplicantProfile {
   phone: string
   city: string
   state: string
+  country: string
+  addressLine1: string
+  addressLine2: string
+  postalCode: string
   linkedin: string
   github: string
   portfolio: string

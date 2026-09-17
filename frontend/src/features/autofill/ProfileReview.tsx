@@ -35,7 +35,11 @@ const fields: Array<{
   { name: 'email', label: 'Email', type: 'email', autoComplete: 'email' },
   { name: 'phone', label: 'Phone', type: 'tel', autoComplete: 'tel' },
   { name: 'city', label: 'City', autoComplete: 'address-level2' },
-  { name: 'state', label: 'State', autoComplete: 'address-level1' },
+  { name: 'state', label: 'State / Province', autoComplete: 'address-level1' },
+  { name: 'country', label: 'Country of residence', autoComplete: 'country-name' },
+  { name: 'addressLine1', label: 'Street address', autoComplete: 'address-line1' },
+  { name: 'addressLine2', label: 'Apartment / Suite', autoComplete: 'address-line2' },
+  { name: 'postalCode', label: 'ZIP / Postal code', autoComplete: 'postal-code' },
   { name: 'linkedin', label: 'LinkedIn', type: 'url', autoComplete: 'url' },
   { name: 'github', label: 'GitHub', type: 'url', autoComplete: 'url' },
   { name: 'portfolio', label: 'Portfolio', type: 'url', autoComplete: 'url' },
@@ -120,8 +124,8 @@ export default function ProfileReview({ resume, draft, onContinue }: ProfileRevi
         </span>
       </div>
 
-      <p className={styles.fieldGuide}>Contact details & professional links <span>{Object.values(reviewState.values).filter((value) => value.trim()).length} of 10 details available</span></p>
-      <p className={styles.confirmationHint}>First and last names are yours to enter. We do not split your full name automatically.</p>
+      <p className={styles.fieldGuide}>Contact details & professional links <span>{Object.values(reviewState.values).filter((value) => value.trim()).length} of {fields.length} details available</span></p>
+      <p className={styles.confirmationHint}>Names and address details are yours to enter. Country means where you live, never citizenship. Blank fields remain manual.</p>
       <div className={styles.fieldGrid}>
         {fields.map((field) => {
           const error = errors[field.name]
@@ -199,7 +203,7 @@ export default function ProfileReview({ resume, draft, onContinue }: ProfileRevi
             <section className={styles.choice}>
               <p className={styles.eyebrow}>Take it with you</p>
               <h3>Use on an external application</h3>
-              <p>Send only these details to the HireSense extension. Your resume file and account information stay here.</p>
+              <p>Send only these details to the HireSense extension. Your account information stays here. Choose an active resume separately inside the extension; attachments always require their own action.</p>
               <button type="button" className="btn-outline" disabled={!canUseAutofillExtension() || sending} onClick={() => void sendToBrowserBridge()}>
                 {sending ? 'Sending profile…' : 'Send to extension'}
               </button>

@@ -13,6 +13,7 @@ const profile: ApplicantProfile = {
   phone: '+1 555 123 4567',
   city: 'Austin',
   state: 'Texas',
+      country: '', addressLine1: '', addressLine2: '', postalCode: '',
   linkedin: 'https://www.linkedin.com/in/ada-lovelace',
   github: 'https://github.com/ada-lovelace',
   portfolio: 'https://ada.example.com',

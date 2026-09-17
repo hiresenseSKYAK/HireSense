@@ -15,6 +15,10 @@ const aliases: Record<keyof ApplicantProfile, string[]> = {
   phone: ['phone number', 'mobile number', 'mobile', 'phone', 'telephone'],
   city: ['city town', 'city'],
   state: ['state province', 'state', 'province'],
+  country: ['country of residence', 'country region', 'country'],
+  addressLine1: ['street address', 'address line 1', 'address1', 'address 1', 'street'],
+  addressLine2: ['address line 2', 'address2', 'address 2', 'apartment', 'suite', 'unit'],
+  postalCode: ['postal code', 'zip code', 'postcode', 'zip'],
   linkedin: ['linkedin url', 'linkedin'],
   github: ['github url', 'github'],
   portfolio: ['portfolio website', 'personal website', 'website url', 'portfolio', 'website'],
@@ -28,6 +32,11 @@ const autocompleteMap: Record<string, keyof ApplicantProfile> = {
   tel: 'phone',
   'address-level2': 'city',
   'address-level1': 'state',
+  'country-name': 'country',
+  country: 'country',
+  'address-line1': 'addressLine1',
+  'address-line2': 'addressLine2',
+  'postal-code': 'postalCode',
 }
 
 const referenceTerms = [
@@ -57,11 +66,22 @@ const sensitiveTerms = [
   'citizenship',
   'criminal history',
   'background check',
+  'itar', 'international traffic in arms', 'export control', 'export controls',
+  'i t a r', 'export controlled', 'export compliance', 'export restrictions',
+  'export regulation', 'export regulations', 'export administration',
+  'u s person', 'us person', 'u s persons', 'us persons',
+  'green card', 'permanent resident', 'permanent residency',
+  'permanent residents', 'clearance',
+  'refugee', 'asylum', 'asylee', 'state department', 'department of state',
+  'immigration', 'security clearance', 'government eligibility',
+  'nationality', 'citizen', 'citizens', 'hispanic', 'latino', 'latina',
+  'national origin', 'ethnic background', 'sexual orientation',
 ]
 
 function normalize(value: string): string {
   return value
     .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([a-z])([0-9])/g, '$1 $2')
     .toLowerCase()
     .replace(/\bgit hub\b/g, 'github')
     .replace(/\blinked in\b/g, 'linkedin')
@@ -113,7 +133,7 @@ function getSectionContext(element: ApplicationControl): string[] {
   return texts.filter(Boolean)
 }
 
-function isHidden(element: ApplicationControl): boolean {
+export function isHidden(element: ApplicationControl): boolean {
   let ancestor: Element | null = element
   while (ancestor) {
     const style = element.ownerDocument.defaultView?.getComputedStyle(ancestor)
@@ -143,13 +163,14 @@ function isCompatible(
   key: keyof ApplicantProfile,
 ): boolean {
   if (element instanceof HTMLSelectElement) {
-    return key === 'state' && !element.multiple
+    return ['state', 'country'].includes(key) && !element.multiple
   }
   if (element instanceof HTMLTextAreaElement) {
     return false
   }
 
   const type = element.type
+  if (element.getAttribute('role') === 'combobox' || element.getAttribute('aria-haspopup') === 'listbox') return false
   if (['checkbox', 'radio', 'file', 'hidden', 'submit', 'button'].includes(type)) {
     return false
   }
@@ -195,6 +216,31 @@ function getStateSelectValue(
   return matches.length === 1 ? matches[0].value : null
 }
 
+function getCountrySelectValue(select: HTMLSelectElement, value: string): string | null {
+  // Match the confirmed country to an option, never derive it from a phone/address.
+  const names: Record<string, string> = { us: 'united states', usa: 'united states', 'united states of america': 'united states', gb: 'united kingdom', uk: 'united kingdom', ca: 'canada', au: 'australia' }
+  const canonical = (text: string) => names[normalize(text)] ?? normalize(text)
+  const matches = Array.from(select.options).filter((option) => option.value && !option.disabled &&
+    !option.parentElement?.matches('optgroup:disabled') &&
+    [option.value, option.text].some((text) => canonical(text) === canonical(value)))
+  return matches.length === 1 ? matches[0].value : null
+}
+
+function questionContext(element: ApplicationControl): string[] {
+  const descriptions = (element.getAttribute('aria-describedby') ?? '').split(/\s+/)
+    .map((id) => element.ownerDocument.getElementById(id)?.textContent ?? '')
+  descriptions.push(element.getAttribute('aria-description') ?? '')
+  // Capture explanatory text in a single-question wrapper, not the entire form.
+  let wrapper = element.parentElement
+  for (let depth = 0; wrapper && depth < 3; depth++, wrapper = wrapper.parentElement) {
+    if (wrapper.matches('form, body, html') || wrapper.querySelectorAll('input:not([type="hidden"]), select, textarea').length !== 1) break
+    const copy = wrapper.cloneNode(true) as Element
+    copy.querySelectorAll('input, select, textarea, button, script, style').forEach((node) => node.remove())
+    descriptions.push(copy.textContent ?? '')
+  }
+  return descriptions.filter(Boolean)
+}
+
 function getMetadataEvidence(element: ApplicationControl): MatchEvidence[] {
   const evidence: MatchEvidence[] = []
   const tokens = element.getAttribute('autocomplete')?.trim().toLowerCase().split(/\s+/).filter((token) => token !== 'webauthn')
@@ -225,6 +271,7 @@ function getMetadataEvidence(element: ApplicationControl): MatchEvidence[] {
   getSectionContext(element).forEach((text) =>
     evidence.push({ source: 'section context', text }),
   )
+  questionContext(element).forEach((text) => evidence.push({ source: 'question context', text }))
   evidence.push({ source: 'input type', text: controlType(element) })
   return evidence
 }
@@ -263,9 +310,6 @@ export function matchApplicationFields(
     if (isReadOnly(element)) {
       return { element, outcome: 'unsupported', reason: 'Read-only fields are preserved.', evidence }
     }
-    if (element instanceof HTMLTextAreaElement) {
-      return { element, outcome: 'unsupported', manual: true, reason: 'Free-text questions need your answer.', evidence }
-    }
     if (element instanceof HTMLInputElement && ['checkbox', 'radio'].includes(element.type)) {
       return { element, outcome: 'sensitive', reason: 'Checkboxes and choices are never answered automatically.', evidence }
     }
@@ -274,6 +318,16 @@ export function matchApplicationFields(
     }
     if (hasContextTerm(evidence, sensitiveTerms) || fieldHasTerm(evidence, sensitiveTerms)) {
       return { element, outcome: 'sensitive', reason: 'Sensitive or application-specific questions need your answer.', evidence }
+    }
+    if (element instanceof HTMLTextAreaElement) {
+      return { element, outcome: 'unsupported', manual: true, reason: 'Free-text questions need your answer.', evidence }
+    }
+    if (element instanceof HTMLInputElement && element.type === 'file') {
+      const texts = [...getLabelText(element), ...getAriaLabelText(element), element.name, element.id].join(' ')
+      const resume = /\b(resume|cv|curriculum vitae)\b/.test(normalize(texts)) && !/\b(cover|letter|transcript|certificate)\b/.test(normalize(texts))
+      return { element, outcome: element.files?.length ? 'preserve' : 'unsupported', manual: !element.files?.length,
+        attachment: resume && !element.multiple, evidence,
+        reason: element.files?.length ? 'An existing attachment will be preserved.' : resume ? 'Resume attachment needs your separate approval in the extension.' : 'Choose this attachment yourself.' }
     }
     const questions = [...getLabelText(element), ...getAriaLabelText(element)]
     if (questions.some((text) => /^(why|describe|tell|explain|how|what|which|would|have you|do you|are you|can you)\b/.test(normalize(text)) ||
@@ -351,14 +405,14 @@ export function matchApplicationFields(
     }
 
     const value =
-      element instanceof HTMLSelectElement && profileKey === 'state'
-        ? getStateSelectValue(element, profileValue)
+      element instanceof HTMLSelectElement
+        ? profileKey === 'country' ? getCountrySelectValue(element, profileValue) : getStateSelectValue(element, profileValue)
         : profileValue
     if (value === null) {
       return {
         element,
         outcome: 'invalid',
-        reason: 'Your state does not match a single available option.',
+        reason: 'Your confirmed location does not match a single available option.',
         profileKey,
         evidence,
       }

@@ -18,3 +18,13 @@ button.secondary { background: white; border-color: #cfd9e8; color: #0f172a; }
 .state { grid-template-columns: 1fr 1.5fr; gap: 10px; }
 .state strong + span { margin-top: 0; }
 #report { max-height: 190px; }
+
+.resume-card { margin-top: 16px; background: white; border: 1px solid #dbe4f0; border-radius: 12px; padding: 12px; }
+.resume-card strong, .resume-card p { font-size: 12px; overflow-wrap: anywhere; }
+.resume-card p { color: #5f6b85; line-height: 1.5; }
+#report h2 { font-size: 13px; margin: 16px 0 10px; }
+#report { max-height: 240px; }
+body.resume-page { width: auto; max-width: 650px; margin: 48px auto; padding: 0 16px; }
+.resume-page main { background: white; border: 1px solid #dbe4f0; border-radius: 18px; padding: 28px; }
+.resume-page input { display: block; margin: 12px 0; max-width: 100%; }
+.resume-page #resume-status { font-size: 14px; line-height: 1.6; padding: 14px; background: #edf3fb; border-radius: 10px; }

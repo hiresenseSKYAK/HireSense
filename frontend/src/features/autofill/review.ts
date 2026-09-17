@@ -26,7 +26,7 @@ export function isApplicantProfile(value: unknown): value is ApplicantProfile {
 
   const keys: Array<keyof ApplicantProfile> = [
     'fullName', 'firstName', 'lastName', 'email', 'phone',
-    'city', 'state', 'linkedin', 'github', 'portfolio',
+    'city', 'state', 'country', 'addressLine1', 'addressLine2', 'postalCode', 'linkedin', 'github', 'portfolio',
   ]
   return keys.every((key) => typeof value[key] === 'string')
 }

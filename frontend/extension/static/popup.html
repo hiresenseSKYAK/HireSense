@@ -8,8 +8,15 @@
   <p id="status" role="status" aria-live="polite">Connecting to HireSense…</p>
   <button id="preview" type="button" disabled>Preview autofill</button>
   <button id="fill" type="button" hidden disabled>Fill supported fields</button>
+  <section class="resume-card" aria-label="Resume attachment">
+    <strong>Resume / CV</strong><p id="active-resume">No active resume</p>
+    <p id="attachment-status" role="status">Preview to check the application’s resume field.</p>
+    <button id="choose-resume" type="button" class="secondary">Choose active resume</button>
+    <button id="attach-resume" type="button" hidden disabled>Attach resume</button>
+    <p id="attachment-warning" class="note" hidden>Attaching may immediately upload this file to the application site. Check the destination and active filename first.</p>
+  </section>
   <div id="report" aria-label="Field preview and results"></div>
-  <button id="clear" type="button" class="secondary">Clear profile</button>
+  <button id="clear" type="button" class="secondary">Clear profile & resume</button>
   <p class="note">HireSense never submits applications for you. Review your answers and complete any remaining questions yourself.</p>
 </main><script src="popup.js"></script></body>
 </html>
