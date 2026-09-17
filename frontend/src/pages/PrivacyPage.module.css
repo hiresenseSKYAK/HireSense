@@ -1,0 +1,78 @@
+.page {
+  min-height: calc(100vh - 60px);
+  display: grid;
+  place-items: start center;
+  padding: 64px 24px;
+  color: var(--text-primary);
+}
+
+.card {
+  width: min(760px, 100%);
+  padding: 42px 46px 48px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(12px);
+}
+
+.heading {
+  padding-bottom: 24px;
+  margin-bottom: 26px;
+  border-bottom: 1px solid var(--border);
+}
+
+.heading p {
+  margin: 0 0 8px;
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.heading h1 {
+  margin: 0;
+  font-family: 'Syne', sans-serif;
+  font-size: clamp(1.75rem, 4vw, 2.4rem);
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+.policy {
+  color: var(--text-secondary);
+  font-size: 0.98rem;
+  line-height: 1.75;
+}
+
+.policy p {
+  margin: 0 0 20px;
+}
+
+.policy p:last-child {
+  margin: 28px 0 0;
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.policy a {
+  color: var(--accent);
+}
+
+.policy a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 600px) {
+  .page {
+    padding: 24px 12px;
+  }
+
+  .card {
+    padding: 28px 22px 34px;
+    border-radius: var(--radius);
+  }
+
+}
