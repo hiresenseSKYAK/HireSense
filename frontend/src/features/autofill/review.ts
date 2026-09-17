@@ -19,6 +19,18 @@ export function hasApplicantValue(values: ApplicantProfile): boolean {
   return Object.values(values).some((value) => value.trim() !== '')
 }
 
+export function isApplicantProfile(value: unknown): value is ApplicantProfile {
+  if (!isRecord(value)) {
+    return false
+  }
+
+  const keys: Array<keyof ApplicantProfile> = [
+    'fullName', 'firstName', 'lastName', 'email', 'phone',
+    'city', 'state', 'linkedin', 'github', 'portfolio',
+  ]
+  return keys.every((key) => typeof value[key] === 'string')
+}
+
 export function getProfileReviewErrors(
   state: ProfileReviewState,
 ): ProfileValidationErrors {

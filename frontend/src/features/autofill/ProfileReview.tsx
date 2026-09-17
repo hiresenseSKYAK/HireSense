@@ -16,6 +16,7 @@ import styles from './ProfileReview.module.css'
 
 interface ProfileReviewProps {
   resume: ResumeUploadResponse
+  onContinue: (profile: ApplicantProfile) => void
 }
 
 const fields: Array<{
@@ -36,7 +37,7 @@ const fields: Array<{
   { name: 'portfolio', label: 'Portfolio', type: 'url', autoComplete: 'url' },
 ]
 
-export default function ProfileReview({ resume }: ProfileReviewProps) {
+export default function ProfileReview({ resume, onContinue }: ProfileReviewProps) {
   const [reviewState, setReviewState] = useState(() =>
     initializeProfileReviewState(resume),
   )
@@ -55,7 +56,10 @@ export default function ProfileReview({ resume }: ProfileReviewProps) {
 
   const handleConfirm = () => {
     if (canConfirm) {
-      setReviewState((current) => confirmProfileReview(current))
+      setReviewState((current) => {
+        const confirmed = confirmProfileReview(current)
+        return confirmed
+      })
     }
   }
 
@@ -141,6 +145,13 @@ export default function ProfileReview({ resume }: ProfileReviewProps) {
       {isConfirmed && (
         <div className={styles.readyState} role="status">
           <strong>Profile ready.</strong> Application autofill setup is ready for the next step.
+          <button
+            type="button"
+            className={styles.previewButton}
+            onClick={() => onContinue(reviewState.values)}
+          >
+            Preview a controlled application
+          </button>
         </div>
       )}
     </section>

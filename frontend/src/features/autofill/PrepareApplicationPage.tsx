@@ -1,11 +1,17 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import type { ApplicantProfile } from './core/types'
 import { getResumeAnalysis } from '../../utils/resumeStorage'
 import ProfileReview from './ProfileReview'
 import { hasUsableResumeAnalysis } from './review'
 import styles from './ProfileReview.module.css'
 
 export default function PrepareApplicationPage() {
+  const navigate = useNavigate()
   const resume = getResumeAnalysis()
+
+  const handleContinue = (profile: ApplicantProfile) => {
+    navigate('/application/demo', { state: { profile } })
+  }
 
   if (!hasUsableResumeAnalysis(resume)) {
     return (
@@ -37,7 +43,7 @@ export default function PrepareApplicationPage() {
           Review the details from your uploaded resume before the next autofill step.
         </p>
       </div>
-      <ProfileReview resume={resume} />
+      <ProfileReview resume={resume} onContinue={handleContinue} />
     </div>
   )
 }
