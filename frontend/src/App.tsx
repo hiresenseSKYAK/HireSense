@@ -15,7 +15,12 @@ export default function App() {
     <Routes>
       {/* Public */}
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/privacy" element={
+        <>
+          <Navbar />
+          <PrivacyPage />
+        </>
+      } />
 
       {/* Protected by sign in */}
       <Route path="/*" element={

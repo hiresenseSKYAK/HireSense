@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom'
 import styles from './PrivacyPage.module.css'
 
 const policy = [
@@ -15,10 +14,6 @@ export default function PrivacyPage() {
   return (
     <main className={styles.page}>
       <article className={styles.card}>
-        <Link to="/" className={styles.brand} aria-label="HireSense home">
-          <img src="/logo.png" alt="HireSense" />
-        </Link>
-
         <div className={styles.heading}>
           <p>Privacy</p>
           <h1>HireSense Autofill Privacy Policy</h1>
