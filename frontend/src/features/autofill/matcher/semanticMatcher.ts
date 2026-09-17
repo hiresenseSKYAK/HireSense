@@ -1,4 +1,5 @@
 import { validateApplicantProfile } from '../core/profile'
+import { fieldLabels as getLabelText, ariaLabels as getAriaLabelText } from './fieldLabels'
 import type { ApplicantProfile } from '../core/types'
 import type {
   ApplicationControl,
@@ -31,6 +32,7 @@ const autocompleteMap: Record<string, keyof ApplicantProfile> = {
 
 const referenceTerms = [
   'reference',
+  'references',
   'referee',
   'emergency contact',
   'emergency',
@@ -49,6 +51,9 @@ const sensitiveTerms = [
   'consent',
   'agree',
   'declaration',
+  'legal declaration',
+  'sex',
+  'ethnic',
   'citizenship',
   'criminal history',
   'background check',
@@ -58,6 +63,8 @@ function normalize(value: string): string {
   return value
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .toLowerCase()
+    .replace(/\bgit hub\b/g, 'github')
+    .replace(/\blinked in\b/g, 'linkedin')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
 }
@@ -69,7 +76,8 @@ function containsPhrase(value: string, phrase: string): boolean {
 
 function matchingKeys(value: string): Array<keyof ApplicantProfile> {
   return (Object.keys(aliases) as Array<keyof ApplicantProfile>).filter((key) =>
-    aliases[key].some((alias) => containsPhrase(value, alias)),
+    aliases[key].some((alias) => ['first', 'last'].includes(alias)
+      ? normalize(value) === alias : containsPhrase(value, alias)),
   )
 }
 
@@ -79,30 +87,9 @@ function addEvidence(
   text: string,
   keys: Array<keyof ApplicantProfile>,
 ) {
+  // Keep unmatched text too: sensitive questions often have no applicant alias.
+  if (keys.length === 0) evidence.push({ source, text })
   keys.forEach((profileKey) => evidence.push({ source, text, profileKey }))
-}
-
-function getLabelText(element: ApplicationControl): string[] {
-  const labels = Array.from(element.labels ?? []).map((label) => label.textContent ?? '')
-  if (element.id) {
-    const matchingForLabel = Array.from(
-      element.ownerDocument.querySelectorAll('label'),
-    ).find((label) => label.htmlFor === element.id)
-    if (matchingForLabel && !labels.includes(matchingForLabel.textContent ?? '')) {
-      labels.push(matchingForLabel.textContent ?? '')
-    }
-  }
-  return labels.filter(Boolean)
-}
-
-function getAriaLabelText(element: ApplicationControl): string[] {
-  const direct = element.getAttribute('aria-label')
-  const labelledBy = element
-    .getAttribute('aria-labelledby')
-    ?.split(/\s+/)
-    .map((id) => element.ownerDocument.getElementById(id)?.textContent ?? '')
-    .filter(Boolean)
-  return [direct ?? '', ...(labelledBy ?? [])].filter(Boolean)
 }
 
 function getSectionContext(element: ApplicationControl): string[] {
@@ -114,10 +101,25 @@ function getSectionContext(element: ApplicationControl): string[] {
     section?.querySelector('h1, h2, h3, h4, h5, h6')?.textContent ?? '',
     section?.getAttribute('aria-label') ?? '',
   ]
+  // Preserve reference/sensitive context through nested form groups.
+  let ancestor = element.parentElement
+  while (ancestor) {
+    if (ancestor.matches('fieldset, section, [role="group"]')) {
+      texts.push(...getAriaLabelText(ancestor))
+      texts.push(ancestor.querySelector(':scope > legend, :scope > h2, :scope > h3, :scope > h4')?.textContent ?? '')
+    }
+    ancestor = ancestor.parentElement
+  }
   return texts.filter(Boolean)
 }
 
 function isHidden(element: ApplicationControl): boolean {
+  let ancestor: Element | null = element
+  while (ancestor) {
+    const style = element.ownerDocument.defaultView?.getComputedStyle(ancestor)
+    if (ancestor.matches('[hidden], [aria-hidden="true"], [inert]') || style?.display === 'none' || style?.visibility === 'hidden' || style?.visibility === 'collapse') return true
+    ancestor = ancestor.parentElement
+  }
   return (
     (element instanceof HTMLInputElement && element.type === 'hidden') ||
     element.hidden ||
@@ -141,7 +143,7 @@ function isCompatible(
   key: keyof ApplicantProfile,
 ): boolean {
   if (element instanceof HTMLSelectElement) {
-    return key === 'state'
+    return key === 'state' && !element.multiple
   }
   if (element instanceof HTMLTextAreaElement) {
     return false
@@ -178,7 +180,8 @@ function getStateSelectValue(
     dc: 'district of columbia',
   }
   const canonical = stateNames[normalized] ?? normalized
-  const match = Array.from(select.options).find((option) => {
+  const matches = Array.from(select.options).filter((option) => {
+    if (option.disabled || option.parentElement?.matches('optgroup:disabled') || !option.value) return false
     const optionValue = normalize(option.value)
     const optionLabel = normalize(option.text)
     const optionCanonical = stateNames[optionValue] ?? optionValue
@@ -189,12 +192,13 @@ function getStateSelectValue(
       optionLabel === canonical
     )
   })
-  return match?.value ?? null
+  return matches.length === 1 ? matches[0].value : null
 }
 
 function getMetadataEvidence(element: ApplicationControl): MatchEvidence[] {
   const evidence: MatchEvidence[] = []
-  const autocomplete = element.getAttribute('autocomplete')?.trim().toLowerCase()
+  const tokens = element.getAttribute('autocomplete')?.trim().toLowerCase().split(/\s+/).filter((token) => token !== 'webauthn')
+  const autocomplete = tokens?.[tokens.length - 1]
   if (autocomplete && autocompleteMap[autocomplete]) {
     evidence.push({
       source: 'autocomplete',
@@ -247,20 +251,20 @@ export function matchApplicationFields(
 ): FieldDecision[] {
   const validationErrors = validateApplicantProfile(profile)
 
-  return discoverApplicationFields(root).map((element) => {
+  return discoverApplicationFields(root).map((element): FieldDecision => {
     const evidence = getMetadataEvidence(element)
 
     if (isHidden(element)) {
       return { element, outcome: 'unsupported', reason: 'Hidden fields are never changed.', evidence }
     }
-    if (element.disabled) {
+    if (element.disabled || element.matches(':disabled')) {
       return { element, outcome: 'unsupported', reason: 'Disabled fields cannot be changed.', evidence }
     }
     if (isReadOnly(element)) {
       return { element, outcome: 'unsupported', reason: 'Read-only fields are preserved.', evidence }
     }
     if (element instanceof HTMLTextAreaElement) {
-      return { element, outcome: 'unsupported', reason: 'Free-text questions need your answer.', evidence }
+      return { element, outcome: 'unsupported', manual: true, reason: 'Free-text questions need your answer.', evidence }
     }
     if (element instanceof HTMLInputElement && ['checkbox', 'radio'].includes(element.type)) {
       return { element, outcome: 'sensitive', reason: 'Checkboxes and choices are never answered automatically.', evidence }
@@ -270,6 +274,14 @@ export function matchApplicationFields(
     }
     if (hasContextTerm(evidence, sensitiveTerms) || fieldHasTerm(evidence, sensitiveTerms)) {
       return { element, outcome: 'sensitive', reason: 'Sensitive or application-specific questions need your answer.', evidence }
+    }
+    const questions = [...getLabelText(element), ...getAriaLabelText(element)]
+    if (questions.some((text) => /^(why|describe|tell|explain|how|what|which|would|have you|do you|are you|can you)\b/.test(normalize(text)) ||
+      /\b(preferred|previous|employer|company|school|university|manager|salary|desired|birth)\b/.test(normalize(text)))) {
+      return { element, outcome: 'unsupported', manual: true, reason: 'Screening questions need your own answer.', evidence }
+    }
+    if (questions.some((text) => matchingKeys(text).length === 0 && normalize(text) !== 'name')) {
+      return { element, outcome: 'unsupported', manual: true, reason: 'The question does not clearly identify an applicant detail.', evidence }
     }
 
     const strongEvidence = evidence.filter((item) =>
@@ -292,6 +304,7 @@ export function matchApplicationFields(
         element,
         outcome: 'unsupported',
         reason: 'HireSense could not identify this field safely.',
+        manual: true,
         evidence,
       }
     }
@@ -302,6 +315,7 @@ export function matchApplicationFields(
         element,
         outcome: 'unsupported',
         reason: 'This field type is not compatible with the identified applicant value.',
+        manual: true,
         profileKey,
         evidence,
       }
@@ -344,7 +358,7 @@ export function matchApplicationFields(
       return {
         element,
         outcome: 'invalid',
-        reason: 'Your state does not match an available option.',
+        reason: 'Your state does not match a single available option.',
         profileKey,
         evidence,
       }
@@ -358,5 +372,8 @@ export function matchApplicationFields(
       value,
       evidence,
     }
-  })
+  }).map((decision) => ({ ...decision, snapshot: JSON.stringify([
+    decision.evidence, decision.element.outerHTML, decision.element.value,
+    decision.outcome, decision.profileKey, decision.value,
+  ]) }))
 }

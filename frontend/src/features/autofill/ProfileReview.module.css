@@ -250,3 +250,33 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Autofill follows the site's existing surfaces, typography, and color tokens. */
+.steps { list-style: none; display: flex; gap: 12px; padding: 0; margin: 0 0 28px; flex-wrap: wrap; }
+.steps li { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: .8rem; padding: 8px 14px 8px 0; }
+.steps li span { display: grid; place-items: center; width: 27px; height: 27px; border: 1px solid var(--border-strong); border-radius: 50%; font-size: .75rem; font-weight: 800; background: var(--surface); }
+.steps li[aria-current="step"] { color: var(--accent); font-weight: 800; }
+.steps li[aria-current="step"] span { background: var(--accent); color: white; border-color: var(--accent); }
+.steps .completedStep span { color: #147848; background: var(--green-soft); border-color: transparent; }
+.card { max-width: 1120px; }
+.fieldGuide { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-weight: 800; font-size: .95rem; margin: 26px 0 10px; }
+.fieldGuide span { font-size: .8rem; color: var(--text-secondary); font-weight: 500; }
+.fieldGrid { margin-top: 20px; gap: 22px 28px; }
+.fieldLabel { display: flex; justify-content: space-between; gap: 8px; }
+.origin { color: var(--text-secondary); font-size: .7rem; font-weight: 500; }
+.revision { white-space: normal; max-width: 220px; text-align: center; }
+.choiceGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
+.choice { padding: 22px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-strong); }
+.choice h3 { font-family: 'Syne', sans-serif; margin: 6px 0; font-size: 1.05rem; }
+.choice p { font-size: .84rem; color: var(--text-secondary); line-height: 1.6; }
+.choice button { margin: 6px 0 10px; }
+.readyState strong { display: block; }
+.card button:disabled { opacity: .55; cursor: not-allowed; transform: none; box-shadow: none; }
+.card button:focus-visible, .backLink:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+.bridgeStatus { color: var(--text-primary); overflow-wrap: anywhere; }
+@media (max-width: 680px) { .choiceGrid { grid-template-columns: 1fr; } .steps { gap: 4px; } .steps li { font-size: .72rem; } }
+
+.field[data-field="fullName"], .field[data-field="portfolio"] { grid-column: 1 / -1; }
+
+.readyState { scroll-margin-top: 90px; }
+.readyState:focus { outline: none; }

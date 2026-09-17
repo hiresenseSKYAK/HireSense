@@ -1,9 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "HireSense Autofill Bridge",
-  "version": "0.1.0",
+  "name": "HireSense Autofill",
+  "version": "0.2.0",
   "description": "Explicitly fills supported applicant details without submitting applications.",
-  "permissions": ["activeTab", "scripting", "storage"],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
   "action": {
     "default_title": "HireSense Autofill",
     "default_popup": "popup.html"
@@ -12,6 +16,9 @@
     "service_worker": "background.js"
   },
   "externally_connectable": {
-    "matches": ["http://localhost:5173/*"]
+    "matches": [
+      "http://localhost:5173/*",
+      "https://hiresense-9yub.onrender.com/*"
+    ]
   }
 }

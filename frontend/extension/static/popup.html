@@ -1,20 +1,15 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>HireSense Autofill</title>
-    <link rel="stylesheet" href="popup.css" />
-  </head>
-  <body>
-    <main>
-      <p class="eyebrow">HireSense</p>
-      <h1>Application Autofill</h1>
-      <p id="status">Checking for a confirmed profile…</p>
-      <button id="fill" type="button" disabled>Fill supported fields</button>
-      <button id="clear" type="button" class="secondary">Clear profile</button>
-      <p class="note">Fields are filled only after you choose this action. HireSense never submits an application.</p>
-    </main>
-    <script src="popup.js"></script>
-  </body>
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>HireSense Autofill</title><link rel="stylesheet" href="popup.css" /></head>
+<body><main>
+  <p class="eyebrow">HIRESENSE · APPLICATION TOOLS</p>
+  <h1>Autofill, with you in control.</h1>
+  <div class="state"><span>Applicant profile</span><strong id="profile-status">Checking…</strong><span>Current page</span><strong id="page-status">Checking…</strong></div>
+  <p id="status" role="status" aria-live="polite">Connecting to HireSense…</p>
+  <button id="preview" type="button" disabled>Preview autofill</button>
+  <button id="fill" type="button" hidden disabled>Fill supported fields</button>
+  <div id="report" aria-label="Field preview and results"></div>
+  <button id="clear" type="button" class="secondary">Clear profile</button>
+  <p class="note">HireSense never submits applications for you. Review your answers and complete any remaining questions yourself.</p>
+</main><script src="popup.js"></script></body>
 </html>

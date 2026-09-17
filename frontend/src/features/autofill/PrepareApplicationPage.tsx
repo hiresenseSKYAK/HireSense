@@ -1,12 +1,15 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import type { ApplicantProfile } from './core/types'
 import { getResumeAnalysis } from '../../utils/resumeStorage'
 import ProfileReview from './ProfileReview'
-import { hasUsableResumeAnalysis } from './review'
+import AutofillSteps from './AutofillSteps'
+import { hasUsableResumeAnalysis, isApplicantProfile } from './review'
 import styles from './ProfileReview.module.css'
 
 export default function PrepareApplicationPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const draft = (location.state as { draftProfile?: unknown } | null)?.draftProfile
   const resume = getResumeAnalysis()
 
   const handleContinue = (profile: ApplicantProfile) => {
@@ -40,10 +43,11 @@ export default function PrepareApplicationPage() {
         </Link>
         <h1 className={styles.pageTitle}>Prepare Application</h1>
         <p className={styles.pageSubtitle}>
-          Review the details from your uploaded resume before the next autofill step.
+          Your details, ready when you are. Review once, then prepare applications with confidence.
         </p>
       </div>
-      <ProfileReview resume={resume} onContinue={handleContinue} />
+      <AutofillSteps step={1} />
+      <ProfileReview resume={resume} draft={isApplicantProfile(draft) ? draft : undefined} onContinue={handleContinue} />
     </div>
   )
 }

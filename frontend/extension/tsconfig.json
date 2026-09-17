@@ -1,0 +1,19 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "chrome",
+      "vite/client"
+    ],
+    "noEmit": true
+  },
+  "include": [
+    "src",
+    "../src/features/autofill/matcher",
+    "../src/features/autofill/bridgeContract.ts"
+  ],
+  "exclude": [
+    "../src/**/*.test.ts",
+    "../src/**/*.test.tsx"
+  ]
+}

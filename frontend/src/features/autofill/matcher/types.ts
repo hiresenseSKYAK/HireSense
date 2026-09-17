@@ -37,6 +37,9 @@ export interface FieldDecision {
   profileKey?: keyof ApplicantProfile
   value?: string
   evidence: MatchEvidence[]
+  snapshot?: string
+  manual?: boolean
+  result?: 'filled' | 'preserved' | 'skipped' | 'changed' | 'write-failed' | 'verification-failed'
 }
 
 export interface FillResult {
@@ -46,4 +49,6 @@ export interface FillResult {
   needsInput: number
   skipped: number
   verificationFailures: number
+  writeFailures: number
+  changed: number
 }
