@@ -12,6 +12,10 @@ import {
   getProfileReviewErrors,
   hasApplicantValue,
 } from './review'
+import {
+  canUseAutofillExtension,
+  sendConfirmedProfileToExtension,
+} from './extensionBridge'
 import styles from './ProfileReview.module.css'
 
 interface ProfileReviewProps {
@@ -42,6 +46,7 @@ export default function ProfileReview({ resume, onContinue }: ProfileReviewProps
     initializeProfileReviewState(resume),
   )
   const [hasReviewed, setHasReviewed] = useState(false)
+  const [bridgeStatus, setBridgeStatus] = useState('')
 
   const errors = useMemo(
     () => getProfileReviewErrors(reviewState),
@@ -60,6 +65,15 @@ export default function ProfileReview({ resume, onContinue }: ProfileReviewProps
         const confirmed = confirmProfileReview(current)
         return confirmed
       })
+    }
+  }
+
+  const sendToBrowserBridge = async () => {
+    try {
+      await sendConfirmedProfileToExtension(reviewState.values)
+      setBridgeStatus('Confirmed profile sent to the browser bridge for this session.')
+    } catch (error) {
+      setBridgeStatus(error instanceof Error ? error.message : 'Could not send the profile to the browser bridge.')
     }
   }
 
@@ -152,6 +166,16 @@ export default function ProfileReview({ resume, onContinue }: ProfileReviewProps
           >
             Preview a controlled application
           </button>
+          {canUseAutofillExtension() && (
+            <button
+              type="button"
+              className={styles.previewButton}
+              onClick={() => void sendToBrowserBridge()}
+            >
+              Send confirmed profile to browser bridge
+            </button>
+          )}
+          {bridgeStatus && <span className={styles.bridgeStatus}>{bridgeStatus}</span>}
         </div>
       )}
     </section>

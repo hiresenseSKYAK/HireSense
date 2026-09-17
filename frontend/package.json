@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:extension": "vite build --config extension/vite.background.config.ts && vite build --config extension/vite.content.config.ts && vite build --config extension/vite.popup.config.ts",
     "test": "vitest run",
     "preview": "vite preview"
   },

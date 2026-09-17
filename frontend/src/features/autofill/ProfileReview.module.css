@@ -220,6 +220,12 @@
   text-decoration: underline;
 }
 
+.bridgeStatus {
+  display: block;
+  font-size: 0.8rem;
+  margin-top: 8px;
+}
+
 .emptyTitle {
   font-size: 1.45rem;
 }

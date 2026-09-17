@@ -9,6 +9,7 @@ import {
   canConfirmProfile,
   getProfileReviewErrors,
   hasApplicantValue,
+  isApplicantProfile,
   hasUsableResumeAnalysis,
 } from './review'
 
@@ -38,6 +39,13 @@ describe('applicant profile review workflow', () => {
     expect(hasUsableResumeAnalysis({})).toBe(false)
     expect(hasUsableResumeAnalysis({ parsed_data: null })).toBe(false)
     expect(hasUsableResumeAnalysis(resume)).toBe(true)
+  })
+
+  it('accepts only a complete applicant profile for route state', () => {
+    const state = initializeProfileReviewState(resume)
+
+    expect(isApplicantProfile(state.values)).toBe(true)
+    expect(isApplicantProfile({ fullName: 'Ada' })).toBe(false)
   })
 
   it('shows validation errors for invalid values and allows valid edits', () => {
