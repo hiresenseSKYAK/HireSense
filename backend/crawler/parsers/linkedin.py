@@ -6,6 +6,9 @@ from urllib.parse import parse_qs, unquote, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+from services.job_relevance import assess_job_relevance
+from services.job_experience import assess_job_experience
+
 BASE_URL = "https://www.linkedin.com"
 # Guest `seeMoreJobPostings/search` returns ~10 listing cards per request; the UI
 # shows 50+ by loading more pages with increasing `start` (not one giant HTML).
@@ -146,13 +149,21 @@ def _is_noise_link(href):
 def _is_external_apply_link(href):
     if not href:
         return False
-    lowered = href.lower()
+    try:
+        parsed = urlparse(href)
+    except (TypeError, ValueError):
+        return False
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+        return False
+    if parsed.username or parsed.password:
+        return False
+    hostname = parsed.hostname.lower()
     blocked_domains = (
         "linkedin.com",
         "licdn.com",
         "static.licdn.com",
     )
-    return not any(domain in lowered for domain in blocked_domains)
+    return not any(hostname == domain or hostname.endswith(f".{domain}") for domain in blocked_domains)
 
 
 def _normalize_location(location_text):
@@ -403,6 +414,7 @@ def _extract_search_params(start_url):
         "location": query.get("location", [""])[0],
         # Always keep HireSense scoped to internship + entry level.
         "f_E": query.get("f_E", [TARGET_EXPERIENCE_FILTER])[0] or TARGET_EXPERIENCE_FILTER,
+        "f_WT": query.get("f_WT", [None])[0],
     }
 
 
@@ -498,10 +510,10 @@ def _extract_details_from_posting(job_id, session, deadline=None):
         if href and not linkedin_plain_apply_fallback:
             linkedin_plain_apply_fallback = href
 
-    if linkedin_easy_apply_candidate:
-        application_link = linkedin_easy_apply_candidate
-    elif external_candidate:
+    if external_candidate:
         application_link = external_candidate
+    elif linkedin_easy_apply_candidate:
+        application_link = linkedin_easy_apply_candidate
     elif linkedin_plain_apply_fallback:
         application_link = linkedin_plain_apply_fallback
     else:
@@ -529,14 +541,29 @@ def _extract_details_from_posting(job_id, session, deadline=None):
             application_link = external_from_description
 
     job_title = _safe_text(soup.select_one("h2.top-card-layout__title"))
-    experience_level = _resolve_target_experience_level(
-        criteria.get("seniority level"),
-        job_title,
+    experience = assess_job_experience(
+        job_title, description, criteria.get("seniority level")
     )
-    if experience_level not in TARGET_EXPERIENCE_LEVELS:
+    if not experience.accepted:
+        print(
+            f"[linkedin] rejected id={job_id} title={job_title!r} "
+            f"reason={experience.reason}",
+            flush=True,
+        )
+        return None
+    experience_level = experience.level
+    relevance = assess_job_relevance(job_title, description)
+    if not relevance.relevant:
+        print(
+            f"[linkedin] rejected id={job_id} title={job_title!r} "
+            f"reason={relevance.reason}",
+            flush=True,
+        )
         return None
 
     return {
+        "source": "linkedin",
+        "source_job_id": str(job_id) if job_id is not None else None,
         "job_title": job_title,
         "company": _safe_text(
             soup.select_one("a.topcard__org-name-link, span.topcard__flavor")
@@ -555,7 +582,10 @@ def _extract_details_from_posting(job_id, session, deadline=None):
     }
 
 
-def parse_job_linkedin(start_url, max_jobs=60, time_limit_sec=None):
+def parse_job_linkedin(start_url, max_jobs=60, time_limit_sec=None, stats=None):
+    stats = stats if stats is not None else {}
+    stats.update({"discovered": 0, "accepted": 0, "skipped": 0, "errors": 0})
+    discovered_ids = set()
     search_params = _extract_search_params(start_url)
     jobs = []
     deadline = (
@@ -579,17 +609,26 @@ def parse_job_linkedin(start_url, max_jobs=60, time_limit_sec=None):
                 "f_E": search_params.get("f_E") or TARGET_EXPERIENCE_FILTER,
                 "start": start,
             }
+            if search_params.get("f_WT"):
+                params["f_WT"] = search_params["f_WT"]
             try:
                 search_response = _get_with_retries(
                     session, search_url, params=params, deadline=deadline
                 )
-            except requests.RequestException:
+            except requests.RequestException as exc:
+                stats["errors"] += 1
+                print(f"[linkedin] search request failed: {type(exc).__name__}", flush=True)
                 break
 
             if not search_response or search_response.status_code != 200:
+                stats["errors"] += 1
+                status = getattr(search_response, "status_code", "no response")
+                print(f"[linkedin] search stopped: HTTP {status}", flush=True)
                 break
 
             job_ids = _extract_job_ids(search_response.text)
+            discovered_ids.update(job_ids)
+            stats["discovered"] = len(discovered_ids)
             if not job_ids:
                 break
 
@@ -602,11 +641,24 @@ def parse_job_linkedin(start_url, max_jobs=60, time_limit_sec=None):
                     data = _extract_details_from_posting(job_id, session, deadline=deadline)
                     if data and data["job_title"] and data["company"]:
                         jobs.append(data)
+                        stats["accepted"] += 1
+                    else:
+                        stats["skipped"] += 1
                     if len(jobs) >= max_jobs:
                         return jobs
-                except requests.RequestException:
+                except requests.RequestException as exc:
+                    stats["errors"] += 1
+                    print(
+                        f"[linkedin] detail request failed id={job_id}: {type(exc).__name__}",
+                        flush=True,
+                    )
                     continue
-                except Exception:
+                except Exception as exc:
+                    stats["errors"] += 1
+                    print(
+                        f"[linkedin] parser error id={job_id}: {exc}",
+                        flush=True,
+                    )
                     continue
 
             start += SEARCH_RESULTS_PAGE_SIZE

@@ -233,6 +233,10 @@ export default function HomePage() {
               </div>
             ) : filteredJobs.length > 0 ? (
               filteredJobs.map((job) => <JobCard key={job.id} job={job} />)
+            ) : jobs.length === 0 ? (
+              <div className={styles.emptyState}>
+                <p>No live jobs are available right now. Please check back after the next feed refresh.</p>
+              </div>
             ) : (
               <div className={styles.emptyState}>
                 <p>No jobs matched your current search and filters.</p>

@@ -1,6 +1,7 @@
 from collections import Counter
+import logging
+
 from fastapi import APIRouter, HTTPException
-from data.mock_jobs import mock_jobs
 
 try:
     from backend.database.queries import (
@@ -18,18 +19,18 @@ except ImportError:
         fetch_job_by_id_from_db = None
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+logger = logging.getLogger(__name__)
 
 
 def get_jobs_data():
-    if fetch_all_jobs_from_db:
-        try:
-            db_jobs = fetch_all_jobs_from_db()
-            if db_jobs:
-                return db_jobs
-        except Exception:
-            pass
-
-    return mock_jobs
+    if fetch_all_jobs_from_db is None:
+        logger.error("Jobs database query module is unavailable")
+        raise HTTPException(status_code=503, detail="Job service temporarily unavailable")
+    try:
+        return fetch_all_jobs_from_db()
+    except Exception:
+        logger.exception("Failed to read jobs from the database")
+        raise HTTPException(status_code=503, detail="Job service temporarily unavailable")
 
 
 @router.get("/market-insights")
@@ -84,16 +85,15 @@ def get_jobs():
 
 @router.get("/{job_id}")
 def get_job_by_id(job_id: int):
-    if fetch_job_by_id_from_db:
-        try:
-            job = fetch_job_by_id_from_db(job_id)
-            if job:
-                return job
-        except Exception:
-            pass
-
-    for job in mock_jobs:
-        if job["id"] == job_id:
-            return job
+    if fetch_job_by_id_from_db is None:
+        logger.error("Jobs database query module is unavailable")
+        raise HTTPException(status_code=503, detail="Job service temporarily unavailable")
+    try:
+        job = fetch_job_by_id_from_db(job_id)
+    except Exception:
+        logger.exception("Failed to read job id=%s from the database", job_id)
+        raise HTTPException(status_code=503, detail="Job service temporarily unavailable")
+    if job:
+        return job
 
     raise HTTPException(status_code=404, detail="Job not found")

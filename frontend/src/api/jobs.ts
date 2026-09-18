@@ -18,6 +18,9 @@ export async function fetchJobs(): Promise<Job[]> {
   const response = await fetch(`${API_BASE_URL}/jobs/`)
 
   if (!response.ok) {
+    if (response.status === 503) {
+      throw new Error('The live job service is temporarily unavailable. Please try again shortly.')
+    }
     throw new Error('Failed to fetch jobs.')
   }
 
@@ -28,6 +31,12 @@ export async function fetchJob(jobId: number): Promise<Job> {
   const response = await fetch(`${API_BASE_URL}/jobs/${jobId}`)
 
   if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error('This job is no longer available.')
+    }
+    if (response.status === 503) {
+      throw new Error('The live job service is temporarily unavailable. Please try again shortly.')
+    }
     throw new Error('Failed to fetch job details.')
   }
 
@@ -38,6 +47,9 @@ export async function fetchMarketInsights(): Promise<MarketInsightsResponse> {
   const response = await fetch(`${API_BASE_URL}/jobs/market-insights`)
 
   if (!response.ok) {
+    if (response.status === 503) {
+      throw new Error('Market insights are temporarily unavailable.')
+    }
     throw new Error('Failed to fetch market insights.')
   }
 
