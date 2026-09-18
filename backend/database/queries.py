@@ -8,6 +8,21 @@ except ImportError:
 
 import json
 import mysql.connector
+from dataclasses import dataclass
+
+try:
+    from backend.database.job_identity import build_job_identity
+except ImportError:
+    from database.job_identity import build_job_identity
+
+try:
+    from backend.services.job_relevance import assess_job_relevance
+except ImportError:
+    from services.job_relevance import assess_job_relevance
+try:
+    from backend.services.job_experience import assess_job_experience
+except ImportError:
+    from services.job_experience import assess_job_experience
 
 _JOB_SUMMARY_COLUMN_READY = False
 
@@ -205,139 +220,218 @@ def _sanitize_salary_for_db(raw_salary):
     return value
 
 
-def insert_job(job):
-    """Insert one job row. Returns True on success, False if skipped or failed."""
-    ensure_job_description_summary_column()
-    conn = get_connection()
-    cursor = conn.cursor()
+@dataclass(frozen=True)
+class JobWriteResult:
+    action: str
+    job_id: int | None = None
+    changed_fields: tuple[str, ...] = ()
+    reason: str = ""
 
+
+_JOB_WRITE_COLUMNS = (
+    "source", "source_job_id", "job_title", "company", "location", "salary",
+    "date_posted", "application_link", "canonical_url", "identity_key",
+    "job_description", "job_description_summary", "skills", "job_type",
+    "experience_level", "work_style",
+)
+
+
+def _prepare_job_record(job):
     salary_value = _sanitize_salary_for_db(job.get("salary"))
-    title = job.get("job_title")
-    job_type_value = _normalize_job_type_for_db(job.get("job_type"), title)
-    experience_level_value = _normalize_experience_level_for_db(
-        job.get("experience_level"),
-        title,
+    title = _nonempty_str(job.get("job_title"))
+    company = _nonempty_str(job.get("company"))
+    if not title or not company:
+        return None, "missing required title or company"
+    relevance = assess_job_relevance(title, job.get("job_description"))
+    if not relevance.relevant:
+        return None, relevance.reason
+    experience = assess_job_experience(
+        title, job.get("job_description"), job.get("experience_level")
     )
+    if not experience.accepted:
+        return None, experience.reason
+    job_type_value = _normalize_job_type_for_db(job.get("job_type"), title)
+    experience_level_value = experience.level
     work_style_value = _normalize_work_style_for_db(job.get("work_style"))
     summary = _nonempty_str(job.get("job_description_summary"))
-
     if experience_level_value not in TARGET_EXPERIENCE_LEVELS:
-        print(
-            f"[db] insert_job SKIP non-target experience: "
-            f"title={title!r} experience={job.get('experience_level')!r}",
-            flush=True,
+        return None, "non-target experience level"
+    identity = build_job_identity(job)
+    if identity is None:
+        return None, "no stable source id, canonical URL, or complete fallback identity"
+    if identity.canonical_url is None:
+        return None, "invalid or missing HTTP(S) application URL"
+    return {
+        "source": identity.source,
+        "source_job_id": identity.source_job_id,
+        "job_title": title,
+        "company": company,
+        "location": _nonempty_str(job.get("location")),
+        "salary": salary_value,
+        "date_posted": job.get("date_posted"),
+        "application_link": identity.canonical_url,
+        "canonical_url": identity.canonical_url,
+        "identity_key": identity.identity_key,
+        "job_description": _nonempty_str(job.get("job_description")),
+        "job_description_summary": summary,
+        "skills": json.dumps(job.get("skills") if isinstance(job.get("skills"), list) else []),
+        "job_type": job_type_value,
+        "experience_level": experience_level_value,
+        "work_style": work_style_value,
+    }, identity.strategy
+
+
+def _record_changes(existing, incoming):
+    changes = {}
+    preserve_when_blank = {
+        "company", "location", "salary", "date_posted", "application_link",
+        "canonical_url", "job_description", "job_description_summary", "source",
+        "source_job_id",
+    }
+    for column in _JOB_WRITE_COLUMNS:
+        value = incoming[column]
+        if column in preserve_when_blank and value in (None, ""):
+            continue
+        if column == "skills" and value == "[]" and existing.get(column) not in (None, "", "[]"):
+            continue
+        existing_value = existing.get(column)
+        if column == "date_posted":
+            # mysql-connector returns DATE columns as datetime.date while the
+            # crawlers provide YYYY-MM-DD strings. Treat equivalent values as
+            # unchanged so a repeated crawl remains a true no-op.
+            values_match = str(existing_value or "") == str(value or "")
+        else:
+            values_match = existing_value == value
+        if not values_match:
+            changes[column] = value
+    return changes
+
+
+class _MySQLJobRepository:
+    def __init__(self):
+        self.connection = get_connection()
+        self.cursor = self.connection.cursor(dictionary=True)
+
+    def find_matches(self, record):
+        clauses = ["identity_key = %s"]
+        params = [record["identity_key"]]
+        if record.get("source") and record.get("source_job_id"):
+            clauses.append("(source = %s AND source_job_id = %s)")
+            params.extend([record["source"], record["source_job_id"]])
+        if record.get("canonical_url"):
+            clauses.append("canonical_url = %s")
+            params.append(record["canonical_url"])
+        if record.get("application_link"):
+            clauses.append("application_link = %s")
+            params.append(record["application_link"])
+        self.cursor.execute(
+            f"SELECT id, {', '.join(_JOB_WRITE_COLUMNS)} FROM job_data "
+            f"WHERE {' OR '.join(clauses)} ORDER BY id LIMIT 2 FOR UPDATE",
+            tuple(params),
         )
-        return False
+        return self.cursor.fetchall()
 
-    columns = [
-        "job_title",
-        "company",
-        "location",
-        "salary",
-        "date_posted",
-        "application_link",
-        "job_description",
-        "job_description_summary",
-        "skills",
-        "job_type",
-        "experience_level",
-        "work_style",
-    ]
-
-    values = [
-        title,
-        job.get("company"),
-        job.get("location"),
-        salary_value,
-        job.get("date_posted"),
-        job.get("application_link"),
-        job.get("job_description"),
-        summary,
-        json.dumps(job.get("skills", [])),
-        job_type_value,
-        experience_level_value,
-        work_style_value,
-    ]
-
-    placeholders = ", ".join(["%s"] * len(values))
-    column_sql = ", ".join(columns)
-    query = f"""
-        INSERT INTO job_data (
-            {column_sql}
+    def insert(self, record):
+        placeholders = ", ".join(["%s"] * len(_JOB_WRITE_COLUMNS))
+        self.cursor.execute(
+            f"INSERT INTO job_data ({', '.join(_JOB_WRITE_COLUMNS)}) VALUES ({placeholders})",
+            tuple(record[column] for column in _JOB_WRITE_COLUMNS),
         )
-        VALUES ({placeholders})
-    """
-    values = tuple(values)
+        return self.cursor.lastrowid
 
+    def update(self, job_id, changes):
+        assignments = ", ".join(f"{column} = %s" for column in changes)
+        self.cursor.execute(
+            f"UPDATE job_data SET {assignments}, last_seen_at = CURRENT_TIMESTAMP, "
+            "last_checked_at = CURRENT_TIMESTAMP, active = TRUE WHERE id = %s",
+            tuple(changes.values()) + (job_id,),
+        )
+
+    def touch_seen(self, job_id):
+        self.cursor.execute(
+            """
+            UPDATE job_data
+            SET last_seen_at = CURRENT_TIMESTAMP,
+                last_checked_at = CURRENT_TIMESTAMP,
+                active = TRUE
+            WHERE id = %s
+            """,
+            (job_id,),
+        )
+
+    def commit(self):
+        self.connection.commit()
+
+    def rollback(self):
+        self.connection.rollback()
+
+    def close(self):
+        self.cursor.close()
+        self.connection.close()
+
+
+def upsert_job(job, *, dry_run=False, repository_factory=None):
+    """Insert, update, or skip one job by stable identity."""
+    record, identity_strategy = _prepare_job_record(job)
+    if record is None:
+        return JobWriteResult("skipped", reason=identity_strategy)
+    if not dry_run:
+        ensure_job_description_summary_column()
+    repository = (repository_factory or _MySQLJobRepository)()
     try:
-        cursor.execute(query, values)
-        conn.commit()
-        row_id = cursor.lastrowid
-        print(
-            f"[db] insert_job OK: lastrowid={row_id}, title={job.get('job_title')!r}",
-            flush=True,
-        )
-        return True
-    except mysql.connector.DataError as exc:
-        if getattr(exc, "errno", None) == 1264 and salary_value is not None:
-            try:
-                conn.rollback()
-                values_no_salary = list(values)
-                values_no_salary[3] = None
-                cursor.execute(query, tuple(values_no_salary))
-                conn.commit()
-                row_id = cursor.lastrowid
-                print(
-                    f"[db] insert_job RETRY salary=NULL: lastrowid={row_id}, title={job.get('job_title')!r}",
-                    flush=True,
-                )
-                return True
-            except mysql.connector.Error as retry_exc:
-                conn.rollback()
-                print(
-                    f"[db] insert_job FAILED (retry): {retry_exc!r} | title={job.get('job_title')!r}",
-                    flush=True,
-                )
-                return False
-        conn.rollback()
-        print(
-            f"[db] insert_job FAILED (data): {exc!r} | title={job.get('job_title')!r}",
-            flush=True,
-        )
-        return False
+        matches = repository.find_matches(record)
+        if len(matches) > 1:
+            repository.rollback()
+            return JobWriteResult("conflict", reason="identity matched multiple existing rows")
+        if matches:
+            existing = matches[0]
+            changes = _record_changes(existing, record)
+            if not changes:
+                if dry_run:
+                    repository.rollback()
+                else:
+                    repository.touch_seen(existing["id"])
+                    repository.commit()
+                return JobWriteResult("unchanged", job_id=existing["id"], reason=identity_strategy)
+            if dry_run:
+                repository.rollback()
+                return JobWriteResult("would_update", job_id=existing["id"], changed_fields=tuple(changes), reason=identity_strategy)
+            repository.update(existing["id"], changes)
+            repository.commit()
+            return JobWriteResult("updated", job_id=existing["id"], changed_fields=tuple(changes), reason=identity_strategy)
+        if dry_run:
+            repository.rollback()
+            return JobWriteResult("would_insert", reason=identity_strategy)
+        job_id = repository.insert(record)
+        repository.commit()
+        return JobWriteResult("inserted", job_id=job_id, reason=identity_strategy)
     except mysql.connector.IntegrityError as exc:
-        conn.rollback()
+        repository.rollback()
         if getattr(exc, "errno", None) == 1062:
-            print(
-                f"[db] insert_job SKIP duplicate: title={job.get('job_title')!r}",
-                flush=True,
-            )
-            return False
-        print(
-            f"[db] insert_job FAILED (integrity): {exc!r} | title={job.get('job_title')!r}",
-            flush=True,
-        )
-        return False
+            # A unique index closes the race between SELECT and INSERT. Resolve the
+            # winner explicitly instead of treating every 1062 as a harmless skip.
+            matches = repository.find_matches(record)
+            if len(matches) == 1:
+                existing = matches[0]
+                changes = _record_changes(existing, record)
+                if changes:
+                    repository.update(existing["id"], changes)
+                    repository.commit()
+                    return JobWriteResult("updated", job_id=existing["id"], changed_fields=tuple(changes), reason="concurrent identity match")
+                repository.touch_seen(existing["id"])
+                repository.commit()
+                return JobWriteResult("unchanged", job_id=existing["id"], reason="concurrent identity match")
+        return JobWriteResult("error", reason=f"integrity error: {exc}")
     except mysql.connector.Error as exc:
-        conn.rollback()
-        print(
-            f"[db] insert_job FAILED (db): {exc!r} | title={job.get('job_title')!r}",
-            flush=True,
-        )
-        return False
-    except Exception as exc:
-        try:
-            conn.rollback()
-        except mysql.connector.Error:
-            pass
-        print(
-            f"[db] insert_job FAILED: {exc!r} | title={job.get('job_title')!r}",
-            flush=True,
-        )
-        return False
+        repository.rollback()
+        return JobWriteResult("error", reason=f"database error: {exc}")
     finally:
-        cursor.close()
-        conn.close()
+        repository.close()
+
+
+def insert_job(job):
+    """Compatibility wrapper for older callers."""
+    return upsert_job(job).action in {"inserted", "updated"}
 
 
 def fetch_jobs_missing_summaries():
@@ -473,8 +567,12 @@ def get_jobs_to_check():
         """
         SELECT id, application_link
         FROM job_data
-        WHERE date_posted IS NULL
-            OR DATEDIFF(CURDATE(), date_posted) > 30;
+        WHERE active = TRUE
+          AND (date_posted IS NULL OR DATEDIFF(CURDATE(), date_posted) > 30)
+          AND (
+                last_checked_at IS NULL
+                OR last_checked_at < (CURRENT_TIMESTAMP - INTERVAL 7 DAY)
+              )
         """
     )
 
@@ -486,32 +584,31 @@ def get_jobs_to_check():
     return jobs
 
 
-def delete_job(job_id):
+def update_job_check_status(job_id, *, active=None):
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
-        cursor.execute(
-            """
-            DELETE ir FROM interview_responses ir
-            INNER JOIN interview_sessions i ON ir.session_id = i.id
-            WHERE i.job_id = %s
-            """,
-            (job_id,),
-        )
-        cursor.execute(
-            "DELETE FROM interview_sessions WHERE job_id = %s",
-            (job_id,),
-        )
-        cursor.execute("DELETE FROM saved_jobs WHERE job_id = %s", (job_id,))
-        cursor.execute("DELETE FROM applied_jobs WHERE job_id = %s", (job_id,))
-        cursor.execute("DELETE FROM job_data WHERE id = %s", (job_id,))
+        if active is None:
+            cursor.execute(
+                "UPDATE job_data SET last_checked_at = CURRENT_TIMESTAMP WHERE id = %s",
+                (job_id,),
+            )
+        else:
+            cursor.execute(
+                """
+                UPDATE job_data
+                SET active = %s, last_checked_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+                """,
+                (bool(active), job_id),
+            )
         conn.commit()
         return cursor.rowcount > 0
     except mysql.connector.Error as exc:
         conn.rollback()
         print(
-            f"[db] delete_job FAILED: {exc!r} | id={job_id!r}",
+            f"[db] update_job_check_status FAILED: {exc!r} | id={job_id!r}",
             flush=True,
         )
         return False
@@ -543,6 +640,7 @@ def fetch_all_jobs_from_db():
             work_style
         FROM job_data
         WHERE experience_level IN ('Internship', 'Entry level')
+          AND active = TRUE
         ORDER BY id DESC
         """
     )
@@ -579,6 +677,7 @@ def fetch_job_by_id_from_db(job_id: int):
         FROM job_data
         WHERE id = %s
           AND experience_level IN ('Internship', 'Entry level')
+          AND active = TRUE
         LIMIT 1
         """,
         (job_id,),

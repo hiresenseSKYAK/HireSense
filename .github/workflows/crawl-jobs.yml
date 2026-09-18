@@ -1,0 +1,54 @@
+name: Refresh production jobs
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 */6 * * *"
+
+concurrency:
+  group: production-job-refresh
+  cancel-in-progress: false
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DB_HOST: ${{ secrets.DB_HOST }}
+      DB_PORT: ${{ secrets.DB_PORT }}
+      DB_NAME: ${{ secrets.DB_NAME }}
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      SUMMARIZE_JOB_DESCRIPTIONS: "false"
+      EXTRACT_JOB_SKILLS: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-crawler.txt
+      - name: Install lightweight crawler dependencies
+        run: python -m pip install -r requirements-crawler.txt
+      - name: Apply additive migrations
+        run: python -m database.migrate
+      - name: Crawl LinkedIn
+        id: crawl_linkedin
+        continue-on-error: true
+        run: python -m crawler.crawl --source linkedin --limit 150
+      - name: Crawl Handshake
+        id: crawl_handshake
+        continue-on-error: true
+        run: python -m crawler.crawl --source handshake --limit 100 --skip-cleanup
+      - name: Report source failures
+        if: always()
+        run: |
+          echo "LinkedIn: ${{ steps.crawl_linkedin.outcome }}"
+          echo "Handshake: ${{ steps.crawl_handshake.outcome }}"
+          if [ "${{ steps.crawl_linkedin.outcome }}" = "failure" ] || [ "${{ steps.crawl_handshake.outcome }}" = "failure" ]; then
+            exit 1
+          fi

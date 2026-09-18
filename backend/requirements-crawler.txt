@@ -1,0 +1,6 @@
+# Lightweight scheduled crawler. Optional Transformer enrichment is disabled in production.
+sqlalchemy
+mysql-connector-python
+python-dotenv
+requests
+beautifulsoup4

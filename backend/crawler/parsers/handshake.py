@@ -6,6 +6,9 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+from services.job_relevance import assess_job_relevance
+from services.job_experience import assess_job_experience
+
 try:
     from crawler.parsers.linkedin import (
         JOB_DETAIL_DELAY_SEC,
@@ -414,8 +417,31 @@ def _extract_details_from_posting(job_id, session, card=None, search_location=No
         posting.get("employmentType"),
         fallback=card.get("jobType"),
     )
-    experience_level = _resolve_handshake_experience_level(card.get("jobType") or job_type, job_title)
-    if experience_level not in TARGET_EXPERIENCE_LEVELS:
+    source_level = card.get("jobType") or job_type
+    experience = assess_job_experience(job_title, description, source_level)
+    # Handshake's public early-career board labels some non-senior roles simply
+    # as "Job". Preserve that source signal after explicit senior/years checks.
+    if not experience.accepted and str(source_level or "").strip().lower() == "job":
+        legacy_level = _resolve_handshake_experience_level(source_level, job_title)
+        if legacy_level:
+            experience = assess_job_experience(
+                f"Entry level {job_title or ''}", description, "Entry level"
+            )
+    if not experience.accepted:
+        print(
+            f"[handshake] rejected id={job_id} title={job_title!r} "
+            f"reason={experience.reason}",
+            flush=True,
+        )
+        return None
+    experience_level = experience.level
+    relevance = assess_job_relevance(job_title, description)
+    if not relevance.relevant:
+        print(
+            f"[handshake] rejected id={job_id} title={job_title!r} "
+            f"reason={relevance.reason}",
+            flush=True,
+        )
         return None
 
     salary = _salary_from_jobposting(posting)
@@ -428,6 +454,8 @@ def _extract_details_from_posting(job_id, session, card=None, search_location=No
     location = _location_from_card(card, search_location) or _location_from_posting(posting)
 
     return {
+        "source": "handshake",
+        "source_job_id": str(job_id) if job_id is not None else None,
         "job_title": job_title,
         "company": company,
         "location": location,
@@ -442,7 +470,9 @@ def _extract_details_from_posting(job_id, session, card=None, search_location=No
     }
 
 
-def parse_job_handshake(start_url, max_jobs=60, time_limit_sec=None):
+def parse_job_handshake(start_url, max_jobs=60, time_limit_sec=None, stats=None):
+    stats = stats if stats is not None else {}
+    stats.update({"discovered": 0, "accepted": 0, "skipped": 0, "errors": 0})
     jobs = []
     deadline = (
         time.monotonic() + time_limit_sec if time_limit_sec and time_limit_sec > 0 else None
@@ -453,11 +483,17 @@ def parse_job_handshake(start_url, max_jobs=60, time_limit_sec=None):
         session.headers.update(HEADERS)
 
         if direct_job_id:
+            stats["discovered"] = 1
             try:
                 data = _extract_details_from_posting(direct_job_id, session, deadline=deadline)
                 if data and data["job_title"] and data["company"]:
                     jobs.append(data)
-            except requests.RequestException:
+                    stats["accepted"] = 1
+                else:
+                    stats["skipped"] = 1
+            except requests.RequestException as exc:
+                stats["errors"] += 1
+                print(f"[handshake] detail request failed: {type(exc).__name__}", flush=True)
                 return jobs
             return jobs
 
@@ -468,12 +504,19 @@ def parse_job_handshake(start_url, max_jobs=60, time_limit_sec=None):
 
         try:
             search_response = _get_with_retries(session, search_url, deadline=deadline)
-        except requests.RequestException:
+        except requests.RequestException as exc:
+            stats["errors"] += 1
+            print(f"[handshake] search request failed: {type(exc).__name__}", flush=True)
             return jobs
         if not search_response or search_response.status_code != 200:
+            stats["errors"] += 1
+            status = getattr(search_response, "status_code", "no response")
+            print(f"[handshake] search stopped: HTTP {status}", flush=True)
             return jobs
 
-        listings = _extract_search_jobs(search_response.text)[:max_jobs]
+        discovered_listings = _extract_search_jobs(search_response.text)
+        stats["discovered"] = len(discovered_listings)
+        listings = discovered_listings[:max_jobs]
         for listing in listings:
             if _time_up(deadline):
                 break
@@ -489,11 +532,25 @@ def parse_job_handshake(start_url, max_jobs=60, time_limit_sec=None):
                 )
                 if data and data["job_title"] and data["company"]:
                     jobs.append(data)
+                    stats["accepted"] += 1
+                else:
+                    stats["skipped"] += 1
                 if len(jobs) >= max_jobs:
                     break
-            except requests.RequestException:
+            except requests.RequestException as exc:
+                stats["errors"] += 1
+                print(
+                    f"[handshake] detail request failed id={listing['job_id']}: "
+                    f"{type(exc).__name__}",
+                    flush=True,
+                )
                 continue
-            except Exception:
+            except Exception as exc:
+                stats["errors"] += 1
+                print(
+                    f"[handshake] parser error id={listing['job_id']}: {exc}",
+                    flush=True,
+                )
                 continue
 
     return jobs

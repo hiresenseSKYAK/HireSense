@@ -1,6 +1,4 @@
-"""
-updater.py removes expired jobs from database.
-"""
+"""Check stale application links and deactivate only confirmed closed jobs."""
 
 import time
 from urllib.parse import urlparse
@@ -8,9 +6,9 @@ from urllib.parse import urlparse
 import requests
 
 try:
-    from database.queries import delete_job, get_jobs_to_check
+    from database.queries import get_jobs_to_check, update_job_check_status
 except ImportError:
-    from backend.database.queries import delete_job, get_jobs_to_check
+    from backend.database.queries import get_jobs_to_check, update_job_check_status
 
 REQUEST_TIMEOUT_SEC = 10
 REQUEST_DELAY_SEC = 0.5
@@ -64,7 +62,7 @@ def classify_application_link(url, session=None):
             link,
             timeout=REQUEST_TIMEOUT_SEC,
             headers=HEADERS,
-            allow_redirects=True,
+            allow_redirects=False,
         )
     except requests.RequestException as exc:
         return None, f"request failed: {type(exc).__name__}"
@@ -74,6 +72,8 @@ def classify_application_link(url, session=None):
         return True, f"http {status}"
     if status in TRANSIENT_HTTP_STATUSES:
         return None, f"http {status}"
+    if 300 <= status < 400:
+        return None, f"redirect http {status}"
     if status >= 400:
         return None, f"http {status}"
 
@@ -85,8 +85,9 @@ def classify_application_link(url, session=None):
 
 def update_database():
     jobs = get_jobs_to_check()
-    deleted = 0
-    skipped = 0
+    deactivated = 0
+    active = 0
+    inconclusive = 0
     failed = 0
 
     print(f"[updater] checking {len(jobs)} posting(s)", flush=True)
@@ -100,32 +101,41 @@ def update_database():
         host = _host(link)
 
         if expired is True:
-            if delete_job(job_id):
-                deleted += 1
+            if update_job_check_status(job_id, active=False):
+                deactivated += 1
                 print(
-                    f"[updater] deleted id={job_id} host={host} ({reason})",
+                    f"[updater] deactivated id={job_id} host={host} ({reason})",
                     flush=True,
                 )
             else:
                 failed += 1
                 print(
-                    f"[updater] delete failed id={job_id} host={host} ({reason})",
+                    f"[updater] deactivate failed id={job_id} host={host} ({reason})",
                     flush=True,
                 )
+        elif expired is False:
+            if update_job_check_status(job_id, active=True):
+                active += 1
+            else:
+                failed += 1
         else:
-            skipped += 1
-            if expired is None:
-                print(
-                    f"[updater] skipped id={job_id} host={host} ({reason})",
-                    flush=True,
-                )
+            inconclusive += 1
+            if not update_job_check_status(job_id, active=None):
+                failed += 1
+            print(f"[updater] inconclusive id={job_id} host={host} ({reason})", flush=True)
 
         if index + 1 < len(jobs):
             time.sleep(REQUEST_DELAY_SEC)
 
     print(
-        f"[updater] done: checked={len(jobs)} deleted={deleted} "
-        f"skipped={skipped} failed={failed}",
+        f"[updater] done: checked={len(jobs)} deactivated={deactivated} "
+        f"active={active} inconclusive={inconclusive} failed={failed}",
         flush=True,
     )
-    return {"checked": len(jobs), "deleted": deleted, "skipped": skipped, "failed": failed}
+    return {
+        "checked": len(jobs),
+        "deactivated": deactivated,
+        "active": active,
+        "inconclusive": inconclusive,
+        "failed": failed,
+    }

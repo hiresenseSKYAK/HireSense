@@ -32,7 +32,79 @@ Use any student-budget managed MySQL-compatible database reachable from the back
 
 The normal API startup does not import the crawler AI modules or download Transformer models. `requirements-web.txt` also avoids installing Torch, Transformers, BeautifulSoup, Requests, and scheduler packages into the web service.
 
-Run the crawler as a separate scheduled worker only when needed. Install its full environment with `python -m pip install -r requirements.txt`. A low-memory crawler deployment should set `SUMMARIZE_JOB_DESCRIPTIONS=false` and `EXTRACT_JOB_SKILLS=false`; this keeps the deterministic catalog fallback and avoids downloading roughly 700 MB of models. Do not run the crawler inside the Uvicorn web process.
+Run the crawler separately from Uvicorn. For scheduled low-memory ingestion,
+install `requirements-crawler.txt` and set `SUMMARIZE_JOB_DESCRIPTIONS=false`
+and `EXTRACT_JOB_SKILLS=false`. This avoids Torch/Transformers while retaining
+extractive summaries and deterministic skill matching.
+
+## Production job pipeline
+
+The live path is: scheduled GitHub Action → LinkedIn/Handshake public pages →
+validation and normalization → identity upsert → Aiven MySQL → FastAPI → Vite
+frontend → the real application page → HireSense Autofill. The API never seeds
+or substitutes mock listings. An empty database returns an empty list; a database
+failure returns HTTP 503.
+
+From `backend`, install the lightweight crawler with
+`python -m pip install -r requirements-crawler.txt`. Apply tracked additive
+migrations with `python -m database.migrate`. A safe manual validation is:
+
+```text
+set SUMMARIZE_JOB_DESCRIPTIONS=false
+set EXTRACT_JOB_SKILLS=false
+python -m crawler.crawl --dry-run --source linkedin --limit 10 --skip-cleanup
+```
+
+Replace `linkedin` with `handshake` to isolate that source. Remove `--dry-run`
+only after reviewing real titles, companies, and application URLs in the output.
+The `--limit` value caps accepted jobs across the selected source. `--skip-cleanup`
+prevents link-status checks.
+
+For a live source check that cannot touch MySQL, run
+`python -m scripts.validate_job_sources --source handshake --limit 100` (or
+`--source linkedin --limit 150`). The validator does not import database
+connection code. A full manual crawl can omit `--limit`; bounded defaults are
+150 LinkedIn, 100 Handshake, and 250 combined. A value such as 10 is only a
+development sample.
+
+For the first production rollout, run
+`python -m scripts.production_job_rollout` from `backend` in a terminal that
+already has the production `DB_*` variables. It refuses any database target
+other than the canonical production host, port, and database; prompts before
+migration and before writes; runs full bounded dry-runs for both sources; and
+reports before/after totals, source counts, and duplicate checks.
+
+The workflow `.github/workflows/crawl-jobs.yml` runs every six hours and can be
+started manually. Add repository secrets named `DB_HOST`, `DB_PORT`, `DB_NAME`,
+`DB_USER`, and `DB_PASSWORD`. It installs `requirements-crawler.txt`, applies
+migrations, disables heavyweight enrichment, prevents overlapping runs, and
+uses production ceilings of 150 LinkedIn and 100 Handshake candidates.
+
+Jobs refresh in place using source IDs first and normalized application URLs
+second, with a conservative metadata fallback only if both are unavailable.
+Tracking query parameters are removed while functional query parameters remain.
+A confirmed 404, 410, or explicit closed-page message deactivates a job. Listings
+older than 30 days (or without a posted date) are checked at most weekly.
+Authentication failures, rate limits, timeouts, server errors, and network errors
+are inconclusive and never deactivate a job. Source failures are isolated and
+reported in the crawl summary.
+
+Greenhouse and Lever expose maintainable public board APIs only for configured
+employer board identifiers; they do not provide general employer discovery.
+Future adapters should live beside the existing parsers, emit the same normalized
+job dictionary with `source_job_id`, and enter through `upsert_job`.
+
+To verify data is real, check crawler sample logs, query `job_data`, then compare
+`GET /jobs/` and `GET /jobs/market-insights`. Real API rows include working
+application links and the market total equals eligible active database rows.
+When troubleshooting, run one source with `--dry-run --limit 10`; no result from
+one source does not prevent the other source from running.
+
+An empty successful `GET /jobs/` response means no active eligible rows exist.
+HTTP 503 means the database query failed. Every crawl summary reports discovered,
+accepted, rejected, inserted, updated, idempotent, invalid, duplicate,
+deactivated, source-error, and duration counts; parser logs include rejection
+reasons without credentials.
 
 ## Browser bridge production setup
 
