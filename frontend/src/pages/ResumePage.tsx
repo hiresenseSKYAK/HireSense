@@ -448,10 +448,7 @@ export default function ResumePage() {
             <div className={styles.analysisContent}>
               <div className={styles.scoreWrap}>
                 <div className={styles.scoreRing} style={getScoreGradient(analysis.score)}>
-                  <span
-                    className={styles.scoreNum}
-                    style={{ color: getScoreColor(analysis.score) }}
-                  >
+                  <span className={styles.scoreNum}>
                     {analysis.score}
                   </span>
                 </div>
