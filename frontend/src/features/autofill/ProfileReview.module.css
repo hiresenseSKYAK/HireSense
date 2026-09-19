@@ -4,7 +4,7 @@
 
 .backLink {
   display: inline-flex;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 0.86rem;
   font-weight: 700;
   margin-bottom: 12px;
@@ -60,7 +60,7 @@
 }
 
 .eyebrow {
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.09em;
@@ -79,9 +79,9 @@
 
 .revision {
   background: var(--accent-light);
-  border: 1px solid #dbe6ff;
+  border: 1px solid rgba(var(--burgundy-rgb), 0.4);
   border-radius: 999px;
-  color: var(--accent);
+  color: var(--accent-text);
   flex-shrink: 0;
   font-size: 0.75rem;
   font-weight: 800;
@@ -144,12 +144,13 @@
 }
 
 .input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-light);
+  border-color: var(--burgundy);
+  box-shadow: 0 0 0 3px rgba(var(--caramel-rgb), 0.4);
 }
 
 .inputInvalid {
   border-color: var(--red);
+  box-shadow: 0 0 0 1px var(--red);
 }
 
 .fieldError {
@@ -199,9 +200,9 @@
 
 .readyState {
   background: var(--green-soft);
-  border: 1px solid rgba(31, 183, 106, 0.25);
+  border: 1px solid rgba(var(--green-rgb), 0.5);
   border-radius: var(--radius-sm);
-  color: #147848;
+  color: var(--text-primary);
   font-size: 0.88rem;
   line-height: 1.5;
   margin-top: 18px;
@@ -255,9 +256,9 @@
 .steps { list-style: none; display: flex; gap: 12px; padding: 0; margin: 0 0 28px; flex-wrap: wrap; }
 .steps li { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: .8rem; padding: 8px 14px 8px 0; }
 .steps li span { display: grid; place-items: center; width: 27px; height: 27px; border: 1px solid var(--border-strong); border-radius: 50%; font-size: .75rem; font-weight: 800; background: var(--surface); }
-.steps li[aria-current="step"] { color: var(--accent); font-weight: 800; }
-.steps li[aria-current="step"] span { background: var(--accent); color: white; border-color: var(--accent); }
-.steps .completedStep span { color: #147848; background: var(--green-soft); border-color: transparent; }
+.steps li[aria-current="step"] { color: var(--accent-text); font-weight: 800; }
+.steps li[aria-current="step"] span { background: var(--accent); color: #000; border-color: var(--burgundy); }
+.steps .completedStep span { color: var(--text-primary); background: var(--green-soft); border-color: transparent; }
 .card { max-width: 1120px; }
 .fieldGuide { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-weight: 800; font-size: .95rem; margin: 26px 0 10px; }
 .fieldGuide span { font-size: .8rem; color: var(--text-secondary); font-weight: 500; }
@@ -272,7 +273,7 @@
 .choice button { margin: 6px 0 10px; }
 .readyState strong { display: block; }
 .card button:disabled { opacity: .55; cursor: not-allowed; transform: none; box-shadow: none; }
-.card button:focus-visible, .backLink:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+.card button:focus-visible, .backLink:focus-visible { outline: 3px solid var(--burgundy); outline-offset: 4px; }
 .bridgeStatus { color: var(--text-primary); overflow-wrap: anywhere; }
 @media (max-width: 680px) { .choiceGrid { grid-template-columns: 1fr; } .steps { gap: 4px; } .steps li { font-size: .72rem; } }
 
