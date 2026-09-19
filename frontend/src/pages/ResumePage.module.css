@@ -48,7 +48,7 @@
 
 .uploadBox:hover,
 .dragging {
-  border-color: var(--accent);
+  border-color: var(--burgundy);
   background: var(--accent-light);
 }
 
@@ -70,7 +70,7 @@
   align-items: center;
   justify-content: center;
   margin-bottom: 16px;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .uploadTitle {
@@ -116,12 +116,12 @@
   margin-top: 14px;
   font-size: 0.82rem;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--accent-text);
   line-height: 1.5;
 }
 
 .successState {
-  color: var(--green);
+  color: var(--text-primary);
 }
 
 .errorState {
@@ -169,8 +169,8 @@
 }
 
 .secondaryButton:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--burgundy);
+  color: var(--accent-text);
 }
 
 .recentFile {
@@ -191,7 +191,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 0.7rem;
   font-weight: 700;
   flex-shrink: 0;
@@ -216,7 +216,7 @@
 
 .recentFileStatus {
   font-size: 0.75rem;
-  color: var(--green);
+  color: var(--text-primary);
   font-weight: 700;
 }
 
@@ -230,7 +230,7 @@
 .commandCard {
   padding: 14px;
   border-radius: 14px;
-  background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+  background: linear-gradient(180deg, var(--surface-strong) 0%, var(--surface) 100%);
   border: 1px solid var(--border);
 }
 
@@ -283,7 +283,7 @@
   align-items: center;
   gap: 20px;
   padding: 18px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  background: linear-gradient(180deg, var(--surface-strong) 0%, var(--surface) 100%);
   border: 1px solid var(--border);
   border-radius: 14px;
 }
@@ -361,7 +361,7 @@
 }
 
 .snapshotCard {
-  background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+  background: linear-gradient(180deg, var(--surface-strong) 0%, var(--surface) 100%);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 14px;
@@ -384,7 +384,7 @@
 }
 
 .sectionCard {
-  background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+  background: linear-gradient(180deg, var(--surface-strong) 0%, var(--surface) 100%);
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 16px 18px;
@@ -413,7 +413,7 @@
 }
 
 .priorityFixLabel {
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 0.72rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -470,11 +470,11 @@
   align-items: center;
   padding: 7px 12px;
   background: var(--accent-light);
-  color: var(--accent);
+  color: var(--accent-text);
   border-radius: 999px;
   font-size: 0.8rem;
   font-weight: 600;
-  border: 1px solid #dbeafe;
+  border: 1px solid rgba(var(--caramel-rgb), 0.35);
 }
 
 .detailList {
@@ -520,7 +520,7 @@
 
 .entryTitleCard {
   padding: 14px 16px;
-  background: #ffffff;
+  background: var(--surface-strong);
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: var(--shadow-sm);
@@ -607,7 +607,7 @@
 
 .pos {
   background: var(--green-light);
-  color: var(--green);
+  color: var(--text-primary);
 }
 
 .neg {
@@ -617,7 +617,7 @@
 
 .warn {
   background: var(--amber-light);
-  color: var(--amber);
+  color: var(--text-primary);
 }
 
 .emptyState {
