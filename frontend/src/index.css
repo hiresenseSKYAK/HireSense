@@ -1,25 +1,51 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Syne:wght@700;800&display=swap');
 
 :root {
-  --bg: #f3f7fd;
-  --bg-soft: #edf3fb;
-  --surface: rgba(255, 255, 255, 0.86);
-  --surface-strong: #ffffff;
-  --border: #dbe4f0;
-  --border-strong: #cfd9e8;
-  --text-primary: #0f172a;
-  --text-secondary: #5f6b85;
-  --text-muted: #8a96ad;
-  --accent: #2f66f5;
-  --accent-strong: #1f56e6;
-  --accent-light: rgba(47, 102, 245, 0.08);
-  --green: #1fb76a;
-  --green-soft: rgba(31, 183, 106, 0.1);
-  --amber: #d8931a;
-  --amber-soft: rgba(216, 147, 26, 0.1);
-  --red: #d9534f;
-  --shadow-sm: 0 10px 30px rgba(15, 23, 42, 0.05);
-  --shadow-md: 0 20px 55px rgba(15, 23, 42, 0.08);
+  --tan: #d69775;
+  --caramel: #a06c33;
+  --cream: #eff7cf;
+  --sage: #bad9b5;
+  --burgundy: #420c14;
+  --tan-rgb: 214, 151, 117;
+  --caramel-rgb: 160, 108, 51;
+  --cream-rgb: 239, 247, 207;
+  --sage-rgb: 186, 217, 181;
+  --burgundy-rgb: 66, 12, 20;
+
+  /* Surfaces */
+  --bg: #d69775;
+  --bg-soft: #dcebc6;
+  --surface: #eff7cf;
+  --surface2: #e3f0c4;
+  --surface-strong: #f8fce9;
+  --border: rgba(var(--burgundy-rgb), 0.2);
+  --border-strong: #a06c33;
+
+  /* Text */
+  --text-primary: #000000;
+  --text-secondary: #1a1a1a;
+  --text-muted: #333333;
+
+  /* Accent (caramel) */
+  --accent: #a06c33;
+  --accent-strong: #b8823f; 
+  --accent-light: rgba(var(--caramel-rgb), 0.18);
+  --accent-text: #420c14;
+
+  /* Status colours (fills, rings, borders, icons) */
+  --green: #4f8a5b;
+  --green-rgb: 79, 138, 91;
+  --green-soft: #bad9b5;
+  --green-light: #bad9b5;
+  --amber: #b7791f;
+  --amber-rgb: 183, 121, 31;
+  --amber-soft: rgba(var(--amber-rgb), 0.22);
+  --amber-light: rgba(var(--amber-rgb), 0.22);
+  --red: #9b1b30;
+  --red-light: rgba(155, 27, 48, 0.12);
+
+  --shadow-sm: 0 10px 30px rgba(var(--burgundy-rgb), 0.1);
+  --shadow-md: 0 20px 55px rgba(var(--burgundy-rgb), 0.16);
   --radius: 18px;
   --radius-lg: 26px;
   --radius-sm: 12px;
@@ -36,14 +62,29 @@ body,
   margin: 0;
 }
 
+html {
+  background-color: var(--bg); /* stops white showing on overscroll / short pages */
+}
+
 body {
   font-family: 'DM Sans', sans-serif;
   color: var(--text-primary);
   background:
-    radial-gradient(circle at top left, rgba(47, 102, 245, 0.08) 0, transparent 28%),
-    radial-gradient(circle at top right, rgba(47, 102, 245, 0.05) 0, transparent 22%),
-    linear-gradient(180deg, #f8fbff 0%, var(--bg) 45%, #edf3fb 100%);
+    radial-gradient(circle at top left, rgba(var(--cream-rgb), 0.22) 0, transparent 30%),
+    radial-gradient(circle at bottom right, rgba(var(--caramel-rgb), 0.14) 0, transparent 36%),
+    var(--bg);
   background-attachment: fixed;
+}
+
+::selection {
+  background: var(--burgundy);
+  color: var(--cream);
+}
+
+a:focus-visible,
+button:focus-visible {
+  outline: 3px solid var(--burgundy);
+  outline-offset: 3px;
 }
 
 a {
@@ -81,28 +122,28 @@ select {
 }
 
 .btn-primary {
-  border: 1px solid var(--accent);
-  background: linear-gradient(180deg, #3e74ff 0%, var(--accent) 100%);
-  color: white;
-  box-shadow: 0 10px 25px rgba(47, 102, 245, 0.22);
+  border: 1px solid var(--burgundy);
+  background: linear-gradient(180deg, var(--accent-strong) 0%, var(--accent) 100%);
+  color: #000;
+  box-shadow: 0 8px 20px rgba(var(--burgundy-rgb), 0.22);
   padding: 12px 18px;
 }
 
 .btn-primary:hover {
   transform: translateY(-1px);
-  background: linear-gradient(180deg, #4a7dff 0%, var(--accent-strong) 100%);
+  background: linear-gradient(180deg, #c8964f 0%, var(--accent-strong) 100%);
 }
 
 .btn-outline {
   border: 1px solid var(--border-strong);
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--surface-strong);
   color: var(--text-primary);
   padding: 11px 16px;
 }
 
 .btn-outline:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--burgundy);
+  background: var(--sage);
 }
 
 .section-title {

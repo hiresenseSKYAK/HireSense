@@ -17,7 +17,7 @@
 }
 
 .eyebrow {
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 0.74rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -47,9 +47,9 @@
   min-width: 88px;
   padding: 8px 12px;
   border-radius: 999px;
-  background: rgba(47, 102, 245, 0.1);
-  color: var(--accent);
-  border: 1px solid rgba(47, 102, 245, 0.14);
+  background: rgba(var(--caramel-rgb), 0.2);
+  color: var(--accent-text);
+  border: 1px solid rgba(var(--caramel-rgb), 0.28);
   font-size: 0.76rem;
   font-weight: 800;
   flex-shrink: 0;
@@ -62,7 +62,7 @@
 .emptyCard {
   border-radius: 16px;
   border: 1px solid var(--border);
-  background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
+  background: linear-gradient(180deg, var(--surface-strong) 0%, var(--surface) 100%);
   padding: 16px;
 }
 
@@ -107,8 +107,8 @@
   align-items: center;
   padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(47, 102, 245, 0.08);
-  color: var(--accent);
+  background: rgba(var(--caramel-rgb), 0.16);
+  color: var(--accent-text);
   font-size: 0.75rem;
   font-weight: 800;
   margin-bottom: 12px;
@@ -143,8 +143,8 @@
 }
 
 .answerBox:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(47, 102, 245, 0.08);
+  border-color: var(--burgundy);
+  box-shadow: 0 0 0 4px rgba(var(--caramel-rgb), 0.16);
 }
 
 .actionRow {
@@ -168,11 +168,11 @@
   gap: 8px;
   padding: 8px 11px;
   border-radius: 999px;
-  background: rgba(31, 183, 106, 0.1);
-  color: var(--green);
+  background: var(--green-soft);
+  color: var(--text-primary);
   font-size: 0.78rem;
   font-weight: 800;
-  border: 1px solid rgba(31, 183, 106, 0.14);
+  border: 1px solid rgba(var(--green-rgb), 0.5);
 }
 
 .benchmark {
@@ -213,7 +213,7 @@
   font-family: 'Syne', sans-serif;
   font-size: 2rem;
   line-height: 1;
-  color: var(--accent);
+  color: var(--accent-text);
   margin-bottom: 10px;
 }
 

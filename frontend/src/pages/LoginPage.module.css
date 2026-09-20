@@ -20,7 +20,7 @@
   font-family: 'Syne', sans-serif;
   font-weight: 800;
   font-size: 1.2rem;
-  color: var(--accent);
+  color: var(--accent-text);
   margin-bottom: 20px;
 }
 
@@ -65,8 +65,8 @@
 }
 
 .input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  border-color: var(--burgundy);
+  box-shadow: 0 0 0 3px rgba(var(--caramel-rgb), 0.35);
 }
 
 .input::placeholder {
@@ -75,7 +75,7 @@
 
 .error {
   font-size: 0.8rem;
-  color: #e03131;
+  color: var(--red);
   margin-bottom: 8px;
 }
 
@@ -87,7 +87,7 @@
 }
 
 .toggle span {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 600;
   cursor: pointer;
 }

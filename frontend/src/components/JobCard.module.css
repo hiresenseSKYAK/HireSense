@@ -4,9 +4,9 @@
   gap: 18px;
   padding: 20px 22px 18px;
   border-radius: 26px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(249, 251, 255, 0.95) 100%);
-  border: 1px solid rgba(207, 217, 232, 0.9);
-  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.05);
+  background: linear-gradient(180deg, var(--surface-strong) 0%, var(--surface) 100%);
+  border: 1px solid rgba(var(--burgundy-rgb), 0.36);
+  box-shadow: 0 16px 36px rgba(var(--burgundy-rgb), 0.05);
   backdrop-filter: blur(14px);
   cursor: pointer;
   transition:
@@ -17,8 +17,8 @@
 
 .card:hover {
   transform: translateY(-3px);
-  box-shadow: 0 22px 48px rgba(15, 23, 42, 0.09);
-  border-color: rgba(47, 102, 245, 0.18);
+  box-shadow: 0 22px 48px rgba(var(--burgundy-rgb), 0.09);
+  border-color: rgba(var(--caramel-rgb), 0.36);
 }
 
 .logoWrap {
@@ -34,9 +34,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(180deg, rgba(247, 250, 255, 1) 0%, rgba(235, 242, 255, 1) 100%);
-  border: 1px solid rgba(47, 102, 245, 0.14);
-  color: var(--accent);
+  background: linear-gradient(180deg, rgba(var(--cream-rgb), 1) 0%, rgba(var(--cream-rgb), 1) 100%);
+  border: 1px solid rgba(var(--caramel-rgb), 0.28);
+  color: var(--accent-text);
   font-size: 21px;
   font-weight: 800;
   flex-shrink: 0;
@@ -96,15 +96,15 @@
 }
 
 .signalBadge {
-  background: rgba(31, 183, 106, 0.1);
-  border: 1px solid rgba(31, 183, 106, 0.18);
-  color: #158a57;
+  background: var(--green-soft);
+  border: 1px solid rgba(var(--green-rgb), 0.5);
+  color: var(--text-primary);
 }
 
 .badge {
-  background: rgba(47, 102, 245, 0.08);
-  border: 1px solid rgba(47, 102, 245, 0.16);
-  color: var(--accent);
+  background: rgba(var(--caramel-rgb), 0.16);
+  border: 1px solid rgba(var(--caramel-rgb), 0.32);
+  color: var(--accent-text);
 }
 
 .meta {
@@ -134,17 +134,17 @@
 
 .remote {
   background: var(--green-soft);
-  color: #148352;
+  color: var(--text-primary);
 }
 
 .hybrid {
-  background: rgba(47, 102, 245, 0.1);
-  color: var(--accent);
+  background: rgba(var(--caramel-rgb), 0.2);
+  color: var(--accent-text);
 }
 
 .onsite {
-  background: rgba(148, 163, 184, 0.14);
-  color: #526076;
+  background: rgba(var(--burgundy-rgb), 0.1);
+  color: var(--text-primary);
 }
 
 .right {
@@ -208,12 +208,12 @@
 }
 
 .tag {
-  background: rgba(246, 248, 252, 0.96);
+  background: var(--bg-soft);
   color: var(--text-primary);
 }
 
 .moreTag {
-  background: rgba(15, 23, 42, 0.04);
+  background: rgba(var(--burgundy-rgb), 0.04);
   color: var(--text-secondary);
 }
 
@@ -231,8 +231,8 @@
   padding: 10px 14px;
   border-radius: 999px;
   background: var(--green-soft);
-  border: 1px solid rgba(31, 183, 106, 0.16);
-  color: var(--green);
+  border: 1px solid rgba(var(--green-rgb), 0.5);
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 800;
   white-space: nowrap;
