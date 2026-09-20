@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import JobCard from '../components/JobCard'
 import MarketSidebar from '../components/MarketSidebar'
+import ResumeSignalCard from '../components/ResumeSignalCard'
 import FilterBar, { buildEmptyFilters, type FilterState } from '../components/FilterBar'
 import { IconSearch } from '../components/Icons'
 import { fetchJobs, fetchMarketInsights, type MarketInsightsResponse } from '../api/jobs'
@@ -15,24 +16,28 @@ import {
 import type { Job } from '../types'
 import styles from './HomePage.module.css'
 
-function getSignalCenter(insights: MarketInsightsResponse | null, jobCount: number) {
-  const topSkill = insights?.trending_skills?.[0]?.name ?? 'Python'
-  const secondSkill = insights?.trending_skills?.[1]?.name ?? 'Cloud'
-  const topLocation = insights?.top_locations?.[0]?.city ?? 'Dallas'
-  const secondLocation = insights?.top_locations?.[1]?.city ?? 'Plano'
+function useStickyOffsets(
+  pageRef: RefObject<HTMLDivElement>,
+  controlsRef: RefObject<HTMLDivElement>,
+) {
+  useLayoutEffect(() => {
+    const page = pageRef.current
+    const controls = controlsRef.current
+    if (!page || !controls) return
 
-  let confidence = 'Building signal'
-  if (jobCount >= 100) confidence = 'High match confidence'
-  else if (jobCount >= 25) confidence = 'Strong match signal'
-  else if (jobCount > 0) confidence = 'Emerging match signal'
+    const nav = document.querySelector<HTMLElement>('nav')
+    const update = () => {
+      page.style.setProperty('--nav-h', `${nav?.offsetHeight ?? 61}px`)
+      page.style.setProperty('--controls-h', `${controls.offsetHeight}px`)
+    }
+    update()
 
-  return {
-    topSkill,
-    secondSkill,
-    topLocation,
-    secondLocation,
-    confidence,
-  }
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(update)
+    observer.observe(controls)
+    if (nav) observer.observe(nav)
+    return () => observer.disconnect()
+  }, [pageRef, controlsRef])
 }
 
 export default function HomePage() {
@@ -42,6 +47,10 @@ export default function HomePage() {
   const [insights, setInsights] = useState<MarketInsightsResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
+
+  const pageRef = useRef<HTMLDivElement>(null)
+  const controlsRef = useRef<HTMLDivElement>(null)
+  useStickyOffsets(pageRef, controlsRef)
 
   const savedResume = getResumeAnalysis()
 
@@ -122,93 +131,64 @@ export default function HomePage() {
       return job
     })
 
-  const signalCenter = getSignalCenter(insights, filteredJobs.length)
-
   return (
-    <div className="page">
+    <div className="page" ref={pageRef}>
+      {/* Not sticky: hero banner */}
       <section className={styles.hero}>
-        <div className={styles.heroGlow} />
-        <div className={styles.heroInner}>
-          <div className={styles.heroCopy}>
-            <div className={styles.heroEyebrow}>Early-career job discovery</div>
-            <h1 className={styles.heroTitle}>
-              Find the internships and entry-level roles that actually{' '}
-              <span className={styles.heroAccent}>fit you</span>.
-            </h1>
-            <p className={styles.heroSub}>
-              HireSense turns live internship and entry-level job data into a personalized feed.
-              Upload your resume, compare against real roles, and instantly see where you match
-              and what skills you still need.
-            </p>
-          </div>
-
-          <div className={styles.heroStatCard}>
-            <div className={styles.heroStatLabel}>Resume Signal Center</div>
-            <div className={styles.heroStatValue}>
-              {savedResume ? signalCenter.confidence : 'Ready to personalize'}
-            </div>
-            <div className={styles.heroStatSub}>
-              {savedResume
-                ? 'HireSense is reading your uploaded resume against live roles, market signals, and recurring skill themes.'
-                : 'Upload your resume to unlock match confidence, market signals, and skill-based ranking.'}
-            </div>
-
-            <div className={styles.heroStatDivider} />
-
-            <div className={styles.heroSnapshotGrid}>
-              <div className={styles.heroSnapshotItem}>
-                <div className={styles.heroSnapshotLabel}>Strongest Markets</div>
-                <div className={styles.heroSnapshotValue}>
-                  {signalCenter.topLocation}, {signalCenter.secondLocation}
-                </div>
-              </div>
-
-              <div className={styles.heroSnapshotItem}>
-                <div className={styles.heroSnapshotLabel}>Top Skill Themes</div>
-                <div className={styles.heroSnapshotValue}>
-                  {signalCenter.topSkill}, {signalCenter.secondSkill}
-                </div>
-              </div>
-
-              <div className={styles.heroSnapshotItem}>
-                <div className={styles.heroSnapshotLabel}>Live Insight</div>
-                <div className={styles.heroSnapshotValue}>
-                  {savedResume
-                    ? 'Your resume is actively shaping match rankings across the feed.'
-                    : 'Once uploaded, your resume will drive match quality across the app.'}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <div className={styles.heroEyebrow}>Early-career job discovery</div>
+        <h1 className={styles.heroTitle}>
+          Find the internships and entry-level roles that actually{' '}
+          <span className={styles.heroAccent}>fit you</span>.
+        </h1>
+        <p className={styles.heroSub}>
+          HireSense turns live internship and entry-level job data into a personalized feed.
+          Upload your resume, compare against real roles, and instantly see where you match
+          and what skills you still need.
+        </p>
       </section>
 
-      <div className={styles.searchWrap}>
-        <div className={styles.searchBar}>
-          <IconSearch />
-          <input
-            type="text"
-            placeholder="Search by title, company, or skill..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className={styles.searchInput}
-          />
+      {/* Sticky: search + filters stay under the navbar while scrolling */}
+      <div className={styles.controls} ref={controlsRef}>
+        <div className={styles.searchWrap}>
+          <div className={styles.searchBar}>
+            <IconSearch />
+            <input
+              type="text"
+              placeholder="Search by title, company, or skill..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className={styles.searchInput}
+            />
+          </div>
+
+          <button className="btn-primary" style={{ height: '58px', minWidth: '136px' }}>
+            Search
+          </button>
         </div>
 
-        <button className="btn-primary" style={{ height: '58px', minWidth: '136px' }}>
-          Search
-        </button>
+        <FilterBar
+          filters={filters}
+          onChange={setFilters}
+          resultCount={filteredJobs.length}
+          cityOptions={cityOptions}
+        />
       </div>
 
-      <FilterBar
-        filters={filters}
-        onChange={setFilters}
-        resultCount={filteredJobs.length}
-        cityOptions={cityOptions}
-      />
-
       <div className={styles.layout}>
-        <MarketSidebar insights={insights} isLoading={isLoading} />
+        {/* Sticky: Market Overview + Resume Signal Center */}
+        <div className={styles.rail}>
+          <MarketSidebar
+            insights={insights}
+            isLoading={isLoading}
+            afterOverview={
+              <ResumeSignalCard
+                insights={insights}
+                jobCount={filteredJobs.length}
+                hasResume={Boolean(savedResume)}
+              />
+            }
+          />
+        </div>
 
         <section className={styles.jobsSection}>
           <div className={styles.jobsSectionHeader}>
