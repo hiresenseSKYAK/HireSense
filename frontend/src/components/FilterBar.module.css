@@ -54,13 +54,13 @@
 }
 
 .btn.active {
-  color: var(--accent-text);
+  color: var(--accent);
   background: var(--accent-light);
 }
 
 .countBadge {
   background: var(--accent);
-  color: #000;
+  color: white;
   font-size: 0.68rem;
   font-weight: 700;
   border-radius: 100px;
@@ -74,7 +74,7 @@
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  background: var(--surface-strong);
+  background: var(--surface);
   border: 1.5px solid var(--border-strong);
   border-radius: var(--radius);
   padding: 6px 0;
@@ -116,6 +116,7 @@
   flex-shrink: 0;
 }
 
+/* Right side of bar */
 .clearBtn {
   font-family: 'DM Sans', sans-serif;
   font-size: 0.8rem;
@@ -141,6 +142,7 @@
   padding: 0 4px;
 }
 
+/* Active filter pills */
 .pillsRow {
   display: flex;
   flex-wrap: wrap;
@@ -154,9 +156,9 @@
   gap: 5px;
   font-size: 0.75rem;
   font-weight: 500;
-  color: var(--accent-text);
+  color: var(--accent);
   background: var(--accent-light);
-  border: 1px solid var(--accent);
+  border: 1px solid #93C5FD;
   border-radius: 100px;
   padding: 3px 8px 3px 10px;
 }
@@ -165,10 +167,10 @@
   cursor: pointer;
   font-size: 1rem;
   line-height: 1;
-  color: var(--accent);
+  color: #93C5FD;
   transition: color 0.1s;
 }
 
 .pillX:hover {
-  color: var(--accent-text);
+  color: var(--accent);
 }
