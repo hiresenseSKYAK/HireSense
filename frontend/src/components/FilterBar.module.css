@@ -69,12 +69,11 @@
   text-align: center;
 }
 
-/* Dropdown panel */
 .dropdown {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  background: var(--surface);
+  background: var(--surface-strong);
   border: 1.5px solid var(--border-strong);
   border-radius: var(--radius);
   padding: 6px 0;
@@ -116,7 +115,6 @@
   flex-shrink: 0;
 }
 
-/* Right side of bar */
 .clearBtn {
   font-family: 'DM Sans', sans-serif;
   font-size: 0.8rem;
@@ -142,7 +140,6 @@
   padding: 0 4px;
 }
 
-/* Active filter pills */
 .pillsRow {
   display: flex;
   flex-wrap: wrap;
