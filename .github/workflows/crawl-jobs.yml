@@ -1,4 +1,3 @@
-
 name: Refresh production jobs
 
 on:
@@ -14,6 +13,7 @@ jobs:
   crawl:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+
     defaults:
       run:
         working-directory: backend
@@ -44,18 +44,62 @@ jobs:
         run: |
           python - <<'PY'
           import os
+          import hashlib
+          import socket
 
           names = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
+
           for name in names:
               value = os.environ.get(name)
               print(f"{name}_EXISTS={value is not None and value != ''}")
 
           host = os.environ.get("DB_HOST", "")
+
           print(f"DB_HOST_LENGTH={len(host)}")
-          print(f"DB_HOST_REPR={host!r}")
           print(f"DB_PORT={os.environ.get('DB_PORT')!r}")
           print(f"DB_NAME={os.environ.get('DB_NAME')!r}")
           print(f"DB_USER={os.environ.get('DB_USER')!r}")
+
+          print(
+              f"DB_HOST_SHA256="
+              f"{hashlib.sha256(host.encode()).hexdigest()}"
+          )
+
+          try:
+              result = socket.getaddrinfo(
+                  host,
+                  int(os.environ["DB_PORT"])
+              )
+              print(
+                  f"SECRET_HOST_DNS_OK=True "
+                  f"addresses={len(result)}"
+              )
+          except Exception as e:
+              print(
+                  f"SECRET_HOST_DNS_OK=False "
+                  f"error={type(e).__name__}: {e}"
+              )
+
+          expected = (
+              "hiresense-mysql-hiresense-capstone.e.aivencloud.com"
+          )
+
+          print(
+              f"EXPECTED_HOST_SHA256="
+              f"{hashlib.sha256(expected.encode()).hexdigest()}"
+          )
+
+          try:
+              result = socket.getaddrinfo(expected, 10188)
+              print(
+                  f"EXPECTED_HOST_DNS_OK=True "
+                  f"addresses={len(result)}"
+              )
+          except Exception as e:
+              print(
+                  f"EXPECTED_HOST_DNS_OK=False "
+                  f"error={type(e).__name__}: {e}"
+              )
           PY
 
       - name: Apply additive migrations
@@ -76,6 +120,8 @@ jobs:
         run: |
           echo "LinkedIn: ${{ steps.crawl_linkedin.outcome }}"
           echo "Handshake: ${{ steps.crawl_handshake.outcome }}"
-          if [ "${{ steps.crawl_linkedin.outcome }}" = "failure" ] || [ "${{ steps.crawl_handshake.outcome }}" = "failure" ]; then
+
+          if [ "${{ steps.crawl_linkedin.outcome }}" = "failure" ] || \
+             [ "${{ steps.crawl_handshake.outcome }}" = "failure" ]; then
             exit 1
           fi
