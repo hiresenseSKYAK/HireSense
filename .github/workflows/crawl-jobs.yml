@@ -80,9 +80,7 @@ jobs:
                   f"error={type(e).__name__}: {e}"
               )
 
-          expected = (
-              "hiresense-mysql-hiresense-capstone.e.aivencloud.com"
-          )
+          expected = "hiresense-mysql-hiresense-capstone.e.aivencloud.com"
 
           print(
               f"EXPECTED_HOST_SHA256="
@@ -101,6 +99,19 @@ jobs:
                   f"error={type(e).__name__}: {e}"
               )
           PY
+
+      - name: Diagnose Aiven DNS
+        shell: bash
+        working-directory: .
+        run: |
+          echo "Default resolver:"
+          getent hosts hiresense-mysql-hiresense-capstone.e.aivencloud.com || true
+
+          echo "Google DNS:"
+          nslookup hiresense-mysql-hiresense-capstone.e.aivencloud.com 8.8.8.8 || true
+
+          echo "Cloudflare DNS:"
+          nslookup hiresense-mysql-hiresense-capstone.e.aivencloud.com 1.1.1.1 || true
 
       - name: Apply additive migrations
         run: python -m database.migrate
