@@ -1,3 +1,4 @@
+
 name: Refresh production jobs
 
 on:
@@ -16,6 +17,7 @@ jobs:
     defaults:
       run:
         working-directory: backend
+
     env:
       DB_HOST: ${{ secrets.DB_HOST }}
       DB_PORT: ${{ secrets.DB_PORT }}
@@ -27,23 +29,48 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: backend/requirements-crawler.txt
+
       - name: Install lightweight crawler dependencies
         run: python -m pip install -r requirements-crawler.txt
+
+      - name: Diagnose database environment
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+
+          names = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
+          for name in names:
+              value = os.environ.get(name)
+              print(f"{name}_EXISTS={value is not None and value != ''}")
+
+          host = os.environ.get("DB_HOST", "")
+          print(f"DB_HOST_LENGTH={len(host)}")
+          print(f"DB_HOST_REPR={host!r}")
+          print(f"DB_PORT={os.environ.get('DB_PORT')!r}")
+          print(f"DB_NAME={os.environ.get('DB_NAME')!r}")
+          print(f"DB_USER={os.environ.get('DB_USER')!r}")
+          PY
+
       - name: Apply additive migrations
         run: python -m database.migrate
+
       - name: Crawl LinkedIn
         id: crawl_linkedin
         continue-on-error: true
         run: python -m crawler.crawl --source linkedin --limit 150
+
       - name: Crawl Handshake
         id: crawl_handshake
         continue-on-error: true
         run: python -m crawler.crawl --source handshake --limit 100 --skip-cleanup
+
       - name: Report source failures
         if: always()
         run: |
