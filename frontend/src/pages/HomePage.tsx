@@ -14,7 +14,10 @@ import {
   uniqueCitiesFromJobs,
 } from '../utils/jobFilters'
 import type { Job } from '../types'
+import { sourcePostedAt, timestampValue } from '../utils/jobFreshness'
 import styles from './HomePage.module.css'
+
+type SortOption = 'best-match' | 'newest-posted' | 'recently-discovered' | 'company' | 'location'
 
 function useStickyOffsets(
   pageRef: RefObject<HTMLDivElement>,
@@ -41,18 +44,19 @@ function useStickyOffsets(
 }
 
 export default function HomePage() {
+  const savedResume = getResumeAnalysis()
   const [query, setQuery] = useState('')
   const [filters, setFilters] = useState<FilterState>(buildEmptyFilters())
   const [jobs, setJobs] = useState<Job[]>([])
   const [insights, setInsights] = useState<MarketInsightsResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
+  const [loadKey, setLoadKey] = useState(0)
+  const [sortBy, setSortBy] = useState<SortOption>(savedResume ? 'best-match' : 'recently-discovered')
 
   const pageRef = useRef<HTMLDivElement>(null)
   const controlsRef = useRef<HTMLDivElement>(null)
   useStickyOffsets(pageRef, controlsRef)
-
-  const savedResume = getResumeAnalysis()
 
   useEffect(() => {
     async function loadHomeData() {
@@ -60,13 +64,13 @@ export default function HomePage() {
         setIsLoading(true)
         setError('')
 
-        const [jobsData, insightsData] = await Promise.all([
+        const [jobsResult, insightsResult] = await Promise.allSettled([
           fetchJobs(),
           fetchMarketInsights(),
         ])
-
-        setJobs(jobsData)
-        setInsights(insightsData)
+        if (jobsResult.status === 'rejected') throw jobsResult.reason
+        setJobs(jobsResult.value)
+        setInsights(insightsResult.status === 'fulfilled' ? insightsResult.value : null)
       } catch (err) {
         if (err instanceof Error) {
           setError(err.message)
@@ -79,7 +83,7 @@ export default function HomePage() {
     }
 
     void loadHomeData()
-  }, [])
+  }, [loadKey])
 
   const jobsWithMatch = useMemo(() => {
     return jobs.map((job) => {
@@ -123,12 +127,12 @@ export default function HomePage() {
         jobMatchesDatePosted(job, filters.date)
       )
     })
-    .sort((a, b) => b.match - a.match)
-    .map((job, index) => {
-      if (index < 3 && !job.badge) {
-        return { ...job, badge: 'Live' }
-      }
-      return job
+    .sort((a, b) => {
+      if (sortBy === 'best-match') return b.match - a.match
+      if (sortBy === 'newest-posted') return timestampValue(sourcePostedAt(b)) - timestampValue(sourcePostedAt(a))
+      if (sortBy === 'recently-discovered') return timestampValue(b.firstSeenAt) - timestampValue(a.firstSeenAt)
+      if (sortBy === 'company') return a.company.localeCompare(b.company)
+      return a.location.localeCompare(b.location)
     })
 
   return (
@@ -198,13 +202,23 @@ export default function HomePage() {
         <section className={styles.jobsSection} id="job-results" aria-busy={isLoading}>
           <div className={styles.jobsSectionHeader}>
             <div>
-              <h2 className={styles.jobsTitle}>Top Matches</h2>
+              <h2 className={styles.jobsTitle}>{savedResume && sortBy === 'best-match' ? 'Top Matches' : 'Live Opportunities'}</h2>
               <p className={styles.jobsSubtitle}>
                 {savedResume
-                  ? 'Sorted by how well your uploaded resume aligns with each role.'
-                  : 'Upload a resume to personalize this feed.'}
+                  ? 'Use truthful resume overlap, posting dates, and discovery freshness to prioritize your search.'
+                  : 'Sorted by when HireSense discovered each role. Upload a resume to add skill matching.'}
               </p>
             </div>
+            <label className={styles.sortControl}>
+              <span>Sort by</span>
+              <select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortOption)}>
+                <option value="best-match" disabled={!savedResume}>Best Match</option>
+                <option value="newest-posted">Newest Posted</option>
+                <option value="recently-discovered">Recently Discovered</option>
+                <option value="company">Company</option>
+                <option value="location">Location</option>
+              </select>
+            </label>
           </div>
 
           <div className={styles.jobsList}>
@@ -225,7 +239,7 @@ export default function HomePage() {
               <div className={`${styles.emptyState} ${styles.errorState}`} role="alert">
                 <strong>We couldn’t load the live feed.</strong>
                 <p>{error}</p>
-                <button type="button" className="btn-outline" onClick={() => window.location.reload()}>
+                <button type="button" className="btn-outline" onClick={() => setLoadKey((key) => key + 1)}>
                   Try again
                 </button>
               </div>
@@ -233,7 +247,9 @@ export default function HomePage() {
               filteredJobs.map((job) => <JobCard key={job.id} job={job} showMatch={Boolean(savedResume)} />)
             ) : jobs.length === 0 ? (
               <div className={styles.emptyState}>
-                <p>No live jobs are available right now. Please check back after the next feed refresh.</p>
+                <strong>The live feed is between refreshes.</strong>
+                <p>No qualifying DFW or explicit U.S.-remote roles are available right now.</p>
+                <button type="button" className="btn-outline" onClick={() => setLoadKey((key) => key + 1)}>Refresh feed</button>
               </div>
             ) : (
               <div className={styles.emptyState}>

@@ -13,6 +13,10 @@ class JobRelevanceTests(unittest.TestCase):
             "Cybersecurity Intern",
             "Cloud Engineering Intern",
             "Full Stack Developer Intern",
+            "Firmware Engineer Intern",
+            "Embedded Software Engineer - New Grad",
+            "Site Reliability Engineer Intern",
+            "Data Engineer - New Grad",
         ]
         for title in titles:
             with self.subTest(title=title):
@@ -26,6 +30,11 @@ class JobRelevanceTests(unittest.TestCase):
             "Actuarial Summer Internship",
             "Civil Engineering Internship",
             "Field Engineer Internship",
+            "Mechanical Engineering Intern",
+            "Manufacturing Engineering Intern",
+            "Finance Intern",
+            "Sales Engineering Intern",
+            "Marketing Intern",
         ]
         for title in titles:
             with self.subTest(title=title):

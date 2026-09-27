@@ -287,15 +287,7 @@ export function matchResumeToJob(
 
   const rawScore = Math.round((matchedSkills.length / jobSkills.length) * 100)
 
-  let matchScore = Math.max(0, Math.min(100, rawScore))
-
-  if (matchedSkills.length >= 3 && matchScore < 40) {
-    matchScore = 40
-  }
-
-  if (matchedSkills.length >= 5 && matchScore < 55) {
-    matchScore = 55
-  }
+  const matchScore = Math.max(0, Math.min(100, rawScore))
 
   matchedSkills.sort((a, b) => a.localeCompare(b))
   missingSkills.sort((a, b) => a.localeCompare(b))

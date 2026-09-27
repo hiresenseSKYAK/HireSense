@@ -1,4 +1,5 @@
 import type { Job } from '../types'
+import { sourcePostedAt } from './jobFreshness'
 
 export const SALARY_FILTER_OPTIONS = [
   'Under $30k',
@@ -196,7 +197,7 @@ function startOfDay(date: Date): Date {
 export function jobMatchesDatePosted(job: Job, selected: Set<string>): boolean {
   if (selected.size === 0) return true
 
-  const posted = parsePostedDate(job.posted)
+  const posted = parsePostedDate(sourcePostedAt(job))
   if (!posted) return false
 
   const now = new Date()

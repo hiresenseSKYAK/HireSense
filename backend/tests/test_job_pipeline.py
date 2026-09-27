@@ -152,6 +152,26 @@ class JobUpsertTests(unittest.TestCase):
         self.assertEqual(result.action, "skipped")
         self.assertIn("title or company", result.reason)
 
+    def test_valid_logo_is_stored_and_invalid_logo_is_rejected(self):
+        valid = self.upsert(job(company_logo_url="https://cdn.example.com/logo.png"))
+        self.assertEqual(valid.action, "inserted")
+        self.assertEqual(self.state["rows"][0]["company_logo_url"], "https://cdn.example.com/logo.png")
+
+        other = self.upsert(job(
+            source_job_id="other",
+            application_link="https://example.com/jobs/other",
+            company_logo_url="javascript:alert(1)",
+        ))
+        self.assertEqual(other.action, "inserted")
+        self.assertIsNone(self.state["rows"][1]["company_logo_url"])
+
+    def test_existing_logo_is_preserved_when_later_crawl_has_none(self):
+        self.upsert(job(company_logo_url="https://cdn.example.com/logo.png"))
+        result = self.upsert(job(company_logo_url=None, salary=61_000))
+
+        self.assertEqual(result.action, "updated")
+        self.assertEqual(self.state["rows"][0]["company_logo_url"], "https://cdn.example.com/logo.png")
+
 
 if __name__ == "__main__":
     unittest.main()

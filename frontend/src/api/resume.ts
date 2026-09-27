@@ -29,6 +29,7 @@ export interface ResumeAnalysis {
 
 export interface ResumeUploadResponse {
   filename: string
+  saved_at?: string
   parsed_data: ParsedResumeData
   analysis: ResumeAnalysis
 }

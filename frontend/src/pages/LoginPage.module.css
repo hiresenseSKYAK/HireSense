@@ -86,12 +86,17 @@
   margin-top: 16px;
 }
 
-.toggle span {
+.toggleButton {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
   color: var(--accent-text);
   font-weight: 600;
   cursor: pointer;
 }
 
-.toggle span:hover {
+.toggleButton:hover {
   text-decoration: underline;
 }

@@ -13,7 +13,7 @@ export default function PrepareApplicationPage() {
   const resume = getResumeAnalysis()
 
   const handleContinue = (profile: ApplicantProfile) => {
-    navigate('/application/demo', { state: { profile } })
+    navigate('/application/preview', { state: { profile } })
   }
 
   if (!hasUsableResumeAnalysis(resume)) {

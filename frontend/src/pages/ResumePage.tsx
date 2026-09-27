@@ -120,7 +120,9 @@ export default function ResumePage() {
     if (savedResume) {
       setResumeResult(savedResume)
       setSelectedFileName(savedResume.filename || 'Previously uploaded resume')
-      setUploadedAt('saved locally')
+      setUploadedAt(savedResume.saved_at
+        ? new Date(savedResume.saved_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+        : 'saved locally')
       setSuccessMessage('Loaded your most recent uploaded resume.')
     }
   }, [])
@@ -272,8 +274,8 @@ export default function ResumePage() {
       return null
     }
 
-    const topSkill = insights?.trending_skills?.[0]?.name ?? 'Python'
-    const topLocation = insights?.top_locations?.[0]?.city ?? 'Dallas'
+    const topSkill = insights?.trending_skills?.[0]?.name ?? null
+    const topLocation = insights?.top_locations?.[0]?.city ?? null
 
     return {
       readiness: getReadinessLabel(analysis.score),
@@ -416,17 +418,17 @@ export default function ResumePage() {
 
                     <div className={styles.commandCard}>
                       <div className={styles.commandLabel}>Best Market Signal</div>
-                      <div className={styles.commandValue}>{readinessSummary.topLocation}</div>
+                      <div className={styles.commandValue}>{readinessSummary.topLocation || 'No live signal'}</div>
                       <div className={styles.commandSub}>
-                        Strongest live market based on the current feed.
+                        {readinessSummary.topLocation ? 'Strongest live market based on the current feed.' : 'Location data will appear when qualifying roles are available.'}
                       </div>
                     </div>
 
                     <div className={styles.commandCard}>
                       <div className={styles.commandLabel}>Top Skill Theme</div>
-                      <div className={styles.commandValue}>{readinessSummary.topSkill}</div>
+                      <div className={styles.commandValue}>{readinessSummary.topSkill || 'No live signal'}</div>
                       <div className={styles.commandSub}>
-                        Strong recurring signal in current live roles.
+                        {readinessSummary.topSkill ? 'Strong recurring signal in current live roles.' : 'Skill demand will appear when structured job skills are available.'}
                       </div>
                     </div>
                   </div>

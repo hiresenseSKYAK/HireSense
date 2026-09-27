@@ -16,11 +16,11 @@ function getPercent(value: number, total: number) {
 
 function getTopSignal(insights: MarketInsightsResponse) {
   if (insights.trending_skills.length > 0) {
-    return `${insights.trending_skills[0].name} is leading the current market feed.`
+    return `${insights.trending_skills[0].name} appears most often in the current feed.`
   }
 
   if (insights.top_locations.length > 0) {
-    return `${insights.top_locations[0].city} is the strongest hiring location in the current feed.`
+    return `${insights.top_locations[0].city} has the most roles in the current feed.`
   }
 
   return 'Live market patterns will appear here as more jobs are processed.'
@@ -81,7 +81,7 @@ export default function MarketSidebar({ insights, isLoading = false, afterOvervi
 
           <div className={styles.featureDivider} />
 
-          <div className={styles.featureNoteLabel}>AI Insight</div>
+          <div className={styles.featureNoteLabel}>Feed signal</div>
           <div className={styles.featureNote}>{getTopSignal(insights)}</div>
         </div>
         {afterOverview}
@@ -122,7 +122,7 @@ export default function MarketSidebar({ insights, isLoading = false, afterOvervi
         <div className={styles.card}>
           <div className={styles.cardTitle}>
             <span className={styles.titleAccent} />
-            Trending Skills
+            Most Requested Skills
           </div>
 
           <div className={styles.list}>

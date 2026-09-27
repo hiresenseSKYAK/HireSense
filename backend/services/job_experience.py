@@ -32,6 +32,11 @@ _YEARS_REQUIRED = re.compile(
     r"(?:professional\s+|relevant\s+|related\s+|software\s+|engineering\s+|industry\s+|work\s+)?experience\b",
     re.IGNORECASE,
 )
+_EARLY_CAREER_YEARS = re.compile(
+    r"\b(?:0\s*(?:-|–|to)\s*[12]|[01]\+?)\s+years?(?:\s+of)?\s+"
+    r"(?:professional\s+|relevant\s+|related\s+|software\s+|engineering\s+|industry\s+|work\s+)?experience\b",
+    re.IGNORECASE,
+)
 
 
 def assess_job_experience(title: object, description: object = "", source_level: object = "") -> ExperienceDecision:
@@ -59,4 +64,6 @@ def assess_job_experience(title: object, description: object = "", source_level:
 
     if _ENTRY_TITLE.search(title_text) or any(token in level_text for token in ("entry", "junior")):
         return ExperienceDecision(True, "Entry level", "entry-level title or source level")
+    if _EARLY_CAREER_YEARS.search(description_text):
+        return ExperienceDecision(True, "Entry level", "explicit 0-2 years experience requirement")
     return ExperienceDecision(False, None, "no internship or entry-level signal")

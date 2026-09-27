@@ -17,6 +17,7 @@ class Job(Base):
     source_job_id = Column(String(191), nullable=True)
     job_title = Column(String(255), nullable=False)
     company = Column(String(255), nullable=True)
+    company_logo_url = Column(String(1000), nullable=True)
     location = Column(String(255), nullable=True)
     salary = Column(Integer, nullable=True)
     date_posted = Column(Date, nullable=True)

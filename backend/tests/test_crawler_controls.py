@@ -10,6 +10,7 @@ os.environ.setdefault("DB_USER", "testuser")
 os.environ.setdefault("DB_PASSWORD", "testpassword")
 
 from crawler import crawl  # noqa: E402
+from crawler.sources import SourceSpec  # noqa: E402
 from database.queries import JobWriteResult  # noqa: E402
 
 
@@ -55,7 +56,7 @@ class CrawlerControlTests(unittest.TestCase):
             "job_title": "Software Engineer Intern", "company": "Example",
         }]
         with (
-            patch.object(crawl, "source_urls", return_value=[("handshake", "h"), ("linkedin", "l")]),
+            patch.object(crawl, "source_specs", return_value=[SourceSpec("handshake", "h"), SourceSpec("linkedin", "l")]),
             patch.object(crawl, "parse_job_handshake", side_effect=RuntimeError("source unavailable")),
             patch.object(crawl, "parse_job_linkedin", return_value=found),
         ):
@@ -76,7 +77,7 @@ class CrawlerControlTests(unittest.TestCase):
             "job_title": "Software Intern", "company": "Example",
         }]
         with (
-            patch.object(crawl, "source_urls", return_value=[("handshake", "h"), ("linkedin", "l")]),
+            patch.object(crawl, "source_specs", return_value=[SourceSpec("handshake", "h"), SourceSpec("linkedin", "l")]),
             patch.object(crawl, "parse_job_handshake", return_value=handshake),
             patch.object(crawl, "parse_job_linkedin", return_value=linkedin),
         ):

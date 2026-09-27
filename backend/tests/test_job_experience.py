@@ -12,6 +12,7 @@ class JobExperienceTests(unittest.TestCase):
             ("New Grad Cloud Engineer", "Entry level"),
             ("Software Engineer I", "Entry level"),
             ("Software Engineer - Graduate", "Entry level"),
+            ("Software Engineering Co-op", "Internship"),
         ):
             with self.subTest(title=title):
                 self.assertEqual(assess_job_experience(title).level, level)
@@ -41,6 +42,13 @@ class JobExperienceTests(unittest.TestCase):
             "Associate Software Engineer", "A company with 40+ years in business."
         )
         self.assertTrue(decision.accepted)
+
+    def test_accepts_explicit_zero_to_two_year_requirement(self):
+        decision = assess_job_experience(
+            "Software Engineer", "Candidates should have 0-2 years of professional experience."
+        )
+        self.assertTrue(decision.accepted)
+        self.assertEqual(decision.level, "Entry level")
 
 
 if __name__ == "__main__":

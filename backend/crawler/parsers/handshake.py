@@ -428,6 +428,20 @@ def _organization_name(posting):
     return None
 
 
+def _organization_logo(posting):
+    org = posting.get("hiringOrganization")
+    if isinstance(org, list):
+        org = org[0] if org else None
+    if not isinstance(org, dict):
+        return None
+    logo = org.get("logo")
+    if isinstance(logo, list):
+        logo = logo[0] if logo else None
+    if isinstance(logo, dict):
+        return logo.get("url") or logo.get("contentUrl")
+    return logo if isinstance(logo, str) else None
+
+
 def _application_link(job_id, posting, description):
     public_url = _public_job_url(job_id)
     external = _extract_external_url_from_description(description)
@@ -509,6 +523,7 @@ def _extract_details_from_posting(job_id, session, card=None, search_location=No
         "source_job_id": str(job_id) if job_id is not None else None,
         "job_title": job_title,
         "company": company,
+        "company_logo_url": _organization_logo(posting),
         "location": "Remote" if location_decision.category == "Remote" else location,
         "salary": salary,
         "date_posted": _date_posted(posting, card),

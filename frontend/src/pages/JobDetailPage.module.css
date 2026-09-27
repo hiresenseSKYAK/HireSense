@@ -47,10 +47,15 @@
   gap: 20px;
 }
 
+.identityBlock { display:flex; align-items:flex-start; gap:16px; min-width:0; }
+.companyLogo { width:58px; height:58px; flex:0 0 58px; border-radius:18px; display:flex; align-items:center; justify-content:center; background:var(--cream); border:1px solid rgba(var(--caramel-rgb), .3); color:var(--accent-text); font-size:1.3rem; font-weight:900; overflow:hidden; }
+.companyLogo img { width:100%; height:100%; padding:8px; object-fit:contain; background:#fff; }
+.freshnessRow { display:flex; flex-wrap:wrap; gap:8px 16px; margin-top:10px; color:var(--text-muted); font-size:.78rem; font-weight:700; text-transform:capitalize; }
+
 .company {
-  color: var(--text-secondary);
-  font-size: 14px;
-  font-weight: 700;
+  color: var(--accent-text);
+  font-size: 16px;
+  font-weight: 800;
   margin-bottom: 8px;
 }
 
@@ -265,15 +270,19 @@
   color: var(--text-secondary);
   box-shadow: var(--shadow-sm);
 }
+.emptyState strong { display:block; margin-bottom:14px; color:var(--text-primary); }
+.detailSkeleton { display:grid; gap:14px; padding:28px; border:1px solid var(--border); border-radius:20px; background:var(--surface); }
+.detailSkeleton span { height:18px; width:72%; border-radius:999px; background:linear-gradient(90deg, var(--bg-soft), var(--surface-strong), var(--bg-soft)); background-size:200% 100%; animation:pulse 1.2s ease infinite; }
+.detailSkeleton span:first-child { height:36px; width:55%; }
+.detailSkeleton span:nth-child(3) { width:94%; }
+@keyframes pulse { to { background-position:-200% 0; } }
+.applyButton { width:100%; padding:11px; justify-content:center; margin-top:18px; text-decoration:none; }
 
 @media (max-width: 1080px) {
   .layout {
     grid-template-columns: 1fr;
   }
 
-  .sidebar {
-    order: -1;
-  }
 }
 
 @media (max-width: 700px) {
@@ -281,6 +290,9 @@
     flex-direction: column;
     align-items: flex-start;
   }
+
+  .identityBlock { gap:12px; }
+  .companyLogo { width:48px; height:48px; flex-basis:48px; border-radius:14px; }
 
   .jobTitle {
     font-size: 30px;

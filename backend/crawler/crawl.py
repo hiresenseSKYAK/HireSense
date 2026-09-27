@@ -10,9 +10,10 @@ try:
     from ai.skill_extraction import backfill_job_skills, extract_skills_for_jobs
     from crawler.parsers.handshake import parse_job_handshake
     from crawler.parsers.linkedin import parse_job_linkedin
+    from crawler.parsers.ats import parse_direct_ats
     from crawler.sources import (
         DEFAULT_SOURCE_LIMITS, DEFAULT_SOURCE_TIME_LIMITS_SEC,
-        PER_SEARCH_ACCEPT_LIMIT, PER_SEARCH_TIME_LIMIT_SEC, source_urls,
+        PER_SEARCH_ACCEPT_LIMIT, PER_SEARCH_TIME_LIMIT_SEC, source_specs,
     )
     from database.job_identity import build_job_identity
     from database.queries import upsert_job
@@ -26,9 +27,10 @@ except ImportError:
     from ai.skill_extraction import backfill_job_skills, extract_skills_for_jobs
     from crawler.parsers.handshake import parse_job_handshake
     from crawler.parsers.linkedin import parse_job_linkedin
+    from crawler.parsers.ats import parse_direct_ats
     from crawler.sources import (
         DEFAULT_SOURCE_LIMITS, DEFAULT_SOURCE_TIME_LIMITS_SEC,
-        PER_SEARCH_ACCEPT_LIMIT, PER_SEARCH_TIME_LIMIT_SEC, source_urls,
+        PER_SEARCH_ACCEPT_LIMIT, PER_SEARCH_TIME_LIMIT_SEC, source_specs,
     )
     from database.job_identity import build_job_identity
     from database.queries import upsert_job
@@ -55,11 +57,12 @@ def collect_jobs(
     jobs: list[dict] = []
     seen: set[str] = set()
     totals = {"discovered": 0, "accepted": 0, "rejected": 0, "duplicates": 0, "source_errors": 0}
-    urls = source_urls(source)
+    specs = source_specs(source)
     source_time_limit = time_limit_sec or DEFAULT_SOURCE_TIME_LIMITS_SEC[source]
     deadline = time.monotonic() + source_time_limit
 
-    for index, (source_name, url) in enumerate(urls, start=1):
+    for index, spec in enumerate(specs, start=1):
+        source_name, url = spec.provider, spec.url
         if len(jobs) >= limit:
             break
         remaining_seconds = deadline - time.monotonic()
@@ -75,18 +78,29 @@ def collect_jobs(
             1, min(PER_SEARCH_TIME_LIMIT_SEC, int(remaining_seconds))
         )
         print(
-            f"[crawl] fetching {source_name} search {index}/{len(urls)} "
+            f"[crawl] fetching {source_name} search {index}/{len(specs)} "
             f"(accept up to {per_search_limit}): {url}",
             flush=True,
         )
         parser_stats: dict[str, int] = {}
         started = time.monotonic()
         try:
-            parser = parse_job_linkedin if source_name == "linkedin" else parse_job_handshake
-            found = parser(
-                url, max_jobs=per_search_limit,
-                time_limit_sec=per_search_time_limit, stats=parser_stats,
-            )
+            if source_name == "linkedin":
+                found = parse_job_linkedin(
+                    url, max_jobs=per_search_limit,
+                    time_limit_sec=per_search_time_limit, stats=parser_stats,
+                )
+            elif source_name == "handshake":
+                found = parse_job_handshake(
+                    url, max_jobs=per_search_limit,
+                    time_limit_sec=per_search_time_limit, stats=parser_stats,
+                )
+            else:
+                found = parse_direct_ats(
+                    url, provider=source_name, company=spec.company or source_name,
+                    max_jobs=per_search_limit, time_limit_sec=per_search_time_limit,
+                    stats=parser_stats,
+                )
         except Exception as exc:
             totals["source_errors"] += 1
             print(f"[crawl] {source_name} search failed: {exc}", flush=True)
@@ -205,7 +219,7 @@ def run(*, dry_run=False, source="all", limit=None, skip_cleanup=False):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="Crawl and compare without writes.")
-    parser.add_argument("--source", choices=("all", "linkedin", "handshake"), default="all")
+    parser.add_argument("--source", choices=("all", "linkedin", "handshake", "ats"), default="all")
     parser.add_argument("--limit", type=int, help="Total unique candidate ceiling.")
     parser.add_argument("--skip-cleanup", action="store_true", help="Skip lifecycle link checks.")
     args = parser.parse_args()

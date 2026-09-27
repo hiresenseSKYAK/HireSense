@@ -573,6 +573,14 @@ def _extract_details_from_posting(job_id, session, deadline=None):
         )
         return None
 
+    logo_node = soup.select_one(
+        "img.top-card-layout__entity-image, img.artdeco-entity-image, "
+        "img[data-delayed-url*='http']"
+    )
+    company_logo_url = _normalize_href(
+        (logo_node.get("data-delayed-url") or logo_node.get("src")) if logo_node else None
+    )
+
     return {
         "source": "linkedin",
         "source_job_id": str(job_id) if job_id is not None else None,
@@ -580,6 +588,7 @@ def _extract_details_from_posting(job_id, session, deadline=None):
         "company": _safe_text(
             soup.select_one("a.topcard__org-name-link, span.topcard__flavor")
         ),
+        "company_logo_url": company_logo_url,
         "location": "Remote" if location_decision.category == "Remote" else _normalize_location(raw_location),
         "salary": salary,
         "date_posted": _normalize_relative_date(relative_date),

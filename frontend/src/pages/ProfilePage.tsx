@@ -6,18 +6,29 @@ import { getAuthSession, logout } from '../api/auth'
 import { getResumeAnalysis } from '../utils/resumeStorage'
 import { matchResumeToJob } from '../utils/jobMatcher'
 import type { Job } from '../types'
+import { formatDiscoveryAge, formatPostedDate, sourcePostedAt, timestampValue } from '../utils/jobFreshness'
 import styles from './ProfilePage.module.css'
 import {
   clearAutofillProfileConfirmation,
   getAutofillReadiness,
 } from '../features/autofill/readiness'
 
-function formatPosted(value?: string) {
-  return value?.trim() || 'Recently posted'
-}
-
 function countValues(values: Array<unknown>) {
   return values.filter((value) => Array.isArray(value) ? value.length > 0 : Boolean(value)).length
+}
+
+function hasMatchSignal(job: Job) {
+  return Boolean(job.matchDetails && (job.matchDetails.matchedSkills.length || job.matchDetails.missingSkills.length))
+}
+
+function JobLogo({ job }: { job: Job }) {
+  const [failed, setFailed] = useState(false)
+  const logo = job.companyLogoUrl || job.logo
+  return <div className={styles.jobLogo}>
+    {logo && !failed
+      ? <img src={logo} alt={`${job.company} logo`} onError={() => setFailed(true)} />
+      : <span aria-hidden="true">{job.company?.charAt(0) || 'J'}</span>}
+  </div>
 }
 
 export default function ProfilePage() {
@@ -35,9 +46,10 @@ export default function ProfilePage() {
       try {
         setIsLoading(true)
         setError('')
-        const [jobsData, insightsData] = await Promise.all([fetchJobs(), fetchMarketInsights()])
-        setJobs(jobsData)
-        setInsights(insightsData)
+        const [jobsResult, insightsResult] = await Promise.allSettled([fetchJobs(), fetchMarketInsights()])
+        if (jobsResult.status === 'rejected') throw jobsResult.reason
+        setJobs(jobsResult.value)
+        setInsights(insightsResult.status === 'fulfilled' ? insightsResult.value : null)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not load your career dashboard.')
       } finally {
@@ -47,13 +59,17 @@ export default function ProfilePage() {
     void loadProfileData()
   }, [refreshKey])
 
-  const rankedJobs = useMemo(() => jobs
+  const matchedJobs = useMemo(() => jobs
     .map((job) => ({ ...job, matchDetails: matchResumeToJob(savedResume?.parsed_data, job) }))
-    .map((job) => ({ ...job, match: job.matchDetails.matchScore }))
-    .sort((a, b) => b.match - a.match), [jobs, savedResume])
+    .map((job) => ({ ...job, match: job.matchDetails.matchScore })), [jobs, savedResume])
+
+  const rankedJobs = useMemo(() => [...matchedJobs].sort((a, b) => {
+    if (savedResume) return b.match - a.match
+    return timestampValue(b.firstSeenAt) - timestampValue(a.firstSeenAt)
+  }), [matchedJobs, savedResume])
 
   const topMatches = rankedJobs.slice(0, 4)
-  const scores = savedResume ? rankedJobs.map((job) => job.match) : []
+  const scores = savedResume ? rankedJobs.filter(hasMatchSignal).map((job) => job.match) : []
   const strongMatches = scores.filter((score) => score >= 70).length
   const averageMatch = scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : null
   const highestMatch = scores.length ? Math.max(...scores) : null
@@ -105,7 +121,9 @@ export default function ProfilePage() {
             <div className={styles.accountDivider} />
             <div className={styles.completionHeader}><span>Profile completion</span><strong>{profileCompletion}%</strong></div>
             <div className={styles.progressTrack} aria-label={`Profile ${profileCompletion}% complete`}><span style={{ width: `${profileCompletion}%` }} /></div>
-            <p className={styles.helperText}>{savedResume ? savedResume.filename : 'Upload a resume to begin matching.'}</p>
+            <p className={styles.helperText}>{savedResume
+              ? `${savedResume.filename}${savedResume.saved_at ? ` · updated ${new Date(savedResume.saved_at).toLocaleDateString()}` : ''}`
+              : 'Upload a resume to begin matching.'}</p>
             <button type="button" className="btn-outline" onClick={() => void handleLogout()}>Log out</button>
           </section>
 
@@ -150,8 +168,8 @@ export default function ProfilePage() {
             <div className={styles.jobList}>
               {isLoading ? [0, 1, 2].map((item) => <div key={item} className={styles.jobSkeleton} />) : topMatches.length ? topMatches.map((job) => (
                 <div key={job.id} className={styles.jobRow} role="link" tabIndex={0} aria-label={`View ${job.title} at ${job.company}`} onClick={() => openJob(job.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openJob(job.id) } }}>
-                  <div className={styles.jobLogo}>{job.company?.charAt(0) || 'J'}</div>
-                  <div className={styles.jobInfo}><div className={styles.jobTopRow}><span className={styles.jobCompany}><IconBriefcase /> {job.company}</span>{savedResume && <span className={styles.matchBadge}>{job.match}% match</span>}</div><strong className={styles.jobTitle}>{job.title}</strong><div className={styles.jobMeta}><span><IconMap /> {job.location}</span><span><IconClock /> {formatPosted(job.posted)}</span></div>{savedResume && <p className={styles.signalText}>{job.matchDetails?.matchedSkills.length ? `Strong overlap: ${job.matchDetails.matchedSkills.slice(0, 3).join(', ')}` : 'No verified skill overlap yet—review the role requirements.'}</p>}</div>
+                  <JobLogo job={job} />
+                  <div className={styles.jobInfo}><div className={styles.jobTopRow}><span className={styles.jobCompany}><IconBriefcase /> {job.company}</span>{savedResume && hasMatchSignal(job) && <span className={styles.matchBadge}>{job.match}% match</span>}</div><strong className={styles.jobTitle}>{job.title}</strong><div className={styles.jobMeta}><span><IconMap /> {job.location}</span>{formatPostedDate(sourcePostedAt(job)) && <span><IconClock /> Posted {formatPostedDate(sourcePostedAt(job))}</span>}{formatDiscoveryAge(job.firstSeenAt) && <span><IconClock /> {formatDiscoveryAge(job.firstSeenAt)}</span>}</div>{savedResume && hasMatchSignal(job) && <p className={styles.signalText}>{job.matchDetails?.matchedSkills.length ? `Strong overlap: ${job.matchDetails.matchedSkills.slice(0, 3).join(', ')}` : 'No listed skill overlap yet—review the role requirements.'}</p>}</div>
                   <span className={styles.rowArrow} aria-hidden="true">→</span>
                 </div>
               )) : <div className={styles.emptyState}>No live opportunities are available yet. Check back after the next feed refresh.</div>}

@@ -9,6 +9,7 @@ except ImportError:
 import json
 import mysql.connector
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 try:
     from backend.database.job_identity import build_job_identity
@@ -169,30 +170,36 @@ def _map_db_row_to_frontend_job(row):
     work_style = row.get("work_style") or "On-site"
     job_type = row.get("job_type") or "Full-time"
     experience_level = row.get("experience_level") or "Entry level"
-    salary = row.get("salary") or "Not listed"
+    salary = row.get("salary") if row.get("salary") is not None else "Not listed"
     date_posted = row.get("date_posted")
     original_description = row.get("job_description") or "No description available."
     summary = (row.get("job_description_summary") or "").strip()
     card_description = summary or original_description
 
-    posted = str(date_posted) if date_posted else "Recently posted"
+    posted = str(date_posted) if date_posted else None
+    first_seen_at = row.get("first_seen_at")
+    first_seen = first_seen_at.isoformat() if hasattr(first_seen_at, "isoformat") else str(first_seen_at or "") or None
 
     return {
         "id": row.get("id"),
         "title": row.get("job_title") or "Untitled Role",
         "company": row.get("company") or "Unknown Company",
+        "companyLogoUrl": row.get("company_logo_url") or None,
         "location": row.get("location") or "Unknown Location",
         "type": job_type,
         "salary": salary,
         "salaryRange": salary,
         "tags": skills,
         "posted": posted,
-        "badge": "Live",
+        "datePosted": posted,
+        "firstSeenAt": first_seen,
+        "source": row.get("source") or None,
+        "badge": None,
         "match": 0,
-        "logo": "",
+        "logo": row.get("company_logo_url") or "",
         "hybrid": work_style,
         "experienceLevel": experience_level,
-        "dateRange": "Live",
+        "dateRange": posted,
         "description": card_description,
         "fullDescription": original_description,
         "applicationLink": row.get("application_link") or "",
@@ -220,6 +227,21 @@ def _sanitize_salary_for_db(raw_salary):
     return value
 
 
+def _sanitize_http_url(raw_url):
+    value = _nonempty_str(raw_url)
+    if not value:
+        return None
+    try:
+        parsed = urlsplit(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+        return None
+    if parsed.username or parsed.password:
+        return None
+    return value
+
+
 @dataclass(frozen=True)
 class JobWriteResult:
     action: str
@@ -229,7 +251,7 @@ class JobWriteResult:
 
 
 _JOB_WRITE_COLUMNS = (
-    "source", "source_job_id", "job_title", "company", "location", "salary",
+    "source", "source_job_id", "job_title", "company", "company_logo_url", "location", "salary",
     "date_posted", "application_link", "canonical_url", "identity_key",
     "job_description", "job_description_summary", "skills", "job_type",
     "experience_level", "work_style",
@@ -266,6 +288,7 @@ def _prepare_job_record(job):
         "source_job_id": identity.source_job_id,
         "job_title": title,
         "company": company,
+        "company_logo_url": _sanitize_http_url(job.get("company_logo_url")),
         "location": _nonempty_str(job.get("location")),
         "salary": salary_value,
         "date_posted": job.get("date_posted"),
@@ -284,7 +307,7 @@ def _prepare_job_record(job):
 def _record_changes(existing, incoming):
     changes = {}
     preserve_when_blank = {
-        "company", "location", "salary", "date_posted", "application_link",
+        "company", "company_logo_url", "location", "salary", "date_posted", "application_link",
         "canonical_url", "job_description", "job_description_summary", "source",
         "source_job_id",
     }
@@ -628,6 +651,7 @@ def fetch_all_jobs_from_db():
             id,
             job_title,
             company,
+            company_logo_url,
             location,
             salary,
             date_posted,
@@ -637,7 +661,9 @@ def fetch_all_jobs_from_db():
             skills,
             job_type,
             experience_level,
-            work_style
+            work_style,
+            first_seen_at,
+            source
         FROM job_data
         WHERE experience_level IN ('Internship', 'Entry level')
           AND active = TRUE
@@ -664,6 +690,7 @@ def fetch_job_by_id_from_db(job_id: int):
             id,
             job_title,
             company,
+            company_logo_url,
             location,
             salary,
             date_posted,
@@ -673,7 +700,9 @@ def fetch_job_by_id_from_db(job_id: int):
             skills,
             job_type,
             experience_level,
-            work_style
+            work_style,
+            first_seen_at,
+            source
         FROM job_data
         WHERE id = %s
           AND experience_level IN ('Internship', 'Entry level')

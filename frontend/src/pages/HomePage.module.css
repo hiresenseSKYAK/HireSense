@@ -148,6 +148,10 @@
   line-height: 1.6;
 }
 
+.sortControl { display:flex; align-items:center; gap:9px; color:var(--text-secondary); font-size:.78rem; font-weight:800; white-space:nowrap; }
+.sortControl select { min-width:174px; border:1px solid var(--border); border-radius:12px; background:var(--surface-strong); color:var(--text-primary); padding:10px 34px 10px 12px; font:inherit; cursor:pointer; }
+.sortControl select:focus-visible { outline:3px solid rgba(var(--caramel-rgb), .26); border-color:var(--burgundy); }
+
 .jobsList {
   display: flex;
   flex-direction: column;
@@ -273,4 +277,8 @@
   .jobsTitle {
     font-size: 1.5rem;
   }
+
+  .jobsSectionHeader { align-items:flex-start; flex-direction:column; }
+  .sortControl { width:100%; justify-content:space-between; }
+  .sortControl select { min-width:0; flex:1; }
 }

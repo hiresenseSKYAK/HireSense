@@ -51,7 +51,7 @@ describe('applicant review experience', () => {
 
 describe('controlled application flow', () => {
   it.each(['Classic ATS', 'Compact application'])('previews and verifies %s without submission', async (layout) => {
-    render(<MemoryRouter initialEntries={[{ pathname: '/application/demo', state: { profile } }]}><ControlledApplicationPage /></MemoryRouter>)
+    render(<MemoryRouter initialEntries={[{ pathname: '/application/preview', state: { profile } }]}><ControlledApplicationPage /></MemoryRouter>)
     click(button(layout))
     expect(button('Fill ')).toBeUndefined()
     click(button('Preview autofill'))

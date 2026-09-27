@@ -52,13 +52,20 @@ jobs:
         continue-on-error: true
         run: python -m crawler.crawl --source handshake --limit 100 --skip-cleanup
 
+      - name: Crawl direct company ATS feeds
+        id: crawl_ats
+        continue-on-error: true
+        run: python -m crawler.crawl --source ats --limit 100 --skip-cleanup
+
       - name: Report source failures
         if: always()
         run: |
           echo "LinkedIn: ${{ steps.crawl_linkedin.outcome }}"
           echo "Handshake: ${{ steps.crawl_handshake.outcome }}"
+          echo "Direct ATS: ${{ steps.crawl_ats.outcome }}"
 
           if [ "${{ steps.crawl_linkedin.outcome }}" = "failure" ] || \
-             [ "${{ steps.crawl_handshake.outcome }}" = "failure" ]; then
+             [ "${{ steps.crawl_handshake.outcome }}" = "failure" ] || \
+             [ "${{ steps.crawl_ats.outcome }}" = "failure" ]; then
             exit 1
           fi

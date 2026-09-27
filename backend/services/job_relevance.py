@@ -23,14 +23,19 @@ TITLE_SIGNALS = {
     "cybersecurity": r"\b(cyber ?security|information security|security engineer)\b",
     "cloud": r"\bcloud\b",
     "devops": r"\bdevops\b",
+    "platform/SRE": r"\b(platform engineer|site reliability|SRE)\b",
+    "firmware/embedded": r"\b(firmware|embedded (?:software|systems?)|embedded engineer)\b",
     "web development": r"\b(web developer|web development)\b",
     "mobile development": r"\b(mobile developer|mobile development|android|ios developer)\b",
     "AI/ML": r"\b(artificial intelligence|machine learning|generative AI|large language model|LLM|NLP|AI(?:/ML)?|ML)(?: engineer| intern)?\b",
     "QA/software test": r"\b(quality assurance|software test|QA(?: engineer| intern)?|test automation)\b",
+    "SDET": r"\bSDET\b",
     "application engineering": r"\b(application developer|application development|application engineer)\b",
     "full stack": r"\b(full[ -]?stack|front[ -]?end|back[ -]?end)\b",
     "database": r"\b(database|SQL developer)\b",
     "network engineering": r"\bnetwork engineer(?:ing)?\b",
+    "technical systems": r"\bsystems engineer(?:ing)?\b",
+    "technical solutions": r"\bsolutions engineer(?:ing)?\b",
 }
 
 DESCRIPTION_SIGNALS = {
@@ -40,6 +45,8 @@ DESCRIPTION_SIGNALS = {
     "data engineering/science": r"\bdata (?:engineer|engineering|science|scientist)\b",
     "cybersecurity": r"\b(cyber ?security|information security)\b",
     "cloud/devops": r"\b(cloud engineering|cloud infrastructure|devops)\b",
+    "platform/SRE": r"\b(platform engineering|site reliability|SRE)\b",
+    "firmware/embedded": r"\b(firmware|embedded software|embedded systems|microcontrollers?|RTOS)\b",
     "web/mobile": r"\b(web development|mobile development|android development|ios development)\b",
     "AI/ML": r"\b(artificial intelligence|machine learning|AI/ML)\b",
     "QA/software test": r"\b(quality assurance|software test|test automation)\b",
@@ -56,6 +63,10 @@ HARD_NEGATIVE_TITLE_SIGNALS = {
     "sales": r"\bsales\b",
     "accounting": r"\baccount(?:ing|ant)\b",
     "human resources": r"\b(human resources|HR intern)\b",
+    "recruiting": r"\b(recruit(?:er|ing)|talent acquisition)\b",
+    "customer service": r"\b(customer service|customer support representative)\b",
+    "operations": r"\b(?:business|store|warehouse|generic) operations\b",
+    "supply chain": r"\bsupply chain\b",
 }
 
 CONDITIONAL_NEGATIVE_TITLE_SIGNALS = {
@@ -63,7 +74,16 @@ CONDITIONAL_NEGATIVE_TITLE_SIGNALS = {
     "field engineering": r"\bfield engineer(?:ing)?\b",
     "construction": r"\bconstruction\b",
     "mechanical engineering": r"\bmechanical engineer(?:ing)?\b",
+    "manufacturing engineering": r"\bmanufacturing engineer(?:ing)?\b",
+    "electrical engineering": r"\belectrical engineer(?:ing)?\b",
+    "technician": r"\btechnician\b",
 }
+
+_SALES_ENGINEERING = re.compile(r"\b(?:sales engineer|solutions? consultant|pre[ -]?sales)\b", re.IGNORECASE)
+_SOFTWARE_IN_TITLE = re.compile(
+    r"\b(?:software|developer|firmware|embedded|devops|cloud|platform|SRE|data|machine learning|ML|AI|security|cyber|QA|SDET|automation)\b",
+    re.IGNORECASE,
+)
 
 
 def _matches(patterns: dict[str, str], text: str) -> list[str]:
@@ -80,8 +100,15 @@ def assess_job_relevance(title: object, description: object = "") -> RelevanceDe
     if hard_negative_matches:
         return RelevanceDecision(False, f"unrelated title signal: {hard_negative_matches[0]}")
 
+    if _SALES_ENGINEERING.search(title_text) and not _SOFTWARE_IN_TITLE.search(title_text):
+        return RelevanceDecision(False, "primarily sales engineering title")
+
     title_matches = _matches(TITLE_SIGNALS, title_text)
     if title_matches:
+        if "technical systems" in title_matches or "technical solutions" in title_matches:
+            description_matches = _matches(DESCRIPTION_SIGNALS, description_text)
+            if len(description_matches) < 2:
+                return RelevanceDecision(False, "ambiguous engineering title lacks software evidence")
         return RelevanceDecision(True, f"technology title signal: {title_matches[0]}")
 
     conditional_negative_matches = _matches(CONDITIONAL_NEGATIVE_TITLE_SIGNALS, title_text)

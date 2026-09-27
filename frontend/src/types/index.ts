@@ -6,16 +6,20 @@ export interface Job {
   type: string
   salary: string | number
   tags: string[]
-  posted: string
+  posted: string | null
+  datePosted?: string | null
+  firstSeenAt?: string | null
+  source?: string | null
   badge: string | null
   match: number
   logo: string
+  companyLogoUrl?: string | null
   hybrid: 'Remote' | 'Hybrid' | 'On-site'
   description?: string | JobDescription
   fullDescription?: string
   experienceLevel?: string
   salaryRange?: string | number
-  dateRange?: string
+  dateRange?: string | null
   applicationLink?: string
   matchDetails?: {
     matchScore: number

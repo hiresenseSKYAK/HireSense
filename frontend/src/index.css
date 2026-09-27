@@ -69,6 +69,7 @@ html {
 }
 
 body {
+  overflow-x: clip;
   font-family: 'DM Sans', sans-serif;
   color: var(--text-primary);
   background:

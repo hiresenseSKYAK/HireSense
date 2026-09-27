@@ -21,6 +21,7 @@ and fails loudly on SQL errors. It never drops job data or prints credentials.
    `python -m database.backfill_job_identity --apply`.
 5. Run `002_add_job_identity_indexes.sql`.
 6. Run `003_add_job_lifecycle.sql`.
+7. Run `004_add_company_logo_url.sql`.
 
 If the preview reports a collision, it performs no writes. Review those row IDs
 before applying the backfill or creating the indexes. Existing rows and the

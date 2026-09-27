@@ -11,9 +11,25 @@ os.environ.setdefault("DB_PASSWORD", "testpassword")
 from fastapi import HTTPException
 
 from api import jobs
+from database.queries import _map_db_row_to_frontend_job
 
 
 class JobsApiTests(unittest.TestCase):
+    def test_api_keeps_source_posted_and_first_seen_separate(self):
+        result = _map_db_row_to_frontend_job({
+            "id": 1,
+            "job_title": "Software Engineer Intern",
+            "company": "Example",
+            "date_posted": None,
+            "first_seen_at": "2026-09-25 12:00:00",
+            "company_logo_url": "https://example.com/logo.png",
+            "source": "greenhouse",
+        })
+        self.assertIsNone(result["datePosted"])
+        self.assertEqual(result["firstSeenAt"], "2026-09-25 12:00:00")
+        self.assertIsNone(result["badge"])
+        self.assertEqual(result["companyLogoUrl"], "https://example.com/logo.png")
+
     def test_empty_database_returns_honest_empty_list(self):
         with patch.object(jobs, "fetch_all_jobs_from_db", return_value=[]):
             self.assertEqual(jobs.get_jobs(), [])

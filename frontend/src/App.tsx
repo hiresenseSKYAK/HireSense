@@ -9,6 +9,7 @@ import LoginPage from './pages/LoginPage'
 import PrivacyPage from './pages/PrivacyPage'
 import PrepareApplicationPage from './features/autofill/PrepareApplicationPage'
 import ControlledApplicationPage from './features/autofill/ControlledApplicationPage'
+import NotFoundPage from './pages/NotFoundPage'
 
 export default function App() {
   return (
@@ -33,7 +34,8 @@ export default function App() {
               <Route path="/jobs/:id" element={<JobDetailPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/application/prepare" element={<PrepareApplicationPage />} />
-              <Route path="/application/demo" element={<ControlledApplicationPage />} />
+              <Route path="/application/preview" element={<ControlledApplicationPage />} />
+              <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </>
         </ProtectedRoute>

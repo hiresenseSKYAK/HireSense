@@ -1,10 +1,7 @@
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { login, saveAuthSession, signup } from '../api/auth'
+import { login, signup } from '../api/auth'
 import styles from './LoginPage.module.css'
-
-const DEMO_EMAIL = 'dev@hiresense.com'
-const DEMO_PASSWORD = 'password123'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -16,7 +13,8 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (event?: FormEvent) => {
+    event?.preventDefault()
     setError('')
 
     if (!email.trim() || !password.trim() || (isSignup && !username.trim())) {
@@ -33,31 +31,10 @@ export default function LoginPage() {
         return
       }
 
-      const normalizedEmail = email.trim().toLowerCase()
-
-      if (normalizedEmail === DEMO_EMAIL && password === DEMO_PASSWORD) {
-        saveAuthSession({
-          token: 'demo-session-token',
-          user: {
-            id: 0,
-            username: 'Demo User',
-            email: DEMO_EMAIL,
-            joined_at: new Date().toISOString(),
-          },
-        })
-
-        navigate('/')
-        return
-      }
-
       await login(email.trim(), password)
       navigate('/')
     } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message)
-      } else {
-        setError('Unable to continue right now.')
-      }
+      setError(err instanceof Error ? err.message : 'Unable to continue right now.')
     } finally {
       setIsSubmitting(false)
     }
@@ -74,69 +51,77 @@ export default function LoginPage() {
             : 'Log in to continue managing your resume, matches, and job search progress.'}
         </p>
 
-        {!isSignup && (
-          <div className={styles.demoHint}>
-            Demo login: <strong>{DEMO_EMAIL}</strong> / <strong>{DEMO_PASSWORD}</strong>
-          </div>
-        )}
+        <form onSubmit={(event) => void handleSubmit(event)}>
+          {isSignup && (
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="username">Username</label>
+              <input
+                id="username"
+                className={styles.input}
+                type="text"
+                autoComplete="username"
+                required
+                placeholder="anas"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+              />
+            </div>
+          )}
 
-        {isSignup && (
           <div className={styles.field}>
-            <label className={styles.label}>Username</label>
+            <label className={styles.label} htmlFor="email">Email</label>
             <input
+              id="email"
               className={styles.input}
-              type="text"
-              placeholder="anas"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              type="email"
+              autoComplete="email"
+              required
+              placeholder="you@email.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
             />
           </div>
-        )}
 
-        <div className={styles.field}>
-          <label className={styles.label}>Email</label>
-          <input
-            className={styles.input}
-            type="email"
-            placeholder="you@email.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </div>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="password">Password</label>
+            <input
+              id="password"
+              className={styles.input}
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete={isSignup ? 'new-password' : 'current-password'}
+              required
+            />
+          </div>
 
-        <div className={styles.field}>
-          <label className={styles.label}>Password</label>
-          <input
-            className={styles.input}
-            type="password"
-            placeholder="••••••••"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void handleSubmit()}
-          />
-        </div>
+          {error && <p className={styles.error}>{error}</p>}
 
-        {error && <p className={styles.error}>{error}</p>}
-
-        <button
-          className="btn-primary"
-          style={{ width: '100%', padding: '11px', justifyContent: 'center', marginTop: '4px' }}
-          onClick={() => void handleSubmit()}
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? 'Working...' : isSignup ? 'Create Account' : 'Log In'}
-        </button>
+          <button
+            type="submit"
+            className="btn-primary"
+            style={{ width: '100%', padding: '11px', justifyContent: 'center', marginTop: '4px' }}
+            disabled={isSubmitting}
+          >
+            {isSubmitting
+              ? isSignup ? 'Creating account…' : 'Signing in…'
+              : isSignup ? 'Create Account' : 'Log In'}
+          </button>
+        </form>
 
         <p className={styles.toggle}>
           {isSignup ? 'Already have an account?' : "Don't have an account?"}{' '}
-          <span
+          <button
+            type="button"
+            className={styles.toggleButton}
             onClick={() => {
               setIsSignup(!isSignup)
               setError('')
             }}
           >
             {isSignup ? 'Log In' : 'Sign Up'}
-          </span>
+          </button>
         </p>
       </div>
     </div>

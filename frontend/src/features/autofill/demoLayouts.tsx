@@ -35,7 +35,7 @@ export function ClassicApplication() {
         <h3>Application questions</h3>
         <label>Why are you interested in this role?<textarea name="interest" /></label>
         <label className={styles.checkLabel}><input type="checkbox" name="consent" /> I agree to the application declaration.</label>
-        <input type="hidden" name="application_token" value="demo-token" />
+        <input type="hidden" name="application_token" value="controlled-example-token" />
       </section>
     </form>
   )

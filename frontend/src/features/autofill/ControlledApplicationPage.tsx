@@ -9,7 +9,7 @@ import { ClassicApplication, CompactApplication } from './demoLayouts'
 import AutofillSteps from './AutofillSteps'
 import styles from './ControlledApplication.module.css'
 
-type DemoLayout = 'classic' | 'compact'
+type ApplicationLayout = 'classic' | 'compact'
 
 function PreviewList({ decisions }: { decisions: FieldDecision[] }) {
   return <div className={styles.previewList}>
@@ -28,7 +28,7 @@ export default function ControlledApplicationPage() {
   const location = useLocation()
   const profile = (location.state as { profile?: unknown } | null)?.profile
   const formAreaRef = useRef<HTMLDivElement>(null)
-  const [layout, setLayout] = useState<DemoLayout>('classic')
+  const [layout, setLayout] = useState<ApplicationLayout>('classic')
   const [preview, setPreview] = useState<FieldDecision[]>([])
   const [result, setResult] = useState<FillResult | null>(null)
   const [busy, setBusy] = useState(false)
@@ -46,7 +46,7 @@ export default function ControlledApplicationPage() {
     </section></div>
   }
 
-  const changeLayout = (next: DemoLayout) => {
+  const changeLayout = (next: ApplicationLayout) => {
     if (next === layout) return
     setLayout(next); setPreview([]); setResult(null)
   }

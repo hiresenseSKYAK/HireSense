@@ -3,7 +3,10 @@ import type { ResumeUploadResponse } from "../api/resume";
 const RESUME_STORAGE_KEY = "hiresense_resume_analysis";
 
 export function saveResumeAnalysis(data: ResumeUploadResponse): void {
-  localStorage.setItem(RESUME_STORAGE_KEY, JSON.stringify(data));
+  localStorage.setItem(RESUME_STORAGE_KEY, JSON.stringify({
+    ...data,
+    saved_at: data.saved_at || new Date().toISOString(),
+  }));
 }
 
 export function getResumeAnalysis(): ResumeUploadResponse | null {
