@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 
 from services.job_relevance import assess_job_relevance
 from services.job_experience import assess_job_experience
-from services.job_location import assess_job_location
+from services.job_location import assess_job_geography
 
 try:
     from crawler.parsers.linkedin import (
@@ -509,7 +509,7 @@ def _extract_details_from_posting(job_id, session, card=None, search_location=No
 
     location = _location_from_card(card, search_location) or _location_from_posting(posting)
     work_style = _work_style(posting, card)
-    location_decision = assess_job_location(location, work_style)
+    location_decision = assess_job_geography(location, work_style, description)
     if not location_decision.accepted:
         print(
             f"[handshake] rejected id={job_id} title={job_title!r} "
@@ -524,7 +524,7 @@ def _extract_details_from_posting(job_id, session, card=None, search_location=No
         "job_title": job_title,
         "company": company,
         "company_logo_url": _organization_logo(posting),
-        "location": "Remote" if location_decision.category == "Remote" else location,
+        "location": "Remote — United States" if location_decision.category == "Remote" else location,
         "salary": salary,
         "date_posted": _date_posted(posting, card),
         "application_link": _application_link(job_id, posting, description),

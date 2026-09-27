@@ -11,7 +11,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from services.job_experience import assess_job_experience
-from services.job_location import assess_job_location
+from services.job_location import assess_job_geography
 from services.job_relevance import assess_job_relevance
 
 
@@ -70,17 +70,17 @@ def _midpoint(values: list[object]) -> int | None:
     return int(round((min(numbers) + max(numbers)) / 2))
 
 
-def _pick_location(candidates: list[str], work_style: str) -> tuple[str, str] | None:
+def _pick_location(candidates: list[str], work_style: str, description: str) -> tuple[str, str] | None:
     seen: set[str] = set()
     for candidate in candidates:
         location = " ".join(str(candidate or "").split())
         if not location or location.lower() in seen:
             continue
         seen.add(location.lower())
-        decision = assess_job_location(location, work_style)
+        decision = assess_job_geography(location, work_style, description)
         if decision.accepted:
             return (
-                "Remote" if decision.category == "Remote" else location,
+                "Remote — United States" if decision.category == "Remote" else location,
                 "Remote" if decision.category == "Remote" else work_style,
             )
     return None
@@ -109,7 +109,7 @@ def _normalize_greenhouse_job(job: dict, company: str) -> dict | None:
     candidates.extend(str(item.get("location")) for item in offices if isinstance(item, dict) and item.get("location"))
     remote_evidence = " ".join(candidates + [description])
     work_style = "Remote" if re.search(r"\b(?:remote|work from home|work remotely)\b", remote_evidence, re.I) else "On-site"
-    selected = _pick_location(candidates, work_style)
+    selected = _pick_location(candidates, work_style, description)
     return _finish_job(
         provider="greenhouse",
         source_job_id=job.get("id"),
@@ -147,7 +147,7 @@ def _normalize_lever_job(job: dict, company: str) -> dict | None:
         locations.append(categories["location"])
     if work_style == "Remote" and str(job.get("country") or "").upper() in {"US", "USA"}:
         locations.insert(0, "Remote — US")
-    selected = _pick_location([str(value) for value in locations], work_style)
+    selected = _pick_location([str(value) for value in locations], work_style, description)
     salary_range = job.get("salaryRange") if isinstance(job.get("salaryRange"), dict) else {}
     return _finish_job(
         provider="lever",
@@ -200,7 +200,7 @@ def _normalize_ashby_job(job: dict, company: str) -> dict | None:
         candidates.append(f"{primary}, {primary_evidence}" if primary_evidence and primary_evidence not in primary else primary)
     elif primary_evidence:
         candidates.append(primary_evidence)
-    selected = _pick_location(candidates, work_style)
+    selected = _pick_location(candidates, work_style, description)
     compensation = job.get("compensation") if isinstance(job.get("compensation"), dict) else {}
     salary_components = [
         component

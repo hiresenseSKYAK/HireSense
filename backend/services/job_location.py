@@ -56,6 +56,7 @@ DFW_CITIES = (
     "southlake",
     "the colony",
     "trophy club",
+    "westlake",
     "wylie",
 )
 
@@ -96,6 +97,41 @@ _NON_TEXAS_STATE_PATTERN = re.compile(
     r",\s*(?!tx\b|texas\b)(?:[a-z]{2}|[a-z][a-z .'-]+)(?:\s+\d{5}(?:-\d{4})?)?\s*$",
     re.IGNORECASE,
 )
+
+_NON_TEXAS_STATE_CODES = (
+    "AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|"
+    "MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|UT|VT|"
+    "VA|WA|WV|WI|WY|DC"
+)
+_STRONG_NON_TEXAS_LOCATION_PATTERN = re.compile(
+    r"(?i:\b(?:position|role|job|candidate|employee|intern|engineer|team|office|site|"
+    r"work(?:s|ing)?|based|located|report(?:s|ing)?|join)\b"
+    r"[^.!?\n]{0,140}\b(?:in|at|near)\s+)"
+    r"([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,3}),\s*"
+    r"(?i:(" + _NON_TEXAS_STATE_CODES + r"))\b",
+)
+_LEGAL_LOCATION_CONTEXT_PATTERN = re.compile(
+    r"\b(?:fair chance|criminal|conviction|arrest|ordinance|background inquir|applicable law)\b",
+    re.IGNORECASE,
+)
+
+
+def find_location_conflicts(description: object) -> tuple[str, ...]:
+    """Return strong non-Texas workplace evidence found in source text.
+
+    The context requirement avoids treating compensation disclaimers, travel,
+    customer locations, or a company's headquarters as the job location.
+    """
+    text = " ".join(str(description or "").split())
+    conflicts: list[str] = []
+    for match in _STRONG_NON_TEXAS_LOCATION_PATTERN.finditer(text):
+        context = text[max(0, match.start() - 160):min(len(text), match.end() + 160)]
+        if _LEGAL_LOCATION_CONTEXT_PATTERN.search(context):
+            continue
+        evidence = f"{match.group(1).strip()}, {match.group(2).upper()}"
+        if evidence.lower() not in {item.lower() for item in conflicts}:
+            conflicts.append(evidence)
+    return tuple(conflicts)
 
 
 def assess_job_location(location: object, work_style: object = "") -> LocationDecision:
@@ -138,3 +174,23 @@ def assess_job_location(location: object, work_style: object = "") -> LocationDe
         return LocationDecision(True, "DFW", f"DFW city: {city_match.group(0)}")
 
     return LocationDecision(False, None, "location is not confidently DFW or Remote")
+
+
+def assess_job_geography(
+    location: object,
+    work_style: object = "",
+    description: object = "",
+) -> LocationDecision:
+    """Apply the complete shared feed policy, including source-text conflicts."""
+    decision = assess_job_location(location, work_style)
+    if not decision.accepted or decision.category == "Remote":
+        return decision
+
+    conflicts = find_location_conflicts(description)
+    if conflicts:
+        return LocationDecision(
+            False,
+            None,
+            f"DFW location conflicts with source evidence: {', '.join(conflicts)}",
+        )
+    return decision

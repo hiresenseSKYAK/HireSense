@@ -57,6 +57,10 @@ jobs:
         continue-on-error: true
         run: python -m crawler.crawl --source ats --limit 100 --skip-cleanup
 
+      - name: Reclassify active jobs against current feed policy
+        if: always()
+        run: python -m scripts.report_job_geography --apply --confirm DEACTIVATE
+
       - name: Report source failures
         if: always()
         run: |

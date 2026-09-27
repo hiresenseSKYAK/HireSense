@@ -17,4 +17,13 @@ describe('resume-to-job matching', () => {
     expect(result.matchedSkills).toEqual([])
     expect(result.missingSkills).toEqual([])
   })
+
+  it('does not award 100 percent from one overlapping skill', () => {
+    const result = matchResumeToJob(
+      { skills: ['Python'] },
+      { title: 'Software Engineer', tags: ['Python'] },
+    )
+    expect(result.matchedSkills).toEqual(['Python'])
+    expect(result.matchScore).toBe(25)
+  })
 })

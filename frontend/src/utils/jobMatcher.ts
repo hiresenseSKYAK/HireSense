@@ -285,7 +285,11 @@ export function matchResumeToJob(
   const matchedSkills = jobSkills.filter((skill) => resumeSkills.includes(skill))
   const missingSkills = jobSkills.filter((skill) => !resumeSkills.includes(skill))
 
-  const rawScore = Math.round((matchedSkills.length / jobSkills.length) * 100)
+  const coverage = matchedSkills.length / jobSkills.length
+  // Sparse job metadata cannot support high confidence. Require at least four
+  // distinct job skills before a complete overlap can reach 100%.
+  const evidenceWeight = Math.min(1, jobSkills.length / 4)
+  const rawScore = Math.round(coverage * evidenceWeight * 100)
 
   const matchScore = Math.max(0, Math.min(100, rawScore))
 

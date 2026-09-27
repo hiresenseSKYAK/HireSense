@@ -1,6 +1,6 @@
 import unittest
 
-from services.job_location import assess_job_location
+from services.job_location import assess_job_geography, assess_job_location
 from crawler.parsers.handshake import _location_from_card, _location_from_posting
 
 
@@ -31,7 +31,10 @@ class JobLocationTests(unittest.TestCase):
                 self.assert_category(location, "DFW")
 
     def test_realistic_surrounding_dfw_cities_are_accepted(self):
-        for location in ("Addison, TX", "McKinney", "Flower Mound", "Grapevine, Texas"):
+        for location in (
+            "Addison, TX", "McKinney", "Flower Mound", "Grapevine, Texas",
+            "Southlake, TX", "Westlake, TX",
+        ):
             with self.subTest(location=location):
                 self.assert_category(location, "DFW")
 
@@ -55,7 +58,11 @@ class JobLocationTests(unittest.TestCase):
         self.assert_category("Remote — California, United States", "Remote", work_style="Remote")
 
     def test_outside_markets_are_rejected(self):
-        for location in ("Austin, TX", "Houston, TX", "New York, NY", "San Jose, CA", "California"):
+        for location in (
+            "Austin, TX", "Houston, TX", "New York, NY", "San Jose, CA",
+            "Ripon, WI", "Provo, UT", "Cincinnati, OH", "Pittsburgh, PA",
+            "California",
+        ):
             with self.subTest(location=location):
                 self.assert_rejected(location)
 
@@ -84,6 +91,24 @@ class JobLocationTests(unittest.TestCase):
         })
         self.assertEqual(location, "Plano, IL, US")
         self.assert_rejected(location)
+
+    def test_dfw_location_is_rejected_when_description_has_strong_conflict(self):
+        decision = assess_job_geography(
+            "Grapevine, TX",
+            "On-site",
+            "The Software Engineer Intern will work with the R&D team in Indianapolis, IN to build robots.",
+        )
+        self.assertFalse(decision.accepted)
+        self.assertIn("Indianapolis, IN", decision.reason)
+
+    def test_remote_roles_ignore_unrelated_office_mentions(self):
+        decision = assess_job_geography(
+            "Remote - United States",
+            "Remote",
+            "Collaborate with teams and visit our office in New York, NY when needed.",
+        )
+        self.assertTrue(decision.accepted)
+        self.assertEqual(decision.category, "Remote")
 
 
 if __name__ == "__main__":

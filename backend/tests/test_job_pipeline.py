@@ -172,6 +172,21 @@ class JobUpsertTests(unittest.TestCase):
         self.assertEqual(result.action, "updated")
         self.assertEqual(self.state["rows"][0]["company_logo_url"], "https://cdn.example.com/logo.png")
 
+    def test_upsert_rejects_out_of_policy_and_description_conflict(self):
+        outside = self.upsert(job(location="San Jose, CA"))
+        conflict = self.upsert(job(
+            source_job_id="conflict",
+            application_link="https://example.com/jobs/conflict",
+            location="Grapevine, TX",
+            job_description="The intern will work with the R&D team in Indianapolis, IN.",
+        ))
+
+        self.assertEqual(outside.action, "skipped")
+        self.assertIn("outside Texas", outside.reason)
+        self.assertEqual(conflict.action, "skipped")
+        self.assertIn("conflicts", conflict.reason)
+        self.assertEqual(self.state["rows"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -60,7 +60,7 @@ class DirectAtsAdapterTests(unittest.TestCase):
             "employmentType": "FullTime",
         }, "Example")
         self.assertIsNotNone(job)
-        self.assertEqual(job["location"], "Remote")
+        self.assertEqual(job["location"], "Remote — United States")
         self.assertEqual(job["work_style"], "Remote")
 
     def test_ashby_rejects_foreign_only_remote(self):

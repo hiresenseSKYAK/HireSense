@@ -24,6 +24,12 @@ try:
     from backend.services.job_experience import assess_job_experience
 except ImportError:
     from services.job_experience import assess_job_experience
+try:
+    from backend.services.job_location import assess_job_geography
+    from backend.services.job_deduplication import partition_unique_postings
+except ImportError:
+    from services.job_location import assess_job_geography
+    from services.job_deduplication import partition_unique_postings
 
 _JOB_SUMMARY_COLUMN_READY = False
 
@@ -275,6 +281,11 @@ def _prepare_job_record(job):
     job_type_value = _normalize_job_type_for_db(job.get("job_type"), title)
     experience_level_value = experience.level
     work_style_value = _normalize_work_style_for_db(job.get("work_style"))
+    geography = assess_job_geography(
+        job.get("location"), work_style_value, job.get("job_description")
+    )
+    if not geography.accepted:
+        return None, geography.reason
     summary = _nonempty_str(job.get("job_description_summary"))
     if experience_level_value not in TARGET_EXPERIENCE_LEVELS:
         return None, "non-target experience level"
@@ -663,7 +674,9 @@ def fetch_all_jobs_from_db():
             experience_level,
             work_style,
             first_seen_at,
-            source
+            source,
+            source_job_id,
+            canonical_url
         FROM job_data
         WHERE experience_level IN ('Internship', 'Entry level')
           AND active = TRUE
@@ -676,7 +689,10 @@ def fetch_all_jobs_from_db():
     cursor.close()
     conn.close()
 
-    return [_map_db_row_to_frontend_job(row) for row in rows]
+    return [
+        _map_db_row_to_frontend_job(row)
+        for row in _eligible_unique_rows(rows)
+    ]
 
 
 def fetch_job_by_id_from_db(job_id: int):
@@ -702,7 +718,9 @@ def fetch_job_by_id_from_db(job_id: int):
             experience_level,
             work_style,
             first_seen_at,
-            source
+            source,
+            source_job_id,
+            canonical_url
         FROM job_data
         WHERE id = %s
           AND experience_level IN ('Internship', 'Entry level')
@@ -717,7 +735,22 @@ def fetch_job_by_id_from_db(job_id: int):
     cursor.close()
     conn.close()
 
-    if not row:
+    if not row or not _row_is_geography_eligible(row):
         return None
 
     return _map_db_row_to_frontend_job(row)
+
+
+def _row_is_geography_eligible(row):
+    return assess_job_geography(
+        row.get("location"),
+        row.get("work_style"),
+        row.get("job_description"),
+    ).accepted
+
+
+def _eligible_unique_rows(rows):
+    """Defense-in-depth guard for legacy rows and exact content reposts."""
+    eligible = [row for row in rows if _row_is_geography_eligible(row)]
+    unique, _duplicates = partition_unique_postings(eligible)
+    return unique

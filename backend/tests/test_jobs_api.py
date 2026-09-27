@@ -11,7 +11,7 @@ os.environ.setdefault("DB_PASSWORD", "testpassword")
 from fastapi import HTTPException
 
 from api import jobs
-from database.queries import _map_db_row_to_frontend_job
+from database.queries import _eligible_unique_rows, _map_db_row_to_frontend_job
 
 
 class JobsApiTests(unittest.TestCase):
@@ -59,6 +59,25 @@ class JobsApiTests(unittest.TestCase):
             result = jobs.get_market_insights()
         self.assertEqual(result["overview"]["total_jobs"], 1)
         self.assertEqual(result["top_companies"][0]["name"], "Real Company")
+
+    def test_read_guard_excludes_legacy_geography_and_exact_duplicates(self):
+        base = {
+            "job_title": "Software Engineer Intern",
+            "company": "Example",
+            "location": "Dallas, TX",
+            "work_style": "On-site",
+            "job_description": "Build the same software product.",
+            "application_link": "https://example.com/jobs/1",
+        }
+        rows = [
+            {**base, "id": 4, "canonical_url": "https://example.com/jobs/4"},
+            {**base, "id": 3, "canonical_url": "https://example.com/jobs/3"},
+            {**base, "id": 2, "location": "New York, NY", "canonical_url": "https://example.com/jobs/2"},
+            {**base, "id": 1, "company": "Toyota Automated Logistics", "location": "Grapevine, TX", "canonical_url": "https://example.com/jobs/toyota", "job_description": "The intern will work with the R&D team in Indianapolis, IN."},
+        ]
+
+        result = _eligible_unique_rows(rows)
+        self.assertEqual([row["id"] for row in result], [4])
 
 
 if __name__ == "__main__":
