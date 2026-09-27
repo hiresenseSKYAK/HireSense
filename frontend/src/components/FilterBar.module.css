@@ -166,6 +166,9 @@
   line-height: 1;
   color: var(--accent);
   transition: color 0.1s;
+  border: 0;
+  padding: 0 1px;
+  background: transparent;
 }
 
 .pillX:hover {

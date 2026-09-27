@@ -21,6 +21,11 @@
   border-color: rgba(var(--caramel-rgb), 0.36);
 }
 
+.card:focus-visible {
+  border-color: var(--burgundy);
+  box-shadow: 0 0 0 4px rgba(var(--caramel-rgb), .22), var(--shadow-hover);
+}
+
 .logoWrap {
   display: flex;
   align-items: flex-start;
@@ -42,6 +47,8 @@
   flex-shrink: 0;
 }
 
+.logo img { width:100%; height:100%; padding:8px; border-radius:inherit; object-fit:contain; background:#fff; }
+
 .main {
   min-width: 0;
   display: flex;
@@ -60,11 +67,19 @@
   min-width: 0;
 }
 
-.titleRow {
+.companyRow {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
+  margin-bottom: 5px;
+}
+
+.company {
+  color: var(--accent-text);
+  font-size: .92rem;
+  font-weight: 800;
+  letter-spacing: .01em;
 }
 
 .topBadges {
@@ -78,7 +93,7 @@
 .title {
   margin: 0;
   color: var(--text-primary);
-  font-size: 1.7rem;
+  font-size: clamp(1.18rem, 1.8vw, 1.45rem);
   line-height: 1.02;
   letter-spacing: -0.04em;
 }
@@ -155,7 +170,7 @@
 
 .salary {
   color: var(--text-primary);
-  font-size: 1.45rem;
+  font-size: 1.18rem;
   font-weight: 800;
   letter-spacing: -0.04em;
 }
@@ -166,6 +181,8 @@
   font-size: 13px;
   font-weight: 700;
 }
+
+.posted { display:inline-flex; align-items:center; justify-content:flex-end; gap:5px; margin-top:8px; color:var(--text-muted); font-size:11.5px; font-weight:700; }
 
 .description {
   margin: 0;
@@ -244,21 +261,22 @@
   font-weight: 600;
 }
 
-@media (max-width: 980px) {
+@media (max-width: 640px) {
   .card {
-    grid-template-columns: 1fr;
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 12px;
+    padding: 16px;
   }
 
-  .logoWrap {
-    justify-content: flex-start;
-  }
+  .logo { width: 44px; height: 44px; border-radius: 14px; }
 
   .topRow,
-  .bottomRow,
-  .titleRow {
+  .bottomRow {
     flex-direction: column;
     align-items: flex-start;
   }
+
+  .companyRow { align-items: flex-start; flex-direction: column-reverse; gap: 7px; }
 
   .right,
   .matchWrap,
@@ -267,4 +285,6 @@
     justify-content: flex-start;
     align-items: flex-start;
   }
+
+  .posted { justify-content: flex-start; }
 }

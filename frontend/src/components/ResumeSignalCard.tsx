@@ -8,17 +8,11 @@ interface Props {
 }
 
 export function getSignalCenter(insights: MarketInsightsResponse | null, jobCount: number) {
-  const topSkill = insights?.trending_skills?.[0]?.name ?? 'Python'
-  const secondSkill = insights?.trending_skills?.[1]?.name ?? 'Cloud'
-  const topLocation = insights?.top_locations?.[0]?.city ?? 'Dallas'
-  const secondLocation = insights?.top_locations?.[1]?.city ?? 'Plano'
+  const skills = insights?.trending_skills?.slice(0, 2).map((item) => item.name) ?? []
+  const locations = insights?.top_locations?.slice(0, 2).map((item) => item.city) ?? []
 
-  let confidence = 'Building signal'
-  if (jobCount >= 100) confidence = 'High match confidence'
-  else if (jobCount >= 25) confidence = 'Strong match signal'
-  else if (jobCount > 0) confidence = 'Emerging match signal'
-
-  return { topSkill, secondSkill, topLocation, secondLocation, confidence }
+  const feedLabel = jobCount === 1 ? '1 live role in view' : `${jobCount} live roles in view`
+  return { skills, locations, feedLabel }
 }
 
 export default function ResumeSignalCard({ insights, jobCount, hasResume }: Props) {
@@ -28,27 +22,27 @@ export default function ResumeSignalCard({ insights, jobCount, hasResume }: Prop
     <section className={styles.card} aria-label="Resume Signal Center">
       <div className={styles.label}>Resume Signal Center</div>
       <div className={styles.value}>
-        {hasResume ? signal.confidence : 'Ready to personalize'}
+        {hasResume ? 'Personalized ranking active' : 'Ready to personalize'}
       </div>
 
       <div className={styles.rows}>
         <div className={styles.row}>
           <span className={styles.rowLabel}>Strongest Markets</span>
           <span className={styles.rowValue}>
-            {signal.topLocation}, {signal.secondLocation}
+            {signal.locations.length ? signal.locations.join(', ') : 'Waiting for live market data'}
           </span>
         </div>
         <div className={styles.row}>
           <span className={styles.rowLabel}>Top Skill Themes</span>
           <span className={styles.rowValue}>
-            {signal.topSkill}, {signal.secondSkill}
+            {signal.skills.length ? signal.skills.join(', ') : 'Waiting for skill signals'}
           </span>
         </div>
       </div>
 
       <p className={styles.note}>
         {hasResume
-          ? 'Your resume is actively shaping match rankings across the feed.'
+          ? `Your resume is shaping rankings for ${signal.feedLabel}.`
           : 'Once uploaded, your resume will drive match quality across the app.'}
       </p>
     </section>

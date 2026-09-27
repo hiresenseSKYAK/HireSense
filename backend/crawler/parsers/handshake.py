@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 
 from services.job_relevance import assess_job_relevance
 from services.job_experience import assess_job_experience
+from services.job_location import assess_job_location
 
 try:
     from crawler.parsers.linkedin import (
@@ -188,13 +189,42 @@ def _extract_search_jobs(search_html):
     return jobs
 
 
+def _location_part(value):
+    if isinstance(value, dict):
+        value = value.get("name") or value.get("value")
+    return " ".join(str(value or "").split())
+
+
+def _format_location(location):
+    if not isinstance(location, dict):
+        return None
+    city = _location_part(
+        location.get("city") or location.get("addressLocality")
+    )
+    region = _location_part(
+        location.get("state")
+        or location.get("stateName")
+        or location.get("region")
+        or location.get("addressRegion")
+        or location.get("administrativeArea")
+    )
+    country = _location_part(
+        location.get("country")
+        or location.get("countryName")
+        or location.get("addressCountry")
+    )
+    parts = []
+    for part in (city, region, country):
+        if part and part.lower() not in {item.lower() for item in parts}:
+            parts.append(part)
+    return ", ".join(parts) or None
+
+
 def _location_from_card(card, search_location=None):
     locations = [loc for loc in (card.get("parsedLocations") or []) if isinstance(loc, dict)]
     if any(loc.get("isRemote") for loc in locations):
-        return "Remote"
-    if isinstance(search_location, dict) and search_location.get("isRemote"):
-        return "Remote"
-
+        evidence = next((_format_location(loc) for loc in locations if _format_location(loc)), None)
+        return f"Remote — {evidence}" if evidence else "Remote"
     wanted_city = None
     if isinstance(search_location, dict):
         wanted_city = (search_location.get("city") or "").strip().lower()
@@ -202,26 +232,35 @@ def _location_from_card(card, search_location=None):
         for loc in locations:
             city = (loc.get("city") or "").strip()
             if city.lower() == wanted_city:
-                return city
+                return _format_location(loc)
 
     for loc in locations:
-        city = (loc.get("city") or "").strip()
-        if city:
-            return city
+        formatted = _format_location(loc)
+        if formatted:
+            return formatted
     return None
 
 
 def _location_from_posting(posting):
+    loc_type = str(posting.get("jobLocationType") or "").upper()
     for place in _as_list(posting.get("jobLocation")):
         if not isinstance(place, dict):
             continue
         address = place.get("address") or {}
         if not isinstance(address, dict):
             continue
-        city = (address.get("addressLocality") or "").strip()
-        if city:
-            return city
-    loc_type = str(posting.get("jobLocationType") or "").upper()
+        formatted = _format_location(address)
+        if formatted:
+            return f"Remote — {formatted}" if loc_type == "TELECOMMUTE" else formatted
+    for requirement in _as_list(posting.get("applicantLocationRequirements")):
+        if isinstance(requirement, str):
+            formatted = _location_part(requirement)
+        elif isinstance(requirement, dict):
+            formatted = _format_location(requirement) or _location_part(requirement.get("name"))
+        else:
+            formatted = ""
+        if formatted:
+            return f"Remote — {formatted}" if loc_type == "TELECOMMUTE" else formatted
     if loc_type == "TELECOMMUTE":
         return "Remote"
     return None
@@ -237,7 +276,10 @@ def _work_style(posting, card):
     description = (posting.get("description") or "").lower()
     if "hybrid" in description:
         return "Hybrid"
-    if re.search(r"\bremote\b", description):
+    if re.search(
+        r"\b(?:fully remote|remote (?:role|position|job|work)|work(?:ing)? remotely|work from home)\b",
+        description,
+    ):
         return "Remote"
     return "On-site"
 
@@ -452,13 +494,22 @@ def _extract_details_from_posting(job_id, session, card=None, search_location=No
         salary = _normalize_salary_to_annual(salary_text, description)
 
     location = _location_from_card(card, search_location) or _location_from_posting(posting)
+    work_style = _work_style(posting, card)
+    location_decision = assess_job_location(location, work_style)
+    if not location_decision.accepted:
+        print(
+            f"[handshake] rejected id={job_id} title={job_title!r} "
+            f"reason={location_decision.reason} location={location!r}",
+            flush=True,
+        )
+        return None
 
     return {
         "source": "handshake",
         "source_job_id": str(job_id) if job_id is not None else None,
         "job_title": job_title,
         "company": company,
-        "location": location,
+        "location": "Remote" if location_decision.category == "Remote" else location,
         "salary": salary,
         "date_posted": _date_posted(posting, card),
         "application_link": _application_link(job_id, posting, description),
@@ -466,7 +517,7 @@ def _extract_details_from_posting(job_id, session, card=None, search_location=No
         "skills": [],
         "job_type": job_type,
         "experience_level": experience_level,
-        "work_style": _work_style(posting, card),
+        "work_style": "Remote" if location_decision.category == "Remote" else work_style,
     }
 
 

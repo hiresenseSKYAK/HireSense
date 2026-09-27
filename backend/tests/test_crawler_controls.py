@@ -42,6 +42,7 @@ class CrawlerControlTests(unittest.TestCase):
         handshake.assert_not_called()
         linkedin.assert_called_once()
         self.assertEqual(linkedin.call_args.kwargs["max_jobs"], 2)
+        self.assertLessEqual(linkedin.call_args.kwargs["time_limit_sec"], 3 * 60)
         self.assertEqual(upsert.call_count, 2)
         self.assertTrue(all(call.kwargs["dry_run"] for call in upsert.call_args_list))
         summaries.assert_not_called()

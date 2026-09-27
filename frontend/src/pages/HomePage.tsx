@@ -161,8 +161,13 @@ export default function HomePage() {
             />
           </div>
 
-          <button className="btn-primary" style={{ height: '58px', minWidth: '136px' }}>
-            Search
+          <button
+            type="button"
+            className="btn-primary"
+            style={{ height: '58px', minWidth: '136px' }}
+            onClick={() => document.getElementById('job-results')?.scrollIntoView({ behavior: 'smooth' })}
+          >
+            View {filteredJobs.length}
           </button>
         </div>
 
@@ -190,7 +195,7 @@ export default function HomePage() {
           />
         </div>
 
-        <section className={styles.jobsSection}>
+        <section className={styles.jobsSection} id="job-results" aria-busy={isLoading}>
           <div className={styles.jobsSectionHeader}>
             <div>
               <h2 className={styles.jobsTitle}>Top Matches</h2>
@@ -204,22 +209,39 @@ export default function HomePage() {
 
           <div className={styles.jobsList}>
             {isLoading ? (
-              <div className={styles.emptyState}>
-                <p>Loading job listings...</p>
+              <div className={styles.skeletonList} aria-label="Loading job listings">
+                {[0, 1, 2].map((item) => (
+                  <div className={styles.skeletonCard} key={item}>
+                    <span className={styles.skeletonLogo} />
+                    <div className={styles.skeletonBody}>
+                      <span className={styles.skeletonLineWide} />
+                      <span className={styles.skeletonLine} />
+                      <span className={styles.skeletonLineShort} />
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : error ? (
-              <div className={styles.emptyState}>
+              <div className={`${styles.emptyState} ${styles.errorState}`} role="alert">
+                <strong>We couldn’t load the live feed.</strong>
                 <p>{error}</p>
+                <button type="button" className="btn-outline" onClick={() => window.location.reload()}>
+                  Try again
+                </button>
               </div>
             ) : filteredJobs.length > 0 ? (
-              filteredJobs.map((job) => <JobCard key={job.id} job={job} />)
+              filteredJobs.map((job) => <JobCard key={job.id} job={job} showMatch={Boolean(savedResume)} />)
             ) : jobs.length === 0 ? (
               <div className={styles.emptyState}>
                 <p>No live jobs are available right now. Please check back after the next feed refresh.</p>
               </div>
             ) : (
               <div className={styles.emptyState}>
-                <p>No jobs matched your current search and filters.</p>
+                <strong>No roles match those filters.</strong>
+                <p>Clear a filter or broaden your search to see more of the live feed.</p>
+                <button type="button" className="btn-outline" onClick={() => { setQuery(''); setFilters(buildEmptyFilters()) }}>
+                  Reset search
+                </button>
               </div>
             )}
           </div>

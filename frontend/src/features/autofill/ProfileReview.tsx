@@ -16,6 +16,11 @@ import {
   sendConfirmedProfileToExtension,
 } from './extensionBridge'
 import styles from './ProfileReview.module.css'
+import {
+  clearAutofillProfileConfirmation,
+  getConfirmedAutofillProfile,
+  markAutofillProfileConfirmed,
+} from './readiness'
 
 interface ProfileReviewProps {
   resume: ResumeUploadResponse
@@ -46,9 +51,14 @@ const fields: Array<{
 ]
 
 export default function ProfileReview({ resume, draft, onContinue }: ProfileReviewProps) {
-  const [reviewState, setReviewState] = useState(() =>
-    ({ ...initializeProfileReviewState(resume), ...(draft ? { values: { ...draft } } : {}) }),
-  )
+  const [reviewState, setReviewState] = useState(() => {
+    const initial = initializeProfileReviewState(resume)
+    if (draft) return { ...initial, values: { ...draft } }
+    const confirmedProfile = getConfirmedAutofillProfile(resume)
+    return confirmedProfile
+      ? { ...initial, values: { ...confirmedProfile }, confirmedRevision: initial.revision }
+      : initial
+  })
   const initialValues = useMemo(() => initializeProfileReviewState(resume).values, [resume])
   const [edited, setEdited] = useState(false)
   const [sending, setSending] = useState(false)
@@ -65,6 +75,7 @@ export default function ProfileReview({ resume, draft, onContinue }: ProfileRevi
   useEffect(() => { if (isConfirmed) readyRef.current?.focus() }, [isConfirmed])
 
   const handleChange = (field: keyof ApplicantProfile, value: string) => {
+    clearAutofillProfileConfirmation()
     if (isConfirmed) setEdited(true)
     setHasReviewed(false)
     setBridgeStatus('')
@@ -79,10 +90,9 @@ export default function ProfileReview({ resume, draft, onContinue }: ProfileRevi
 
   const handleConfirm = () => {
     if (canConfirm) {
-      setReviewState((current) => {
-        const confirmed = confirmProfileReview(current)
-        return confirmed
-      })
+      const confirmed = confirmProfileReview(reviewState)
+      setReviewState(confirmed)
+      markAutofillProfileConfirmed(resume, confirmed.values)
     }
   }
 
@@ -163,7 +173,10 @@ export default function ProfileReview({ resume, draft, onContinue }: ProfileRevi
             checked={hasReviewed}
             onChange={(event) => {
               setHasReviewed(event.target.checked)
-              if (!event.target.checked) setReviewState((current) => ({ ...current, confirmedRevision: null }))
+              if (!event.target.checked) {
+                clearAutofillProfileConfirmation()
+                setReviewState((current) => ({ ...current, confirmedRevision: null }))
+              }
             }}
             disabled={sending}
           />

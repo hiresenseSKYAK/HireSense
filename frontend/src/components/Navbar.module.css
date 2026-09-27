@@ -9,7 +9,7 @@
 }
 
 .inner {
-  max-width: 1280px;
+  max-width: 1460px;
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -35,6 +35,7 @@
 .links {
   display: flex;
   gap: 4px;
+  margin-left: auto;
 }
 
 .link {

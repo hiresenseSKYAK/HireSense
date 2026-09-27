@@ -121,6 +121,7 @@
 
 .jobsSection {
   min-width: 0;
+  scroll-margin-top: calc(var(--nav-h, 61px) + var(--controls-h, 130px) + 16px);
 }
 
 .jobsSectionHeader {
@@ -163,6 +164,65 @@
   color: var(--text-muted);
   font-size: 0.96rem;
   backdrop-filter: blur(12px);
+}
+
+.emptyState strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text-primary);
+  font-family: 'Syne', sans-serif;
+  font-size: 1.05rem;
+}
+
+.emptyState p {
+  margin: 0 0 16px;
+}
+
+.errorState {
+  border-color: rgba(var(--burgundy-rgb), 0.38);
+}
+
+.skeletonList {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.skeletonCard {
+  display: grid;
+  grid-template-columns: 54px 1fr;
+  gap: 18px;
+  padding: 22px;
+  min-height: 170px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.skeletonLogo,
+.skeletonLine,
+.skeletonLineWide,
+.skeletonLineShort {
+  display: block;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(var(--burgundy-rgb), .07), rgba(var(--cream-rgb), .9), rgba(var(--burgundy-rgb), .07));
+  background-size: 220% 100%;
+  animation: skeletonPulse 1.4s ease-in-out infinite;
+}
+
+.skeletonLogo { width: 54px; height: 54px; border-radius: 16px; }
+.skeletonBody { display: flex; flex-direction: column; gap: 15px; padding-top: 6px; }
+.skeletonLineWide { width: 72%; height: 18px; }
+.skeletonLine { width: 92%; height: 12px; }
+.skeletonLineShort { width: 46%; height: 12px; }
+
+@keyframes skeletonPulse {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonLogo, .skeletonLine, .skeletonLineWide, .skeletonLineShort { animation: none; }
 }
 
 @media (max-width: 1100px) {

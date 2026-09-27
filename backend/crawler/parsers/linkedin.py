@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 
 from services.job_relevance import assess_job_relevance
 from services.job_experience import assess_job_experience
+from services.job_location import assess_job_location
 
 BASE_URL = "https://www.linkedin.com"
 # Guest `seeMoreJobPostings/search` returns ~10 listing cards per request; the UI
@@ -561,6 +562,17 @@ def _extract_details_from_posting(job_id, session, deadline=None):
         )
         return None
 
+    raw_location = _safe_text(soup.select_one("span.topcard__flavor--bullet"))
+    work_style = criteria.get("workplace type")
+    location_decision = assess_job_location(raw_location, work_style)
+    if not location_decision.accepted:
+        print(
+            f"[linkedin] rejected id={job_id} title={job_title!r} "
+            f"reason={location_decision.reason} location={raw_location!r}",
+            flush=True,
+        )
+        return None
+
     return {
         "source": "linkedin",
         "source_job_id": str(job_id) if job_id is not None else None,
@@ -568,9 +580,7 @@ def _extract_details_from_posting(job_id, session, deadline=None):
         "company": _safe_text(
             soup.select_one("a.topcard__org-name-link, span.topcard__flavor")
         ),
-        "location": _normalize_location(
-            _safe_text(soup.select_one("span.topcard__flavor--bullet"))
-        ),
+        "location": "Remote" if location_decision.category == "Remote" else _normalize_location(raw_location),
         "salary": salary,
         "date_posted": _normalize_relative_date(relative_date),
         "application_link": application_link,
@@ -578,7 +588,7 @@ def _extract_details_from_posting(job_id, session, deadline=None):
         "skills": [],
         "job_type": criteria.get("employment type"),
         "experience_level": experience_level,
-        "work_style": criteria.get("workplace type"),
+        "work_style": "Remote" if location_decision.category == "Remote" else work_style,
     }
 
 

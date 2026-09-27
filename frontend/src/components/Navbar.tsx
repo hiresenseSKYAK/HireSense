@@ -11,6 +11,13 @@ export default function Navbar() {
         </NavLink>
         <div className={styles.links}>
           <NavLink
+            to="/"
+            end
+            className={({ isActive }) => `${styles.link} ${isActive ? styles.active : ''}`}
+          >
+            Discover
+          </NavLink>
+          <NavLink
             to="/resume"
             className={({ isActive }) =>
               `${styles.link} ${isActive ? styles.active : ''}`

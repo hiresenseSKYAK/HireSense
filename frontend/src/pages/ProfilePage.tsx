@@ -1,341 +1,162 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import styles from './ProfilePage.module.css'
 import { IconBriefcase, IconClock, IconMap } from '../components/Icons'
 import { fetchJobs, fetchMarketInsights, type MarketInsightsResponse } from '../api/jobs'
 import { getAuthSession, logout } from '../api/auth'
 import { getResumeAnalysis } from '../utils/resumeStorage'
 import { matchResumeToJob } from '../utils/jobMatcher'
 import type { Job } from '../types'
-
-function getTopSkills(skills: string[]) {
-  return skills.slice(0, 6)
-}
-
-function getFocusAreas(jobs: Job[]) {
-  const titles = jobs.map((job) => job.title.toLowerCase())
-
-  const buckets = [
-    { label: 'Software Engineering', score: titles.filter((t) => t.includes('engineer')).length },
-    { label: 'Data / Analytics', score: titles.filter((t) => t.includes('data')).length },
-    { label: 'Cloud / DevOps', score: titles.filter((t) => t.includes('cloud') || t.includes('devops')).length },
-    { label: 'Internships', score: titles.filter((t) => t.includes('intern')).length },
-  ]
-
-  return buckets
-    .sort((a, b) => b.score - a.score)
-    .filter((item) => item.score > 0)
-    .slice(0, 3)
-}
+import styles from './ProfilePage.module.css'
+import {
+  clearAutofillProfileConfirmation,
+  getAutofillReadiness,
+} from '../features/autofill/readiness'
 
 function formatPosted(value?: string) {
-  if (!value) return 'Recently posted'
-  return value
+  return value?.trim() || 'Recently posted'
+}
+
+function countValues(values: Array<unknown>) {
+  return values.filter((value) => Array.isArray(value) ? value.length > 0 : Boolean(value)).length
 }
 
 export default function ProfilePage() {
   const navigate = useNavigate()
   const authSession = getAuthSession()
   const savedResume = getResumeAnalysis()
-
   const [jobs, setJobs] = useState<Job[]>([])
   const [insights, setInsights] = useState<MarketInsightsResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     async function loadProfileData() {
       try {
         setIsLoading(true)
+        setError('')
         const [jobsData, insightsData] = await Promise.all([fetchJobs(), fetchMarketInsights()])
         setJobs(jobsData)
         setInsights(insightsData)
-      } catch (error) {
-        console.error('Failed to load profile data:', error)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not load your career dashboard.')
       } finally {
         setIsLoading(false)
       }
     }
-
     void loadProfileData()
-  }, [])
+  }, [refreshKey])
 
-  const rankedJobs = useMemo(() => {
-    return jobs
-      .map((job) => {
-        const matchDetails = matchResumeToJob(savedResume?.parsed_data, job)
-        return {
-          ...job,
-          match: matchDetails.matchScore,
-          matchDetails,
-        }
-      })
-      .sort((a, b) => b.match - a.match)
-  }, [jobs, savedResume])
+  const rankedJobs = useMemo(() => jobs
+    .map((job) => ({ ...job, matchDetails: matchResumeToJob(savedResume?.parsed_data, job) }))
+    .map((job) => ({ ...job, match: job.matchDetails.matchScore }))
+    .sort((a, b) => b.match - a.match), [jobs, savedResume])
 
   const topMatches = rankedJobs.slice(0, 4)
-  const totalMatchesAbove70 = rankedJobs.filter((job) => job.match >= 70).length
-  const focusAreas = getFocusAreas(rankedJobs)
-  const resumeSkills = getTopSkills(savedResume?.parsed_data.skills ?? [])
+  const scores = savedResume ? rankedJobs.map((job) => job.match) : []
+  const strongMatches = scores.filter((score) => score >= 70).length
+  const averageMatch = scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : null
+  const highestMatch = scores.length ? Math.max(...scores) : null
+  const resumeSkills = savedResume?.parsed_data.skills?.slice(0, 8) ?? []
+  const parsed = savedResume?.parsed_data
+  const completionSignals = savedResume ? countValues([
+    savedResume, parsed?.name, parsed?.email, parsed?.phone, parsed?.skills,
+    parsed?.education, parsed?.experience,
+  ]) : 0
+  const profileCompletion = Math.round((completionSignals / 7) * 100)
+  const autofillReadiness = getAutofillReadiness(savedResume)
 
-  const appliedLike = rankedJobs.filter((job) => job.match >= 75).slice(0, 3)
-  const savedLike = rankedJobs.slice(3, 7)
+  const skillGaps = useMemo(() => {
+    if (!savedResume) return []
+    const counts = new Map<string, number>()
+    rankedJobs.slice(0, 8).forEach((job) => {
+      job.matchDetails?.missingSkills.forEach((skill) => counts.set(skill, (counts.get(skill) ?? 0) + 1))
+    })
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6)
+  }, [rankedJobs, savedResume])
 
+  const openJob = (jobId: number) => navigate(`/jobs/${jobId}`)
   const handleLogout = async () => {
+    clearAutofillProfileConfirmation()
     await logout(authSession?.token)
     navigate('/login')
   }
 
   return (
     <div className="page">
+      <header className={styles.pageHeader}>
+        <div>
+          <p className={styles.eyebrow}>Career command center</p>
+          <h1>Turn your profile into a stronger search.</h1>
+          <p>See what is ready, where you match, and the most useful next action—using only your resume and the live feed.</p>
+        </div>
+        <span className={`${styles.statusPill} ${savedResume ? styles.statusReady : ''}`}>
+          <span aria-hidden="true" /> {savedResume ? 'Matching active' : 'Resume needed'}
+        </span>
+      </header>
+
       <div className={styles.layout}>
         <aside className={styles.leftRail}>
           <section className={styles.accountCard}>
-            <div className={styles.cardEyebrow}>Account</div>
-            <h2 className={styles.accountName}>
-              {authSession?.user.username || 'HireSense User'}
-            </h2>
-            <div className={styles.accountEmail}>
-              {authSession?.user.email || 'No active account'}
-            </div>
-
+            <div className={styles.avatar}>{authSession?.user.username?.charAt(0).toUpperCase() || 'H'}</div>
+            <p className={styles.cardEyebrow}>Your account</p>
+            <h2 className={styles.accountName}>{authSession?.user.username || 'HireSense User'}</h2>
+            <p className={styles.accountEmail}>{authSession?.user.email || 'No active account'}</p>
             <div className={styles.accountDivider} />
-
-            <div className={styles.accountMetaGrid}>
-              <div className={styles.metaBlock}>
-                <span className={styles.metaLabel}>Resume Status</span>
-                <span className={styles.metaValue}>
-                  {savedResume ? 'Active for matching' : 'Not uploaded'}
-                </span>
-              </div>
-              <div className={styles.metaBlock}>
-                <span className={styles.metaLabel}>Top Skill Themes</span>
-                <span className={styles.metaValue}>
-                  {resumeSkills.length > 0 ? resumeSkills.slice(0, 2).join(', ') : 'Pending'}
-                </span>
-              </div>
-            </div>
-
-            <button
-              className="btn-outline"
-              style={{ width: '100%', padding: '11px', justifyContent: 'center', marginTop: '16px' }}
-              onClick={() => void handleLogout()}
-            >
-              Log Out
-            </button>
+            <div className={styles.completionHeader}><span>Profile completion</span><strong>{profileCompletion}%</strong></div>
+            <div className={styles.progressTrack} aria-label={`Profile ${profileCompletion}% complete`}><span style={{ width: `${profileCompletion}%` }} /></div>
+            <p className={styles.helperText}>{savedResume ? savedResume.filename : 'Upload a resume to begin matching.'}</p>
+            <button type="button" className="btn-outline" onClick={() => void handleLogout()}>Log out</button>
           </section>
 
           <section className={styles.sideCard}>
-            <div className={styles.cardEyebrow}>Search Signals</div>
-            <div className={styles.sideCardTitle}>
-              {savedResume ? 'Career dashboard live' : 'Upload your resume to unlock signals'}
+            <p className={styles.cardEyebrow}>Quick actions</p>
+            <div className={styles.actionList}>
+              <button type="button" onClick={() => navigate('/resume')}><strong>{savedResume ? 'Update resume' : 'Upload resume'}</strong><span>Refresh your analysis and match signal</span></button>
+              <button type="button" onClick={() => navigate('/application/prepare')}><strong>Review autofill profile</strong><span>{autofillReadiness.detail}</span></button>
+              <button type="button" onClick={() => navigate('/')}><strong>Browse live roles</strong><span>Return to the DFW-focused feed</span></button>
             </div>
-            <p className={styles.sideCardText}>
-              {savedResume
-                ? 'HireSense is using your uploaded resume and the live job feed to prioritize opportunities.'
-                : 'Once your resume is uploaded, this dashboard will personalize markets, skills, and top roles.'}
-            </p>
-
-            {resumeSkills.length > 0 && (
-              <div className={styles.skillChipWrap}>
-                {resumeSkills.map((skill) => (
-                  <span key={skill} className={styles.skillChip}>
-                    {skill}
-                  </span>
-                ))}
-              </div>
-            )}
           </section>
         </aside>
 
         <main className={styles.mainCol}>
-          <section className={styles.statsSection}>
-            <div className={styles.statsGrid}>
-              <div className={styles.statCard}>
-                <div className={styles.statValue}>{rankedJobs.length}</div>
-                <div className={styles.statLabel}>Live Roles Ranked</div>
-              </div>
-              <div className={styles.statCard}>
-                <div className={styles.statValue}>{totalMatchesAbove70}</div>
-                <div className={styles.statLabel}>Strong Matches</div>
-              </div>
-              <div className={styles.statCard}>
-                <div className={styles.statValue}>{savedResume?.analysis.score ?? '--'}</div>
-                <div className={styles.statLabel}>Resume Score</div>
-              </div>
-              <div className={styles.statCard}>
-                <div className={styles.statValue}>{insights?.top_locations?.[0]?.city ?? '—'}</div>
-                <div className={styles.statLabel}>Best Market</div>
-              </div>
-            </div>
+          <section className={styles.statsGrid} aria-label="Career readiness summary">
+            <div className={styles.statCard}><span>Live roles</span><strong>{isLoading ? '—' : jobs.length}</strong><small>in the current feed</small></div>
+            <div className={styles.statCard}><span>Strong matches</span><strong>{savedResume ? strongMatches : '—'}</strong><small>{savedResume ? 'scoring 70% or higher' : 'upload to calculate'}</small></div>
+            <div className={styles.statCard}><span>Average match</span><strong>{averageMatch === null ? '—' : `${averageMatch}%`}</strong><small>{highestMatch === null ? 'resume signal required' : `best match ${highestMatch}%`}</small></div>
+            <div className={styles.statCard}><span>Autofill readiness</span><strong>{autofillReadiness.label}</strong><small>{autofillReadiness.detail}</small></div>
           </section>
 
-          <section className={styles.dashboardSection}>
-            <div className={styles.sectionHeader}>
-              <div>
-                <h2 className={styles.sectionTitle}>Career Dashboard</h2>
-                <p className={styles.sectionSub}>
-                  Real-time view of your strongest opportunities, resume position, and live market direction.
-                </p>
-              </div>
+          {error && <section className={styles.errorCard} role="alert"><div><strong>Live dashboard data is unavailable.</strong><p>{error}</p></div><button type="button" className="btn-outline" onClick={() => setRefreshKey((key) => key + 1)}>Try again</button></section>}
+
+          <section className={styles.dashboardGrid}>
+            <div className={styles.panel}>
+              <div className={styles.sectionHeader}><div><p className={styles.cardEyebrow}>Resume signal</p><h2>Skill coverage</h2></div><button type="button" className={styles.textButton} onClick={() => navigate('/resume')}>View analysis →</button></div>
+              {resumeSkills.length ? <div className={styles.skillChipWrap}>{resumeSkills.map((skill) => <span key={skill} className={styles.skillChip}>{skill}</span>)}</div> : <div className={styles.emptyMini}>Upload a resume to see the skills currently shaping your matches.</div>}
+              <div className={styles.panelDivider} />
+              <p className={styles.subLabel}>Frequent gaps across top roles</p>
+              {skillGaps.length ? <div className={styles.gapList}>{skillGaps.map(([skill, count]) => <div key={skill}><span>{skill}</span><small>{count} role{count === 1 ? '' : 's'}</small></div>)}</div> : <div className={styles.emptyMini}>{savedResume ? 'No repeated skill gaps were found in the current top roles.' : 'Skill opportunities appear after resume matching is active.'}</div>}
             </div>
 
-            <div className={styles.dashboardGrid}>
-              <div className={styles.featureCard}>
-                <div className={styles.featureLabel}>Best Focus Areas</div>
-                <div className={styles.focusList}>
-                  {focusAreas.length > 0 ? (
-                    focusAreas.map((area) => (
-                      <div key={area.label} className={styles.focusItem}>
-                        <span className={styles.focusName}>{area.label}</span>
-                        <span className={styles.focusValue}>{area.score}</span>
-                      </div>
-                    ))
-                  ) : (
-                    <div className={styles.emptyMini}>Not enough live role data yet.</div>
-                  )}
-                </div>
-              </div>
-
-              <div className={styles.featureCard}>
-                <div className={styles.featureLabel}>Resume Positioning</div>
-                <div className={styles.featureHeadline}>
-                  {savedResume ? 'Your profile is ready for targeted applications.' : 'Upload a resume to unlock matching.'}
-                </div>
-                <p className={styles.featureText}>
-                  {savedResume
-                    ? savedResume.analysis.summary
-                    : 'Resume analysis powers role ranking, top-skill themes, and personalized opportunity tracking.'}
-                </p>
-              </div>
+            <div className={styles.panel}>
+              <div className={styles.sectionHeader}><div><p className={styles.cardEyebrow}>Live market</p><h2>Where opportunity is concentrated</h2></div></div>
+              {insights?.top_locations?.length ? <div className={styles.marketList}>{insights.top_locations.slice(0, 5).map((location, index) => <div key={location.city}><span><i>{index + 1}</i>{location.city}</span><strong>{location.count} role{location.count === 1 ? '' : 's'}</strong></div>)}</div> : <div className={styles.emptyMini}>{isLoading ? 'Loading live market signals…' : 'No location data is available yet.'}</div>}
+              <div className={styles.marketNote}>{insights ? `${insights.overview.remote_jobs} remote and ${insights.overview.hybrid_jobs} hybrid roles are currently represented.` : 'Work-style totals will appear with the live feed.'}</div>
             </div>
           </section>
 
           <section className={styles.jobSection}>
-            <div className={styles.sectionHeader}>
-              <div>
-                <h2 className={styles.sectionTitle}>Top Opportunities</h2>
-                <p className={styles.sectionSub}>
-                  Highest-ranked live roles based on your current resume and the job feed.
-                </p>
-              </div>
-            </div>
-
+            <div className={styles.sectionHeader}><div><p className={styles.cardEyebrow}>Recommended next</p><h2>Top opportunities</h2><p className={styles.sectionSub}>{savedResume ? 'Ranked from your current resume against the live feed.' : 'Upload a resume to turn these live roles into personalized matches.'}</p></div><button type="button" className="btn-outline" onClick={() => navigate('/')}>View all roles</button></div>
             <div className={styles.jobList}>
-              {isLoading ? (
-                <div className={styles.emptyState}>Loading your top opportunities...</div>
-              ) : topMatches.length > 0 ? (
-                topMatches.map((job) => (
-                  <div
-                    key={job.id}
-                    className={styles.jobRow}
-                    onClick={() => navigate(`/jobs/${job.id}`)}
-                  >
-                    <div className={styles.jobLogo}>{job.company?.charAt(0) || 'J'}</div>
-
-                    <div className={styles.jobInfo}>
-                      <div className={styles.jobTopRow}>
-                        <div className={styles.jobTitle}>{job.title}</div>
-                        <span className={styles.matchBadge}>{job.match}% match</span>
-                      </div>
-
-                      <div className={styles.jobMeta}>
-                        <span><IconBriefcase /> {job.company}</span>
-                        <span><IconMap /> {job.location}</span>
-                        <span><IconClock /> {formatPosted(job.posted)}</span>
-                      </div>
-
-                      {job.matchDetails?.matchedSkills?.length ? (
-                        <div className={styles.signalText}>
-                          Strong overlap: {job.matchDetails.matchedSkills.slice(0, 3).join(', ')}
-                        </div>
-                      ) : (
-                        <div className={styles.signalText}>Live role with active match scoring.</div>
-                      )}
-                    </div>
-
-                    <div className={styles.jobRight}>
-                      <div className={styles.jobSalary}>
-                        {typeof job.salary === 'number' ? `$${job.salary.toLocaleString()}` : job.salary}
-                      </div>
-                      <div className={styles.jobType}>{job.type}</div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className={styles.emptyState}>No live opportunities available yet.</div>
-              )}
+              {isLoading ? [0, 1, 2].map((item) => <div key={item} className={styles.jobSkeleton} />) : topMatches.length ? topMatches.map((job) => (
+                <div key={job.id} className={styles.jobRow} role="link" tabIndex={0} aria-label={`View ${job.title} at ${job.company}`} onClick={() => openJob(job.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openJob(job.id) } }}>
+                  <div className={styles.jobLogo}>{job.company?.charAt(0) || 'J'}</div>
+                  <div className={styles.jobInfo}><div className={styles.jobTopRow}><span className={styles.jobCompany}><IconBriefcase /> {job.company}</span>{savedResume && <span className={styles.matchBadge}>{job.match}% match</span>}</div><strong className={styles.jobTitle}>{job.title}</strong><div className={styles.jobMeta}><span><IconMap /> {job.location}</span><span><IconClock /> {formatPosted(job.posted)}</span></div>{savedResume && <p className={styles.signalText}>{job.matchDetails?.matchedSkills.length ? `Strong overlap: ${job.matchDetails.matchedSkills.slice(0, 3).join(', ')}` : 'No verified skill overlap yet—review the role requirements.'}</p>}</div>
+                  <span className={styles.rowArrow} aria-hidden="true">→</span>
+                </div>
+              )) : <div className={styles.emptyState}>No live opportunities are available yet. Check back after the next feed refresh.</div>}
             </div>
           </section>
-
-          <div className={styles.twoColumnGrid}>
-            <section className={styles.jobSection}>
-              <div className={styles.sectionHeader}>
-                <div>
-                  <h2 className={styles.sectionTitle}>Watchlist</h2>
-                  <p className={styles.sectionSub}>
-                    Additional roles worth reviewing as you refine your applications.
-                  </p>
-                </div>
-              </div>
-
-              <div className={styles.compactList}>
-                {savedLike.length > 0 ? (
-                  savedLike.map((job) => (
-                    <div
-                      key={job.id}
-                      className={styles.compactRow}
-                      onClick={() => navigate(`/jobs/${job.id}`)}
-                    >
-                      <div>
-                        <div className={styles.compactTitle}>{job.title}</div>
-                        <div className={styles.compactMeta}>
-                          {job.company} • {job.location}
-                        </div>
-                      </div>
-                      <span className={styles.compactPill}>{job.match}%</span>
-                    </div>
-                  ))
-                ) : (
-                  <div className={styles.emptyMini}>No additional watchlist roles yet.</div>
-                )}
-              </div>
-            </section>
-
-            <section className={styles.jobSection}>
-              <div className={styles.sectionHeader}>
-                <div>
-                  <h2 className={styles.sectionTitle}>Application Pipeline</h2>
-                  <p className={styles.sectionSub}>
-                    Suggested next applications based on your strongest current fit.
-                  </p>
-                </div>
-              </div>
-
-              <div className={styles.compactList}>
-                {appliedLike.length > 0 ? (
-                  appliedLike.map((job, index) => (
-                    <div
-                      key={job.id}
-                      className={styles.compactRow}
-                      onClick={() => navigate(`/jobs/${job.id}`)}
-                    >
-                      <div>
-                        <div className={styles.compactTitle}>{job.title}</div>
-                        <div className={styles.compactMeta}>
-                          {index === 0 ? 'Priority target' : index === 1 ? 'High-confidence role' : 'Recommended next step'}
-                        </div>
-                      </div>
-                      <span className={styles.stagePill}>
-                        {index === 0 ? 'Target' : index === 1 ? 'Ready' : 'Explore'}
-                      </span>
-                    </div>
-                  ))
-                ) : (
-                  <div className={styles.emptyMini}>No pipeline recommendations yet.</div>
-                )}
-              </div>
-            </section>
-          </div>
         </main>
       </div>
     </div>

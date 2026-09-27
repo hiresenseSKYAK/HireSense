@@ -10,7 +10,10 @@ try:
     from ai.skill_extraction import backfill_job_skills, extract_skills_for_jobs
     from crawler.parsers.handshake import parse_job_handshake
     from crawler.parsers.linkedin import parse_job_linkedin
-    from crawler.sources import DEFAULT_SOURCE_LIMITS, PER_SEARCH_ACCEPT_LIMIT, source_urls
+    from crawler.sources import (
+        DEFAULT_SOURCE_LIMITS, DEFAULT_SOURCE_TIME_LIMITS_SEC,
+        PER_SEARCH_ACCEPT_LIMIT, PER_SEARCH_TIME_LIMIT_SEC, source_urls,
+    )
     from database.job_identity import build_job_identity
     from database.queries import upsert_job
     from services.updater import update_database
@@ -23,13 +26,13 @@ except ImportError:
     from ai.skill_extraction import backfill_job_skills, extract_skills_for_jobs
     from crawler.parsers.handshake import parse_job_handshake
     from crawler.parsers.linkedin import parse_job_linkedin
-    from crawler.sources import DEFAULT_SOURCE_LIMITS, PER_SEARCH_ACCEPT_LIMIT, source_urls
+    from crawler.sources import (
+        DEFAULT_SOURCE_LIMITS, DEFAULT_SOURCE_TIME_LIMITS_SEC,
+        PER_SEARCH_ACCEPT_LIMIT, PER_SEARCH_TIME_LIMIT_SEC, source_urls,
+    )
     from database.job_identity import build_job_identity
     from database.queries import upsert_job
     from services.updater import update_database
-
-
-PER_URL_TIME_LIMIT_SEC = 10 * 60
 
 
 def _log_db_target():
@@ -45,17 +48,32 @@ def _log_db_target():
         conn.close()
 
 
-def collect_jobs(*, source: str, limit: int) -> tuple[list[dict], dict[str, int]]:
+def collect_jobs(
+    *, source: str, limit: int, time_limit_sec: int | None = None
+) -> tuple[list[dict], dict[str, int]]:
     """Collect bounded candidates across searches and deduplicate before DB work."""
     jobs: list[dict] = []
     seen: set[str] = set()
     totals = {"discovered": 0, "accepted": 0, "rejected": 0, "duplicates": 0, "source_errors": 0}
     urls = source_urls(source)
+    source_time_limit = time_limit_sec or DEFAULT_SOURCE_TIME_LIMITS_SEC[source]
+    deadline = time.monotonic() + source_time_limit
 
     for index, (source_name, url) in enumerate(urls, start=1):
         if len(jobs) >= limit:
             break
+        remaining_seconds = deadline - time.monotonic()
+        if remaining_seconds <= 0:
+            print(
+                f"[crawl] {source} source budget exhausted after {source_time_limit}s; "
+                "remaining searches skipped",
+                flush=True,
+            )
+            break
         per_search_limit = min(PER_SEARCH_ACCEPT_LIMIT, limit - len(jobs))
+        per_search_time_limit = max(
+            1, min(PER_SEARCH_TIME_LIMIT_SEC, int(remaining_seconds))
+        )
         print(
             f"[crawl] fetching {source_name} search {index}/{len(urls)} "
             f"(accept up to {per_search_limit}): {url}",
@@ -67,7 +85,7 @@ def collect_jobs(*, source: str, limit: int) -> tuple[list[dict], dict[str, int]
             parser = parse_job_linkedin if source_name == "linkedin" else parse_job_handshake
             found = parser(
                 url, max_jobs=per_search_limit,
-                time_limit_sec=PER_URL_TIME_LIMIT_SEC, stats=parser_stats,
+                time_limit_sec=per_search_time_limit, stats=parser_stats,
             )
         except Exception as exc:
             totals["source_errors"] += 1
@@ -106,9 +124,10 @@ def collect_jobs(*, source: str, limit: int) -> tuple[list[dict], dict[str, int]
 def run(*, dry_run=False, source="all", limit=None, skip_cleanup=False):
     run_started = time.monotonic()
     effective_limit = limit or DEFAULT_SOURCE_LIMITS[source]
+    effective_time_limit = DEFAULT_SOURCE_TIME_LIMITS_SEC[source]
     print(
         f"[crawl] started dry_run={dry_run} source={source} limit={effective_limit} "
-        f"skip_cleanup={skip_cleanup or dry_run}",
+        f"time_limit_seconds={effective_time_limit} skip_cleanup={skip_cleanup or dry_run}",
         flush=True,
     )
     _log_db_target()
@@ -123,7 +142,9 @@ def run(*, dry_run=False, source="all", limit=None, skip_cleanup=False):
             cleanup_errors = 1
             print(f"[crawl] lifecycle checks failed; ingestion continues: {exc}", flush=True)
 
-    jobs, totals = collect_jobs(source=source, limit=effective_limit)
+    jobs, totals = collect_jobs(
+        source=source, limit=effective_limit, time_limit_sec=effective_time_limit
+    )
     totals["source_errors"] += cleanup_errors
     print(f"[crawl] unique candidates before database work: {len(jobs)}", flush=True)
     if jobs:

@@ -18,11 +18,10 @@ function render(node: React.ReactNode) {
 }
 
 describe('ResumeSignalCard', () => {
-  it('scales match confidence with the number of live roles', () => {
-    expect(getSignalCenter(null, 0).confidence).toBe('Building signal')
-    expect(getSignalCenter(null, 3).confidence).toBe('Emerging match signal')
-    expect(getSignalCenter(null, 25).confidence).toBe('Strong match signal')
-    expect(getSignalCenter(null, 100).confidence).toBe('High match confidence')
+  it('describes job volume without presenting it as match confidence', () => {
+    expect(getSignalCenter(null, 0).feedLabel).toBe('0 live roles in view')
+    expect(getSignalCenter(null, 1).feedLabel).toBe('1 live role in view')
+    expect(getSignalCenter(null, 100).feedLabel).toBe('100 live roles in view')
   })
 
   it('invites an upload when there is no resume', () => {
@@ -33,8 +32,22 @@ describe('ResumeSignalCard', () => {
 
   it('shows the live signal once a resume is saved', () => {
     render(<ResumeSignalCard insights={null} jobCount={12} hasResume />)
-    expect(document.body.textContent).toContain('Emerging match signal')
-    expect(document.body.textContent).toContain('Dallas, Plano')
-    expect(document.body.textContent).toContain('actively shaping match rankings')
+    expect(document.body.textContent).toContain('Personalized ranking active')
+    expect(document.body.textContent).toContain('12 live roles in view')
+    expect(document.body.textContent).not.toContain('match confidence')
+    expect(document.body.textContent).toContain('Waiting for live market data')
+    expect(document.body.textContent).toContain('resume is shaping rankings')
+  })
+
+  it('uses only live insight values when they exist', () => {
+    render(<ResumeSignalCard insights={{
+      overview: { total_jobs: 2, remote_jobs: 1, hybrid_jobs: 1, onsite_jobs: 0 },
+      trending_skills: [{ name: 'TypeScript', count: 2 }],
+      top_locations: [{ city: 'Irving', count: 2 }],
+      top_companies: [],
+    }} jobCount={2} hasResume />)
+    expect(document.body.textContent).toContain('Irving')
+    expect(document.body.textContent).toContain('TypeScript')
+    expect(document.body.textContent).not.toContain('Dallas')
   })
 })

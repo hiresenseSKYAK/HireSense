@@ -36,17 +36,26 @@ LINKEDIN_REMOTE_KEYWORDS = (
 )
 
 HANDSHAKE_URLS = (
-    "https://joinhandshake.com/internships/dallas-tx/",
-    "https://joinhandshake.com/internships/dallas-tx/engineering/",
+    "https://joinhandshake.com/internships/dallas-tx/artificial-intelligence/",
+    "https://joinhandshake.com/internships/dallas-tx/computer-science/",
     "https://joinhandshake.com/internships/dallas-tx/data-science/",
-    "https://joinhandshake.com/internships/role/computer-science/",
-    "https://joinhandshake.com/internships/remote/engineering/",
+    "https://joinhandshake.com/internships/dallas-tx/software-engineering/",
+    "https://joinhandshake.com/internships/dallas-tx/information-technology/",
+    "https://joinhandshake.com/internships/dallas-tx/cybersecurity/",
+    "https://joinhandshake.com/internships/remote/computer-science/",
+    "https://joinhandshake.com/internships/remote/data-science/",
+    "https://joinhandshake.com/internships/remote/software-engineering/",
     "https://joinhandshake.com/internships/remote/information-technology/",
+    "https://joinhandshake.com/internships/remote/cybersecurity/",
 )
 
 # A search gets a modest share of the run so the first broad query cannot starve
 # later specialties. Source ceilings bound scheduled request volume.
 PER_SEARCH_ACCEPT_LIMIT = 20
+PER_SEARCH_TIME_LIMIT_SEC = 3 * 60
+# The workflow runs LinkedIn and Handshake sequentially with a 45-minute cap.
+# These hard source budgets leave at least ten minutes for setup and migrations.
+DEFAULT_SOURCE_TIME_LIMITS_SEC = {"linkedin": 20 * 60, "handshake": 12 * 60, "all": 32 * 60}
 DEFAULT_SOURCE_LIMITS = {"linkedin": 150, "handshake": 100, "all": 250}
 
 

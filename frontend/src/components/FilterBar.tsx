@@ -110,8 +110,11 @@ export default function FilterBar({
               {i > 0 && <div className={styles.dividerV} />}
               <div className={styles.filterBtn}>
                 <button
+                  type="button"
                   className={`${styles.btn} ${count > 0 ? styles.active : ''}`}
                   onClick={() => toggle(f.id)}
+                  aria-expanded={isOpen}
+                  aria-haspopup="menu"
                 >
                   {f.label}
                   {count > 0 && <span className={styles.countBadge}>{count}</span>}
@@ -144,7 +147,7 @@ export default function FilterBar({
         })}
 
         {totalSelected > 0 && (
-          <button className={styles.clearBtn} onClick={clearAll}>
+          <button type="button" className={styles.clearBtn} onClick={clearAll}>
             Clear all
           </button>
         )}
@@ -159,7 +162,12 @@ export default function FilterBar({
           {pills.map(({ filterId, val }) => (
             <span key={filterId + val} className={styles.pill}>
               {val}
-              <span className={styles.pillX} onClick={() => removePill(filterId, val)}>×</span>
+              <button
+                type="button"
+                className={styles.pillX}
+                onClick={() => removePill(filterId, val)}
+                aria-label={`Remove ${val} filter`}
+              >×</button>
             </span>
           ))}
         </div>
