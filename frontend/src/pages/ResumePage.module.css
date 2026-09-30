@@ -1,22 +1,3 @@
-.header {
-  margin-bottom: 28px;
-}
-
-.title {
-  font-family: 'Syne', sans-serif;
-  font-weight: 800;
-  font-size: 1.8rem;
-  letter-spacing: -0.02em;
-}
-
-.subtitle {
-  color: var(--text-secondary);
-  font-size: 0.92rem;
-  margin-top: 4px;
-  line-height: 1.65;
-  max-width: 760px;
-}
-
 .layout {
   display: grid;
   grid-template-columns: 1fr 1.1fr;
@@ -24,10 +5,27 @@
   align-items: start;
 }
 
-.leftColumn {
+.savedLayout {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+.savedBar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.savedBar .statusMessage {
+  flex-basis: 100%;
+  margin-top: 0;
 }
 
 .uploadBox {
@@ -74,7 +72,7 @@
 }
 
 .uploadTitle {
-  font-family: 'Syne', sans-serif;
+  font-family: 'DM Sans', sans-serif;
   font-weight: 700;
   font-size: 1rem;
   margin-bottom: 6px;
@@ -94,24 +92,6 @@
   margin-top: 12px;
 }
 
-.uploadHelperGrid {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.helperPill {
-  padding: 7px 10px;
-  border-radius: 999px;
-  font-size: 0.74rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  background: var(--surface2);
-  border: 1px solid var(--border);
-}
-
 .statusMessage {
   margin-top: 14px;
   font-size: 0.82rem;
@@ -120,28 +100,8 @@
   line-height: 1.5;
 }
 
-.successState {
-  color: var(--text-primary);
-}
-
 .errorState {
   color: var(--red);
-}
-
-.recentCard {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 20px;
-  box-shadow: var(--shadow-sm);
-}
-
-.recentCardHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
 }
 
 .recentActions {
@@ -177,10 +137,8 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px;
-  background: var(--surface2);
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
+  flex: 1;
+  min-width: 0;
 }
 
 .recentFileBadge {
@@ -220,43 +178,6 @@
   font-weight: 700;
 }
 
-.commandGrid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-  margin-top: 14px;
-}
-
-.commandCard {
-  padding: 14px;
-  border-radius: 14px;
-  background: linear-gradient(180deg, var(--surface-strong) 0%, var(--surface) 100%);
-  border: 1px solid var(--border);
-}
-
-.commandLabel {
-  color: var(--text-muted);
-  font-size: 0.72rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin-bottom: 8px;
-}
-
-.commandValue {
-  font-family: 'Syne', sans-serif;
-  font-size: 1rem;
-  line-height: 1.15;
-  color: var(--text-primary);
-  margin-bottom: 6px;
-}
-
-.commandSub {
-  color: var(--text-secondary);
-  font-size: 0.82rem;
-  line-height: 1.55;
-}
-
 .analysisCard {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -266,7 +187,7 @@
 }
 
 .analysisTitle {
-  font-family: 'Syne', sans-serif;
+  font-family: 'DM Sans', sans-serif;
   font-weight: 700;
   font-size: 1.1rem;
   margin-bottom: 20px;
@@ -311,7 +232,7 @@
 .scoreNum {
   position: relative;
   z-index: 1;
-  font-family: 'Syne', sans-serif;
+  font-family: 'DM Sans', sans-serif;
   font-weight: 800;
   font-size: 1.15rem;
 }
@@ -328,7 +249,7 @@
 }
 
 .scoreLabel {
-  font-family: 'Syne', sans-serif;
+  font-family: 'DM Sans', sans-serif;
   font-weight: 700;
   font-size: 0.95rem;
 }
@@ -368,7 +289,7 @@
 }
 
 .snapshotValue {
-  font-family: 'Syne', sans-serif;
+  font-family: 'DM Sans', sans-serif;
   font-size: 1.15rem;
   font-weight: 800;
   color: var(--text-primary);
@@ -527,7 +448,7 @@
 }
 
 .entryTitle {
-  font-family: 'Syne', sans-serif;
+  font-family: 'DM Sans', sans-serif;
   font-size: 0.95rem;
   font-weight: 700;
   color: var(--text-primary);
@@ -567,7 +488,7 @@
 
 .threeColumnGrid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1.2fr;
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
 
@@ -652,9 +573,9 @@
 }
 
 @media (max-width: 640px) {
-  .recentCardHeader {
+  .savedBar {
+    align-items: stretch;
     flex-direction: column;
-    align-items: flex-start;
   }
 
   .recentActions {

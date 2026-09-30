@@ -61,6 +61,8 @@ def main() -> int:
     if args.api_url:
         with urlopen(args.api_url, timeout=30) as response:
             payload = json.load(response)
+        if isinstance(payload, dict):
+            payload = payload.get("items") or []
         rows = [
             {
                 **row,

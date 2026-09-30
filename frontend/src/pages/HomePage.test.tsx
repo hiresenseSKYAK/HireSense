@@ -7,7 +7,7 @@ import { fetchJobs, fetchMarketInsights } from '../api/jobs'
 import type { Job } from '../types'
 import HomePage from './HomePage'
 
-vi.mock('../api/jobs', () => ({ fetchJobs: vi.fn(), fetchMarketInsights: vi.fn() }))
+vi.mock('../api/jobs', () => ({ fetchJobs: vi.fn(), fetchMarketInsights: vi.fn(), JOB_PAGE_SIZE: 20 }))
 vi.mock('../utils/resumeStorage', () => ({ getResumeAnalysis: () => null }))
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -18,10 +18,26 @@ const jobs: Job[] = [
 ]
 const insights = { overview: { total_jobs: 2, remote_jobs: 0, hybrid_jobs: 1, onsite_jobs: 1 }, trending_skills: [], top_locations: [], top_companies: [] }
 
+function pageOf(items: Job[], extra: { total?: number; page?: number } = {}) {
+  return {
+    items,
+    total: extra.total ?? items.length,
+    page: extra.page ?? 1,
+    pageSize: 20,
+    cities: ['Dallas', 'Plano'],
+    matchSummary: null,
+  }
+}
+
 let root: Root | undefined
 
 beforeEach(() => {
-  vi.mocked(fetchJobs).mockResolvedValue(jobs)
+  vi.mocked(fetchJobs).mockImplementation(async (params) => {
+    if (params?.query === 'no-such-role') return pageOf([])
+    if (params?.page === 2) return pageOf([jobs[1]], { total: 25, page: 2 })
+    const items = params?.sort === 'company' ? [jobs[1], jobs[0]] : jobs
+    return pageOf(items, { total: params?.pageSize === 20 && params.sort === 'company' ? items.length : 25 })
+  })
   vi.mocked(fetchMarketInsights).mockResolvedValue(insights)
 })
 
@@ -52,21 +68,43 @@ function setValue(element: HTMLInputElement | HTMLSelectElement, value: string) 
   })
 }
 
+async function settle(ms = 0) {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, ms))
+  })
+}
+
 describe('Home job discovery', () => {
   it('searches, resets, and sorts the live feed with actionable controls', async () => {
     await renderPage()
     expect(document.querySelectorAll('article')).toHaveLength(2)
+    expect(document.body.textContent).toContain('Showing 1–20 of 25')
 
     const search = document.querySelector<HTMLInputElement>('input[placeholder^="Search"]')!
     setValue(search, 'no-such-role')
+    await settle(350)
     expect(document.body.textContent).toContain('No roles match those filters')
 
     const reset = Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.includes('Reset search'))!
     act(() => reset.click())
+    await settle()
     expect(document.querySelectorAll('article')).toHaveLength(2)
 
     const select = document.querySelector<HTMLSelectElement>('select')!
     setValue(select, 'company')
+    await settle()
     expect(document.querySelector('article')?.textContent).toContain('Alpha')
+  })
+
+  it('requests the next page instead of rendering the whole feed', async () => {
+    await renderPage()
+    const pageTwo = Array.from(document.querySelectorAll('button')).find((button) => button.textContent === '2')
+    expect(pageTwo).toBeTruthy()
+    act(() => pageTwo?.click())
+    await settle()
+    expect(vi.mocked(fetchJobs).mock.calls.some(([params]) => params?.page === 2)).toBe(true)
+    expect(document.querySelectorAll('article')).toHaveLength(1)
+    expect(document.body.textContent).toContain('Software Engineer Intern')
+    expect(document.body.textContent).toContain('Showing 21–25 of 25')
   })
 })

@@ -14,8 +14,60 @@ export type MarketInsightsResponse = {
   top_companies: { name: string; count: number }[]
 }
 
-export async function fetchJobs(): Promise<Job[]> {
-  const response = await fetch(`${API_BASE_URL}/jobs/`)
+export const JOB_PAGE_SIZE = 20
+
+export type MatchSummary = {
+  strong: number
+  average: number | null
+  highest: number | null
+  scored: number
+}
+
+export type JobsPage = {
+  items: Job[]
+  total: number
+  page: number
+  pageSize: number
+  cities: string[]
+  matchSummary: MatchSummary | null
+}
+
+export type JobListParams = {
+  page?: number
+  pageSize?: number
+  query?: string
+  sort?: string
+  cities?: string[]
+  styles?: string[]
+  experience?: string[]
+  salaries?: string[]
+  types?: string[]
+  dates?: string[]
+  skills?: string[]
+  signal?: AbortSignal
+}
+
+function appendAll(params: URLSearchParams, key: string, values?: string[]) {
+  for (const value of values ?? []) {
+    if (value) params.append(key, value)
+  }
+}
+
+export async function fetchJobs(params: JobListParams = {}): Promise<JobsPage> {
+  const search = new URLSearchParams()
+  search.set('page', String(params.page ?? 1))
+  search.set('page_size', String(params.pageSize ?? JOB_PAGE_SIZE))
+  if (params.query?.trim()) search.set('q', params.query.trim())
+  if (params.sort) search.set('sort', params.sort)
+  appendAll(search, 'city', params.cities)
+  appendAll(search, 'style', params.styles)
+  appendAll(search, 'experience', params.experience)
+  appendAll(search, 'salary', params.salaries)
+  appendAll(search, 'type', params.types)
+  appendAll(search, 'date', params.dates)
+  appendAll(search, 'skill', params.skills)
+
+  const response = await fetch(`${API_BASE_URL}/jobs/?${search.toString()}`, { signal: params.signal })
 
   if (!response.ok) {
     if (response.status === 503) {
@@ -24,7 +76,15 @@ export async function fetchJobs(): Promise<Job[]> {
     throw new Error('Failed to fetch jobs.')
   }
 
-  return response.json()
+  const body = await response.json()
+  return {
+    items: Array.isArray(body.items) ? body.items : [],
+    total: Number(body.total) || 0,
+    page: Number(body.page) || 1,
+    pageSize: Number(body.page_size) || JOB_PAGE_SIZE,
+    cities: Array.isArray(body.cities) ? body.cities : [],
+    matchSummary: body.match_summary ?? null,
+  }
 }
 
 export async function fetchJob(jobId: number): Promise<Job> {

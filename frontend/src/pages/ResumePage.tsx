@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { IconAlert, IconCheck, IconUpload, IconX } from '../components/Icons'
+import { IconCheck, IconUpload, IconX } from '../components/Icons'
 import {
   uploadResume,
   type ResumeUploadResponse,
   type StructuredResumeEntry,
 } from '../api/resume'
-import { fetchMarketInsights, type MarketInsightsResponse } from '../api/jobs'
 import {
   clearResumeAnalysis,
   getResumeAnalysis,
@@ -90,17 +89,6 @@ function AnalysisList({
   )
 }
 
-function getPriorityFixes(items: string[]) {
-  return items.slice(0, 3)
-}
-
-function getReadinessLabel(score: number) {
-  if (score >= 85) return 'High readiness'
-  if (score >= 70) return 'Strong foundation'
-  if (score >= 55) return 'Needs refinement'
-  return 'Early-stage resume'
-}
-
 export default function ResumePage() {
   const navigate = useNavigate()
   const [isDragging, setIsDragging] = useState(false)
@@ -108,9 +96,7 @@ export default function ResumePage() {
   const [selectedFileName, setSelectedFileName] = useState('')
   const [uploadedAt, setUploadedAt] = useState('')
   const [error, setError] = useState('')
-  const [successMessage, setSuccessMessage] = useState('')
   const [resumeResult, setResumeResult] = useState<ResumeUploadResponse | null>(null)
-  const [insights, setInsights] = useState<MarketInsightsResponse | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -123,21 +109,7 @@ export default function ResumePage() {
       setUploadedAt(savedResume.saved_at
         ? new Date(savedResume.saved_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
         : 'saved locally')
-      setSuccessMessage('Loaded your most recent uploaded resume.')
     }
-  }, [])
-
-  useEffect(() => {
-    async function loadInsights() {
-      try {
-        const data = await fetchMarketInsights()
-        setInsights(data)
-      } catch (err) {
-        console.error('Failed to load market insights for resume page:', err)
-      }
-    }
-
-    void loadInsights()
   }, [])
 
   const isAllowedFile = (file: File) => {
@@ -190,30 +162,15 @@ export default function ResumePage() {
     }
   }
 
-  const resetUpload = () => {
-    setResumeResult(null)
-    setError('')
-    setSuccessMessage('')
-    setSelectedFileName('')
-    setUploadedAt('')
-    clearResumeAnalysis()
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
-  }
-
   const handleFileUpload = async (file: File) => {
     const validationError = validateFile(file)
     if (validationError) {
       setError(validationError)
-      setSuccessMessage('')
       return
     }
 
     try {
       setError('')
-      setSuccessMessage('')
       setIsUploading(true)
       setSelectedFileName(file.name)
 
@@ -221,7 +178,6 @@ export default function ResumePage() {
       setResumeResult(result)
       saveResumeAnalysis(result)
       setUploadedAt(formatTime())
-      setSuccessMessage('Resume uploaded and analyzed successfully.')
     } catch (err) {
       setResumeResult(null)
       clearResumeAnalysis()
@@ -261,6 +217,7 @@ export default function ResumePage() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
+    e.target.value = ''
     if (file) {
       void handleFileUpload(file)
     }
@@ -268,35 +225,20 @@ export default function ResumePage() {
 
   const parsed = resumeResult?.parsed_data
   const analysis = resumeResult?.analysis
-
-  const readinessSummary = useMemo(() => {
-    if (!analysis || !parsed) {
-      return null
-    }
-
-    const topSkill = insights?.trending_skills?.[0]?.name ?? null
-    const topLocation = insights?.top_locations?.[0]?.city ?? null
-
-    return {
-      readiness: getReadinessLabel(analysis.score),
-      topSkill,
-      topLocation,
-      priorityFixes: getPriorityFixes(analysis.improvements),
-    }
-  }, [analysis, parsed, insights])
+  const priorityFixes = analysis?.improvements.slice(0, 3) ?? []
 
   return (
     <div className="page">
-      <div className={styles.header}>
-        <h1 className={styles.title}>Upload Resume</h1>
-        <p className={styles.subtitle}>
-          Upload a PDF or DOCX resume to get a harsher technical review, structured parsing,
-          and specific recommendations to improve it.
-        </p>
-      </div>
-
-      <div className={styles.layout}>
-        <div className={styles.leftColumn}>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.docx"
+        className={styles.hiddenInput}
+        onChange={handleFileChange}
+        disabled={isUploading}
+      />
+      <div className={resumeResult ? styles.savedLayout : styles.layout}>
+        {!resumeResult ? (
           <div
             className={`${styles.uploadBox} ${isDragging ? styles.dragging : ''} ${
               isUploading ? styles.uploading : ''
@@ -308,15 +250,6 @@ export default function ResumePage() {
               if (!isUploading) fileInputRef.current?.click()
             }}
           >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.docx"
-              className={styles.hiddenInput}
-              onChange={handleFileChange}
-              disabled={isUploading}
-            />
-
             <div className={styles.uploadIcon}>
               <IconUpload />
             </div>
@@ -344,99 +277,47 @@ export default function ResumePage() {
 
             <div className={styles.uploadFormats}>Supports PDF and DOCX • Max size 5 MB</div>
 
-            <div className={styles.uploadHelperGrid}>
-              <div className={styles.helperPill}>Better scoring feedback</div>
-              <div className={styles.helperPill}>Specific fix recommendations</div>
-              <div className={styles.helperPill}>Structured project parsing</div>
-            </div>
-
-            {isUploading && (
-              <div className={styles.statusMessage}>
-                Uploading and analyzing your resume...
-              </div>
-            )}
-
-            {successMessage && !isUploading && (
-              <div className={`${styles.statusMessage} ${styles.successState}`}>
-                {successMessage}
-              </div>
-            )}
-
             {error && (
               <div className={`${styles.statusMessage} ${styles.errorState}`}>{error}</div>
             )}
           </div>
-
-          <div className={styles.recentCard}>
-            <div className={styles.recentCardHeader}>
-              <div className="section-title">Resume Command Center</div>
-              {resumeResult && (
-                <div className={styles.recentActions}>
-                  {parsed && analysis && (
-                    <button
-                      className="btn-primary"
-                      onClick={() => navigate('/application/prepare')}
-                    >
-                      Prepare Application
-                    </button>
-                  )}
-                  <button className={styles.secondaryButton} onClick={resetUpload}>
-                    Upload Another
-                  </button>
+        ) : (
+          <div className={styles.savedBar}>
+            <div className={styles.recentFile}>
+              <div className={styles.recentFileBadge}>CV</div>
+              <div className={styles.recentFileInfo}>
+                <div className={styles.recentFileName}>
+                  {selectedFileName || resumeResult.filename}
                 </div>
-              )}
+                <div className={styles.recentFileMeta}>
+                  {isUploading ? 'Analyzing your resume...' : `Uploaded ${uploadedAt || 'just now'}`}
+                </div>
+              </div>
+              <div className={styles.recentFileStatus}>{isUploading ? 'Processing' : 'Processed'}</div>
             </div>
-
-            {!resumeResult ? (
-              <div className={styles.emptyState}>No resume uploaded yet.</div>
-            ) : (
-              <>
-                <div className={styles.recentFile}>
-                  <div className={styles.recentFileBadge}>CV</div>
-
-                  <div className={styles.recentFileInfo}>
-                    <div className={styles.recentFileName}>
-                      {selectedFileName || resumeResult.filename}
-                    </div>
-                    <div className={styles.recentFileMeta}>
-                      Uploaded {uploadedAt || 'just now'}
-                    </div>
-                  </div>
-
-                  <div className={styles.recentFileStatus}>Processed</div>
-                </div>
-
-                {readinessSummary && (
-                  <div className={styles.commandGrid}>
-                    <div className={styles.commandCard}>
-                      <div className={styles.commandLabel}>Match Readiness</div>
-                      <div className={styles.commandValue}>{readinessSummary.readiness}</div>
-                      <div className={styles.commandSub}>
-                        This resume is currently powering job match scores across HireSense.
-                      </div>
-                    </div>
-
-                    <div className={styles.commandCard}>
-                      <div className={styles.commandLabel}>Best Market Signal</div>
-                      <div className={styles.commandValue}>{readinessSummary.topLocation || 'No live signal'}</div>
-                      <div className={styles.commandSub}>
-                        {readinessSummary.topLocation ? 'Strongest live market based on the current feed.' : 'Location data will appear when qualifying roles are available.'}
-                      </div>
-                    </div>
-
-                    <div className={styles.commandCard}>
-                      <div className={styles.commandLabel}>Top Skill Theme</div>
-                      <div className={styles.commandValue}>{readinessSummary.topSkill || 'No live signal'}</div>
-                      <div className={styles.commandSub}>
-                        {readinessSummary.topSkill ? 'Strong recurring signal in current live roles.' : 'Skill demand will appear when structured job skills are available.'}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </>
+            <div className={styles.recentActions}>
+              {parsed && analysis && (
+                <button
+                  className="btn-primary"
+                  onClick={() => navigate('/application/prepare')}
+                  disabled={isUploading}
+                >
+                  Prepare Application
+                </button>
+              )}
+              <button
+                className={styles.secondaryButton}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+              >
+                Replace
+              </button>
+            </div>
+            {error && (
+              <div className={`${styles.statusMessage} ${styles.errorState}`}>{error}</div>
             )}
           </div>
-        </div>
+        )}
 
         <div className={styles.analysisCard}>
           <h2 className={styles.analysisTitle}>Resume Analysis</h2>
@@ -464,6 +345,22 @@ export default function ResumePage() {
                 </div>
               </div>
 
+              {priorityFixes.length > 0 && (
+                <section className={styles.sectionCard}>
+                  <div className={styles.analysisSectionTitle}>Priority Fixes</div>
+                  <div className={styles.priorityFixGrid}>
+                    {priorityFixes.map((fix, index) => (
+                      <div key={`${fix}-${index}`} className={styles.priorityFixCard}>
+                        <div className={styles.priorityFixLabel}>
+                          {index === 0 ? 'High Priority' : index === 1 ? 'Quick Win' : 'Improve Next'}
+                        </div>
+                        <div className={styles.priorityFixText}>{fix}</div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
               <div className={styles.snapshotGrid}>
                 <div className={styles.snapshotCard}>
                   <div className={styles.snapshotValue}>{parsed.skills.length}</div>
@@ -482,22 +379,6 @@ export default function ResumePage() {
                   <div className={styles.snapshotLabel}>Major Warnings</div>
                 </div>
               </div>
-
-              {readinessSummary && readinessSummary.priorityFixes.length > 0 && (
-                <section className={styles.sectionCard}>
-                  <div className={styles.analysisSectionTitle}>Priority Fixes</div>
-                  <div className={styles.priorityFixGrid}>
-                    {readinessSummary.priorityFixes.map((fix, index) => (
-                      <div key={`${fix}-${index}`} className={styles.priorityFixCard}>
-                        <div className={styles.priorityFixLabel}>
-                          {index === 0 ? 'High Priority' : index === 1 ? 'Quick Win' : 'Improve Next'}
-                        </div>
-                        <div className={styles.priorityFixText}>{fix}</div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
 
               <section className={styles.sectionCard}>
                 <div className={styles.analysisSectionTitle}>Contact Information</div>
@@ -580,14 +461,6 @@ export default function ResumePage() {
                   icon={<IconX />}
                   tone="neg"
                   emptyText="No major warnings found."
-                />
-
-                <AnalysisList
-                  title="Recommended Fixes"
-                  items={analysis.improvements}
-                  icon={<IconAlert />}
-                  tone="warn"
-                  emptyText="No improvements found."
                 />
               </div>
             </div>

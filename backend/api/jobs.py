@@ -1,7 +1,8 @@
 from collections import Counter
 import logging
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 try:
     from backend.database.queries import (
@@ -17,6 +18,11 @@ except ImportError:
     except ImportError:
         fetch_all_jobs_from_db = None
         fetch_job_by_id_from_db = None
+
+try:
+    from services.job_listing import assemble_job_page
+except ImportError:
+    from backend.services.job_listing import assemble_job_page
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 logger = logging.getLogger(__name__)
@@ -78,9 +84,38 @@ def get_market_insights():
     }
 
 
+def _query_values(values: list[str] | None) -> list[str]:
+    return [value.strip() for value in (values or []) if value and value.strip()]
+
+
 @router.get("/")
-def get_jobs():
-    return get_jobs_data()
+def get_jobs(
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=50)] = 20,
+    q: str = "",
+    city: Annotated[list[str] | None, Query()] = None,
+    style: Annotated[list[str] | None, Query()] = None,
+    experience: Annotated[list[str] | None, Query()] = None,
+    salary: Annotated[list[str] | None, Query()] = None,
+    job_type: Annotated[list[str] | None, Query(alias="type")] = None,
+    date: Annotated[list[str] | None, Query()] = None,
+    skill: Annotated[list[str] | None, Query()] = None,
+    sort: str = "recently-discovered",
+):
+    return assemble_job_page(
+        get_jobs_data(),
+        page=page,
+        page_size=page_size,
+        q=q,
+        cities=_query_values(city),
+        styles=_query_values(style),
+        experience=_query_values(experience),
+        salaries=_query_values(salary),
+        job_types=_query_values(job_type),
+        dates=_query_values(date),
+        skills=_query_values(skill),
+        sort=sort,
+    )
 
 
 @router.get("/{job_id}")

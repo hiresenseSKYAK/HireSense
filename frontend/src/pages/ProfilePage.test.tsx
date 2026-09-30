@@ -12,7 +12,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const testState = vi.hoisted(() => ({ resume: null as ResumeUploadResponse | null }))
 
 vi.mock('../api/jobs', () => ({
-  fetchJobs: vi.fn(async () => []),
+  fetchJobs: vi.fn(async () => ({ items: [], total: 0, page: 1, pageSize: 20, cities: [], matchSummary: null })),
   fetchMarketInsights: vi.fn(async () => ({
     overview: { total_jobs: 0, remote_jobs: 0, hybrid_jobs: 0, onsite_jobs: 0 },
     trending_skills: [], top_locations: [], top_companies: [],
