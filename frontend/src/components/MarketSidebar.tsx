@@ -1,12 +1,9 @@
-import type { ReactNode } from 'react'
 import type { MarketInsightsResponse } from '../api/jobs'
-import { IconTrending } from './Icons'
 import styles from './MarketSidebar.module.css'
 
 interface Props {
   insights: MarketInsightsResponse | null
   isLoading?: boolean
-  afterOverview?: ReactNode
 }
 
 function getPercent(value: number, total: number) {
@@ -14,32 +11,11 @@ function getPercent(value: number, total: number) {
   return Math.max(0, Math.round((value / total) * 100))
 }
 
-function getTopSignal(insights: MarketInsightsResponse) {
-  if (insights.trending_skills.length > 0) {
-    return `${insights.trending_skills[0].name} appears most often in the current feed.`
-  }
-
-  if (insights.top_locations.length > 0) {
-    return `${insights.top_locations[0].city} has the most roles in the current feed.`
-  }
-
-  return 'Live market patterns will appear here as more jobs are processed.'
-}
-
-export default function MarketSidebar({ insights, isLoading = false, afterOverview }: Props) {
+export default function MarketSidebar({ insights, isLoading = false }: Props) {
   if (isLoading) {
     return (
       <aside className={styles.sidebar}>
-        <div className={styles.pinned}>
-          <div className={`${styles.card} ${styles.featureCard}`}>
-            <div className={styles.cardTitle}>
-              <span className={styles.titleAccent} />
-              <IconTrending /> Market Overview
-            </div>
-            <div className={styles.muted}>Loading insights...</div>
-          </div>
-          {afterOverview}
-        </div>
+        <div className={styles.muted}>Loading insights...</div>
       </aside>
     )
   }
@@ -47,16 +23,7 @@ export default function MarketSidebar({ insights, isLoading = false, afterOvervi
   if (!insights) {
     return (
       <aside className={styles.sidebar}>
-        <div className={styles.pinned}>
-          <div className={`${styles.card} ${styles.featureCard}`}>
-            <div className={styles.cardTitle}>
-              <span className={styles.titleAccent} />
-              <IconTrending /> Market Overview
-            </div>
-            <div className={styles.muted}>Insights unavailable right now.</div>
-          </div>
-          {afterOverview}
-        </div>
+        <div className={styles.muted}>Insights unavailable right now.</div>
       </aside>
     )
   }
@@ -70,23 +37,6 @@ export default function MarketSidebar({ insights, isLoading = false, afterOvervi
 
   return (
     <aside className={styles.sidebar}>
-      <div className={styles.pinned}>
-        <div className={`${styles.card} ${styles.featureCard}`}>
-          <div className={styles.cardTitle}>
-            <span className={styles.titleAccent} />
-            <IconTrending /> Market Overview
-          </div>
-          <div className={styles.statValue}>{totalJobs}</div>
-          <div className={styles.statLabel}>active roles in the current feed</div>
-
-          <div className={styles.featureDivider} />
-
-          <div className={styles.featureNoteLabel}>Feed signal</div>
-          <div className={styles.featureNote}>{getTopSignal(insights)}</div>
-        </div>
-        {afterOverview}
-      </div>
-
       <div className={styles.extras}>
         <div className={styles.card}>
           <div className={styles.cardTitle}>

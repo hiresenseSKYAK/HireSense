@@ -13,7 +13,7 @@
 .pageTitle,
 .emptyTitle,
 .title {
-  font-family: 'Syne', sans-serif;
+  font-family: 'DM Sans', sans-serif;
   letter-spacing: -0.02em;
   margin: 0;
 }
@@ -257,7 +257,7 @@
 .steps li { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: .8rem; padding: 8px 14px 8px 0; }
 .steps li span { display: grid; place-items: center; width: 27px; height: 27px; border: 1px solid var(--border-strong); border-radius: 50%; font-size: .75rem; font-weight: 800; background: var(--surface); }
 .steps li[aria-current="step"] { color: var(--accent-text); font-weight: 800; }
-.steps li[aria-current="step"] span { background: var(--accent); color: #000; border-color: var(--burgundy); }
+.steps li[aria-current="step"] span { background: var(--accent); color: #fff; border-color: var(--burgundy); }
 .steps .completedStep span { color: var(--text-primary); background: var(--green-soft); border-color: transparent; }
 .card { max-width: 1120px; }
 .fieldGuide { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-weight: 800; font-size: .95rem; margin: 26px 0 10px; }
@@ -268,7 +268,7 @@
 .revision { white-space: normal; max-width: 220px; text-align: center; }
 .choiceGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
 .choice { padding: 22px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-strong); }
-.choice h3 { font-family: 'Syne', sans-serif; margin: 6px 0; font-size: 1.05rem; }
+.choice h3 { font-family: 'DM Sans', sans-serif; margin: 6px 0; font-size: 1.05rem; }
 .choice p { font-size: .84rem; color: var(--text-secondary); line-height: 1.6; }
 .choice button { margin: 6px 0 10px; }
 .readyState strong { display: block; }

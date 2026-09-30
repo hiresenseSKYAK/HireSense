@@ -1,42 +1,42 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Syne:wght@700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&display=swap');
 
 :root {
-  --tan: #d69775;
-  --caramel: #a06c33;
-  --cream: #eff7cf;
-  --sage: #bad9b5;
-  --burgundy: #420c14;
-  --tan-rgb: 214, 151, 117;
-  --caramel-rgb: 160, 108, 51;
-  --cream-rgb: 239, 247, 207;
-  --sage-rgb: 186, 217, 181;
-  --burgundy-rgb: 66, 12, 20;
+  --tan: #f5e9ff;
+  --caramel: #7c3aed;
+  --cream: #fbf8ff;
+  --sage: #d8b4fe;
+  --burgundy: #5b21b6;
+  --tan-rgb: 245, 233, 255;
+  --caramel-rgb: 124, 58, 237;
+  --cream-rgb: 251, 248, 255;
+  --sage-rgb: 216, 180, 254;
+  --burgundy-rgb: 91, 33, 182;
 
   /* Surfaces */
-  --bg: #d69775;
-  --bg-soft: #dcebc6;
-  --surface: #eff7cf;
-  --surface2: #e3f0c4;
-  --surface-strong: #f8fce9;
-  --border: rgba(var(--burgundy-rgb), 0.2);
-  --border-strong: #a06c33;
+  --bg: #f5e9ff;
+  --bg-soft: #ead6ff;
+  --surface: #fbf8ff;
+  --surface2: #f3e8ff;
+  --surface-strong: #ffffff;
+  --border: rgba(var(--burgundy-rgb), 0.28);
+  --border-strong: #a78bfa;
 
   /* Text */
-  --text-primary: #000000;
-  --text-secondary: #1a1a1a;
-  --text-muted: #333333;
+  --text-primary: #1c1428;
+  --text-secondary: #3f314f;
+  --text-muted: #6b5a80;
 
-  /* Accent (caramel) */
-  --accent: #a06c33;
-  --accent-strong: #b8823f; 
+  /* Accent */
+  --accent: #6d28d9;
+  --accent-strong: #7c3aed;
   --accent-light: rgba(var(--caramel-rgb), 0.18);
-  --accent-text: #420c14;
+  --accent-text: #6d28d9;
 
   /* Status colours (fills, rings, borders, icons) */
-  --green: #4f8a5b;
-  --green-rgb: 79, 138, 91;
-  --green-soft: #bad9b5;
-  --green-light: #bad9b5;
+  --green: #128a3e;
+  --green-rgb: 18, 138, 62;
+  --green-soft: #6ee7b7;
+  --green-light: #a7f3d0;
   --amber: #b7791f;
   --amber-rgb: 183, 121, 31;
   --amber-soft: rgba(var(--amber-rgb), 0.22);
@@ -73,8 +73,8 @@ body {
   font-family: 'DM Sans', sans-serif;
   color: var(--text-primary);
   background:
-    radial-gradient(circle at top left, rgba(var(--cream-rgb), 0.22) 0, transparent 30%),
-    radial-gradient(circle at bottom right, rgba(var(--caramel-rgb), 0.14) 0, transparent 36%),
+    radial-gradient(circle at top left, rgba(251, 248, 255, 0.22) 0, transparent 30%),
+    radial-gradient(circle at bottom right, rgba(139, 108, 181, 0.14) 0, transparent 36%),
     var(--bg);
   background-attachment: fixed;
 }
@@ -139,14 +139,14 @@ select {
 .btn-primary {
   border: 1px solid var(--burgundy);
   background: linear-gradient(180deg, var(--accent-strong) 0%, var(--accent) 100%);
-  color: #000;
-  box-shadow: 0 8px 20px rgba(var(--burgundy-rgb), 0.22);
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(var(--burgundy-rgb), 0.18);
   padding: 12px 18px;
 }
 
 .btn-primary:hover {
   transform: translateY(-1px);
-  background: linear-gradient(180deg, #c8964f 0%, var(--accent-strong) 100%);
+  background: linear-gradient(180deg, #8b5cf6 0%, var(--accent-strong) 100%);
 }
 
 .btn-outline {

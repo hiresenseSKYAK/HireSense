@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { IconBriefcase, IconClock, IconMap } from '../components/Icons'
-import { fetchJobs, fetchMarketInsights, type MarketInsightsResponse } from '../api/jobs'
+import { fetchJobs, fetchMarketInsights, type MarketInsightsResponse, type MatchSummary } from '../api/jobs'
 import { getAuthSession, logout } from '../api/auth'
 import { getResumeAnalysis } from '../utils/resumeStorage'
-import { matchResumeToJob } from '../utils/jobMatcher'
 import type { Job } from '../types'
-import { formatDiscoveryAge, formatPostedDate, sourcePostedAt, timestampValue } from '../utils/jobFreshness'
+import { formatDiscoveryAge, formatPostedDate, sourcePostedAt } from '../utils/jobFreshness'
 import styles from './ProfilePage.module.css'
 import {
   clearAutofillProfileConfirmation,
@@ -36,6 +35,8 @@ export default function ProfilePage() {
   const authSession = getAuthSession()
   const savedResume = getResumeAnalysis()
   const [jobs, setJobs] = useState<Job[]>([])
+  const [totalJobs, setTotalJobs] = useState(0)
+  const [matchSummary, setMatchSummary] = useState<MatchSummary | null>(null)
   const [insights, setInsights] = useState<MarketInsightsResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
@@ -46,9 +47,20 @@ export default function ProfilePage() {
       try {
         setIsLoading(true)
         setError('')
-        const [jobsResult, insightsResult] = await Promise.allSettled([fetchJobs(), fetchMarketInsights()])
+        const resumeSkills = savedResume?.parsed_data.skills?.filter(Boolean) ?? []
+        const [jobsResult, insightsResult] = await Promise.allSettled([
+          fetchJobs({
+            page: 1,
+            pageSize: savedResume ? 8 : 4,
+            sort: savedResume ? 'best-match' : 'recently-discovered',
+            skills: resumeSkills,
+          }),
+          fetchMarketInsights(),
+        ])
         if (jobsResult.status === 'rejected') throw jobsResult.reason
-        setJobs(jobsResult.value)
+        setJobs(jobsResult.value.items)
+        setTotalJobs(jobsResult.value.total)
+        setMatchSummary(jobsResult.value.matchSummary)
         setInsights(insightsResult.status === 'fulfilled' ? insightsResult.value : null)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not load your career dashboard.')
@@ -59,20 +71,10 @@ export default function ProfilePage() {
     void loadProfileData()
   }, [refreshKey])
 
-  const matchedJobs = useMemo(() => jobs
-    .map((job) => ({ ...job, matchDetails: matchResumeToJob(savedResume?.parsed_data, job) }))
-    .map((job) => ({ ...job, match: job.matchDetails.matchScore })), [jobs, savedResume])
-
-  const rankedJobs = useMemo(() => [...matchedJobs].sort((a, b) => {
-    if (savedResume) return b.match - a.match
-    return timestampValue(b.firstSeenAt) - timestampValue(a.firstSeenAt)
-  }), [matchedJobs, savedResume])
-
-  const topMatches = rankedJobs.slice(0, 4)
-  const scores = savedResume ? rankedJobs.filter(hasMatchSignal).map((job) => job.match) : []
-  const strongMatches = scores.filter((score) => score >= 70).length
-  const averageMatch = scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : null
-  const highestMatch = scores.length ? Math.max(...scores) : null
+  const topMatches = jobs.slice(0, 4)
+  const strongMatches = matchSummary?.strong ?? 0
+  const averageMatch = matchSummary?.average ?? null
+  const highestMatch = matchSummary?.highest ?? null
   const resumeSkills = savedResume?.parsed_data.skills?.slice(0, 8) ?? []
   const parsed = savedResume?.parsed_data
   const completionSignals = savedResume ? countValues([
@@ -85,11 +87,11 @@ export default function ProfilePage() {
   const skillGaps = useMemo(() => {
     if (!savedResume) return []
     const counts = new Map<string, number>()
-    rankedJobs.slice(0, 8).forEach((job) => {
+    jobs.forEach((job) => {
       job.matchDetails?.missingSkills.forEach((skill) => counts.set(skill, (counts.get(skill) ?? 0) + 1))
     })
     return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6)
-  }, [rankedJobs, savedResume])
+  }, [jobs, savedResume])
 
   const openJob = (jobId: number) => navigate(`/jobs/${jobId}`)
   const handleLogout = async () => {
@@ -139,7 +141,7 @@ export default function ProfilePage() {
 
         <main className={styles.mainCol}>
           <section className={styles.statsGrid} aria-label="Career readiness summary">
-            <div className={styles.statCard}><span>Live roles</span><strong>{isLoading ? '—' : jobs.length}</strong><small>in the current feed</small></div>
+            <div className={styles.statCard}><span>Live roles</span><strong>{isLoading ? '—' : totalJobs}</strong><small>in the current feed</small></div>
             <div className={styles.statCard}><span>Strong matches</span><strong>{savedResume ? strongMatches : '—'}</strong><small>{savedResume ? 'scoring 70% or higher' : 'upload to calculate'}</small></div>
             <div className={styles.statCard}><span>Average match</span><strong>{averageMatch === null ? '—' : `${averageMatch}%`}</strong><small>{highestMatch === null ? 'resume signal required' : `best match ${highestMatch}%`}</small></div>
             <div className={styles.statCard}><span>Autofill readiness</span><strong>{autofillReadiness.label}</strong><small>{autofillReadiness.detail}</small></div>

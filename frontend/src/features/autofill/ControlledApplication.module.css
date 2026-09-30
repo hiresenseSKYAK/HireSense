@@ -1,5 +1,5 @@
 .header { margin-bottom: 22px; }
-.header h1, .emptyCard h1, .cardHeading h2, .previewCard h2 { font-family: 'Syne', sans-serif; letter-spacing: -0.02em; margin: 0; }
+.header h1, .emptyCard h1, .cardHeading h2, .previewCard h2 { font-family: 'DM Sans', sans-serif; letter-spacing: -0.02em; margin: 0; }
 .header h1 { font-size: 1.8rem; }
 .header p, .layoutPicker p, .safetyNote, .emptyCard p, .emptyPreview { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.6; margin: 6px 0 0; }
 .backLink { color: var(--accent-text); display: inline-flex; font-size: 0.85rem; font-weight: 700; margin-bottom: 12px; }
@@ -17,7 +17,7 @@
 .manualOnly { background: var(--amber-soft); border-radius: 999px; color: var(--text-primary); font-size: 0.72rem; font-weight: 800; padding: 6px 9px; white-space: nowrap; }
 .form { display: flex; flex-direction: column; gap: 16px; }
 .formSection { background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 16px; }
-.formSection h3, .formSection legend { color: var(--text-primary); font-family: 'Syne', sans-serif; font-size: 0.95rem; font-weight: 700; padding: 0; }
+.formSection h3, .formSection legend { color: var(--text-primary); font-family: 'DM Sans', sans-serif; font-size: 0.95rem; font-weight: 700; padding: 0; }
 .formGrid { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .form label { color: var(--text-secondary); display: flex; flex-direction: column; font-size: 0.78rem; font-weight: 700; gap: 6px; }
 .form input, .form select, .form textarea { background: var(--surface-strong); border: 1px solid var(--border-strong); border-radius: 9px; color: var(--text-primary); min-height: 38px; padding: 8px 9px; }

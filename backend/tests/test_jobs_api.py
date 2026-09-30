@@ -30,9 +30,19 @@ class JobsApiTests(unittest.TestCase):
         self.assertIsNone(result["badge"])
         self.assertEqual(result["companyLogoUrl"], "https://example.com/logo.png")
 
-    def test_empty_database_returns_honest_empty_list(self):
+    def test_empty_database_returns_honest_empty_page(self):
         with patch.object(jobs, "fetch_all_jobs_from_db", return_value=[]):
-            self.assertEqual(jobs.get_jobs(), [])
+            self.assertEqual(
+                jobs.get_jobs(),
+                {
+                    "items": [],
+                    "total": 0,
+                    "page": 1,
+                    "page_size": 20,
+                    "cities": [],
+                    "match_summary": None,
+                },
+            )
 
     def test_database_failure_returns_503(self):
         with patch.object(jobs, "fetch_all_jobs_from_db", side_effect=RuntimeError("offline")):
