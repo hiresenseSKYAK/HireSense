@@ -1,4 +1,5 @@
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from services.applicant_profile import build_applicant_profile
 from services.file_extractor import extract_resume_text
 from services.resume_parser import parse_resume_text
 from services.resume_scorer import score_resume
@@ -61,6 +62,7 @@ async def upload_resume(file: UploadFile = File(...)):
                 "leadership_entries": parsed_data["leadership_entries"],
             },
             "analysis": scored_data,
+            "applicant_profile": build_applicant_profile(parsed_data),
         }
 
     except HTTPException:

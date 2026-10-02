@@ -26,6 +26,31 @@ describe('profile initialization', () => {
       raw_text: 'resume text',
     }
 
+    expect(initializeApplicantProfile({
+      parsed_data: {
+        education: ['University of Texas'],
+        experience_entries: [{ title: 'Intern at HireSense', bullets: ['Built a parser'] }],
+        skills: ['Python'],
+      },
+    }).school).toBe('University of Texas')
+
+    const prepared = initializeApplicantProfile({
+      parsed_data: { name: 'Ada' },
+      applicant_profile: {
+        skills: ['SQL'],
+        education: [{ school: 'Rice', degree: 'B.S.', fieldOfStudy: 'CS', startDate: '2022-08-01', endDate: '2026-05-31', current: false }],
+        experience: [{ company: 'Acme', title: 'Analyst', location: 'Dallas', startDate: '2025-01-06', endDate: '2025-05-02', description: 'Reports', current: true }],
+      },
+    })
+    expect(prepared.skillList).toEqual(['SQL'])
+    expect(prepared.skills).toBe('SQL')
+    expect(prepared.educationStart).toBe('2022-08-01')
+    expect(prepared.educationEnd).toBe('2026-05-31')
+    expect(prepared.company).toBe('Acme')
+    expect(prepared.jobTitle).toBe('Analyst')
+    expect(prepared.employmentEnd).toBe('Present')
+    expect(prepared.experience[0].endDate).toBe('')
+
     expect(initializeApplicantProfile(resume)).toEqual({
       fullName: 'Ada Lovelace',
       firstName: '',
@@ -38,6 +63,20 @@ describe('profile initialization', () => {
       linkedin: '',
       github: '',
       portfolio: '',
+      skills: 'mathematics',
+      skillList: ['mathematics'],
+      school: '',
+      degree: '',
+      fieldOfStudy: '',
+      educationStart: '',
+      educationEnd: '',
+      company: '',
+      jobTitle: '',
+      workLocation: '',
+      employmentStart: '',
+      employmentEnd: '',
+      education: [],
+      experience: [],
     })
   })
 
@@ -70,6 +109,20 @@ describe('profile initialization', () => {
       linkedin: '',
       github: '',
       portfolio: '',
+      skills: '',
+      skillList: [],
+      school: '',
+      degree: '',
+      fieldOfStudy: '',
+      educationStart: '',
+      educationEnd: '',
+      company: '',
+      jobTitle: '',
+      workLocation: '',
+      employmentStart: '',
+      employmentEnd: '',
+      education: [],
+      experience: [],
     })
   })
 
@@ -95,6 +148,20 @@ describe('profile initialization', () => {
       linkedin: '',
       github: '',
       portfolio: '',
+      skills: '',
+      skillList: [],
+      school: '',
+      degree: '',
+      fieldOfStudy: '',
+      educationStart: '',
+      educationEnd: '',
+      company: '',
+      jobTitle: '',
+      workLocation: '',
+      employmentStart: '',
+      employmentEnd: '',
+      education: [],
+      experience: [],
     })
   })
 })

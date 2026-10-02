@@ -5,7 +5,8 @@ import {
   initializeProfileReviewState,
   isProfileReviewConfirmed,
 } from './core/profile'
-import type { ApplicantProfile } from './core/types'
+import { emptyEducationEntry, emptyExperienceEntry, historyDateError, MAX_SKILLS, mirrorPrimaryEntries } from './core/profile'
+import type { ApplicantProfile, EducationEntry, ExperienceEntry } from './core/types'
 import {
   canConfirmProfile,
   getProfileReviewErrors,
@@ -25,7 +26,87 @@ import {
 interface ProfileReviewProps {
   resume: ResumeUploadResponse
   draft?: ApplicantProfile
-  onContinue: (profile: ApplicantProfile) => void
+}
+
+function HistoryEditor({
+  title,
+  note,
+  currentLabel,
+  rows,
+  columns,
+  longField,
+  disabled,
+  onChange,
+  onAdd,
+  canAdd,
+}: {
+  title: string
+  note: string
+  currentLabel: string
+  rows: Array<Record<string, string | boolean>>
+  columns: Array<readonly [string, string]>
+  longField?: readonly [string, string]
+  disabled: boolean
+  onChange: (rows: Array<Record<string, string | boolean>>) => void
+  onAdd: () => void
+  canAdd: boolean
+}) {
+  const update = (index: number, key: string, value: string | boolean) => {
+    onChange(rows.map((row, rowIndex) => {
+      if (rowIndex !== index) return row
+      const next = { ...row, [key]: value }
+      if (key === 'current' && value === true) next.endDate = ''
+      return next
+    }))
+  }
+
+  return (
+    <section className={styles.historySection}>
+      <p className={styles.fieldGuide}>{title}</p>
+      <p className={styles.confirmationHint}>{note}</p>
+      {rows.map((row, index) => (
+        <div key={`${title}-${index}`} className={styles.entryCard}>
+          <div className={styles.entryGrid}>
+            {columns.map(([key, label]) => {
+              const isDate = key === 'startDate' || key === 'endDate'
+              return (
+                <label key={key} className={styles.field}>
+                  <span className={styles.fieldLabel}>{label}</span>
+                  <input
+                    className={styles.input}
+                    type={isDate ? 'date' : 'text'}
+                    value={typeof row[key] === 'string' ? row[key] : ''}
+                    disabled={disabled || (key === 'endDate' && row.current === true)}
+                    onChange={(event) => update(index, key, event.target.value)}
+                  />
+                </label>
+              )
+            })}
+          </div>
+          <label className={styles.currentToggle}>
+            <input type="checkbox" checked={row.current === true} disabled={disabled} onChange={(event) => update(index, 'current', event.target.checked)} />
+            <span>{currentLabel}</span>
+          </label>
+          {longField && (
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>{longField[1]}</span>
+              <textarea className={styles.input} rows={3} value={typeof row[longField[0]] === 'string' ? row[longField[0]] : ''} disabled={disabled} onChange={(event) => update(index, longField[0], event.target.value)} />
+            </label>
+          )}
+          {rows.length > 1 && (
+            <button type="button" className={styles.exampleLink} disabled={disabled} onClick={() => onChange(rows.filter((_, rowIndex) => rowIndex !== index))}>
+              Remove
+            </button>
+          )}
+        </div>
+      ))}
+      {canAdd && (
+        <button type="button" className="btn-outline" disabled={disabled} onClick={onAdd}>
+          Add {title === 'Education' ? 'school' : 'job'}
+        </button>
+      )}
+    </section>
+  )
 }
 
 const fields: Array<{
@@ -50,7 +131,7 @@ const fields: Array<{
   { name: 'portfolio', label: 'Portfolio', type: 'url', autoComplete: 'url' },
 ]
 
-export default function ProfileReview({ resume, draft, onContinue }: ProfileReviewProps) {
+export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
   const [reviewState, setReviewState] = useState(() => {
     const initial = initializeProfileReviewState(resume)
     if (draft) return { ...initial, values: { ...draft } }
@@ -74,26 +155,33 @@ export default function ProfileReview({ resume, draft, onContinue }: ProfileRevi
   const canConfirm = canConfirmProfile(reviewState, hasReviewed)
   useEffect(() => { if (isConfirmed) readyRef.current?.focus() }, [isConfirmed])
 
-  const handleChange = (field: keyof ApplicantProfile, value: string) => {
+  const replaceProfile = (values: ApplicantProfile) => {
     clearAutofillProfileConfirmation()
     if (isConfirmed) setEdited(true)
     setHasReviewed(false)
     setBridgeStatus('')
-    // Keep spaces while typing; normalize only on blur.
     setReviewState((current) => ({
       ...current,
-      values: { ...current.values, [field]: value },
+      values: mirrorPrimaryEntries(values),
       revision: current.revision + 1,
       confirmedRevision: null,
     }))
   }
 
+  const handleChange = (field: keyof ApplicantProfile, value: string) => {
+    // Keep spaces while typing; normalize only on blur.
+    replaceProfile({ ...reviewState.values, [field]: value })
+  }
+
   const handleConfirm = () => {
-    if (canConfirm) {
-      const confirmed = confirmProfileReview(reviewState)
-      setReviewState(confirmed)
-      markAutofillProfileConfirmed(resume, confirmed.values)
-    }
+    if (!canConfirm) return
+    const values = mirrorPrimaryEntries({
+      ...reviewState.values,
+      skillList: reviewState.values.skillList.map((skill) => skill.trim()).filter(Boolean),
+    })
+    const confirmed = confirmProfileReview({ ...reviewState, values })
+    setReviewState(confirmed)
+    markAutofillProfileConfirmed(resume, confirmed.values)
   }
 
   const sendToBrowserBridge = async () => {
@@ -134,7 +222,7 @@ export default function ProfileReview({ resume, draft, onContinue }: ProfileRevi
         </span>
       </div>
 
-      <p className={styles.fieldGuide}>Contact details & professional links <span>{Object.values(reviewState.values).filter((value) => value.trim()).length} of {fields.length} details available</span></p>
+      <p className={styles.fieldGuide}>Contact details & professional links <span>{fields.filter((field) => reviewState.values[field.name].trim()).length} of {fields.length} details available</span></p>
       <p className={styles.confirmationHint}>Names and address details are yours to enter. Country means where you live, never citizenship. Blank fields remain manual.</p>
       <div className={styles.fieldGrid}>
         {fields.map((field) => {
@@ -166,9 +254,91 @@ export default function ProfileReview({ resume, draft, onContinue }: ProfileRevi
         })}
       </div>
 
+      <section className={styles.historySection}>
+        <p className={styles.fieldGuide}>Skills</p>
+        <p className={styles.confirmationHint}>Add each skill on its own. An application with one skills box receives them together.</p>
+        {(reviewState.values.skillList.length > 0 ? reviewState.values.skillList : ['']).map((skill, index, skills) => (
+          <div key={`skill-${index}`} className={styles.skillRow}>
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Skill {index + 1}</span>
+              <input
+                className={styles.input}
+                value={skill}
+                disabled={sending}
+                onChange={(event) => {
+                  const next = [...skills]
+                  next[index] = event.target.value
+                  replaceProfile({ ...reviewState.values, skillList: next })
+                }}
+              />
+            </label>
+            {skills.length > 1 && (
+              <button type="button" className={styles.exampleLink} disabled={sending} onClick={() => replaceProfile({
+                ...reviewState.values,
+                skillList: skills.filter((_, skillIndex) => skillIndex !== index),
+              })}>
+                Remove
+              </button>
+            )}
+          </div>
+        ))}
+        {(reviewState.values.skillList.length > 0 ? reviewState.values.skillList.length : 1) < MAX_SKILLS && (
+          <button type="button" className="btn-outline" disabled={sending} onClick={() => replaceProfile({
+            ...reviewState.values,
+            skillList: [...(reviewState.values.skillList.length > 0 ? reviewState.values.skillList : ['']), ''],
+          })}>
+            Add skill
+          </button>
+        )}
+      </section>
+
+      <HistoryEditor
+        title="Education"
+        note="The first school is the one filled on an application."
+        currentLabel="Currently attending"
+        rows={reviewState.values.education.length > 0 ? reviewState.values.education : [emptyEducationEntry()]}
+        columns={[
+          ['school', 'School'],
+          ['degree', 'Degree'],
+          ['fieldOfStudy', 'Field of study'],
+          ['startDate', 'Start'],
+          ['endDate', 'End'],
+        ]}
+        disabled={sending}
+        onChange={(rows) => replaceProfile({ ...reviewState.values, education: rows as EducationEntry[] })}
+        onAdd={() => replaceProfile({
+          ...reviewState.values,
+          education: [...(reviewState.values.education.length > 0 ? reviewState.values.education : [emptyEducationEntry()]), emptyEducationEntry()],
+        })}
+        canAdd={(reviewState.values.education.length > 0 ? reviewState.values.education.length : 1) < 4}
+      />
+
+      <HistoryEditor
+        title="Work experience"
+        note="The first job is the one filled on an application."
+        currentLabel="Currently working here"
+        rows={reviewState.values.experience.length > 0 ? reviewState.values.experience : [emptyExperienceEntry()]}
+        columns={[
+          ['company', 'Company'],
+          ['title', 'Job title'],
+          ['location', 'Location'],
+          ['startDate', 'Start'],
+          ['endDate', 'End'],
+        ]}
+        longField={['description', 'Description']}
+        disabled={sending}
+        onChange={(rows) => replaceProfile({ ...reviewState.values, experience: rows as ExperienceEntry[] })}
+        onAdd={() => replaceProfile({
+          ...reviewState.values,
+          experience: [...(reviewState.values.experience.length > 0 ? reviewState.values.experience : [emptyExperienceEntry()]), emptyExperienceEntry()],
+        })}
+        canAdd={(reviewState.values.experience.length > 0 ? reviewState.values.experience.length : 1) < 4}
+      />
+
       <div className={styles.confirmationPanel}>
         <label className={styles.checkboxLabel}>
           <input
+            id="profile-review-confirm"
             type="checkbox"
             checked={hasReviewed}
             onChange={(event) => {
@@ -187,6 +357,7 @@ export default function ProfileReview({ resume, draft, onContinue }: ProfileRevi
 
         {edited && !isConfirmed && <p className={styles.confirmationHint} role="status">Your details changed. Review and confirm again before continuing. If you already sent a profile to the extension, resend it after confirming to replace that copy.</p>}
         {Object.keys(errors).length > 0 && <p className={styles.fieldError} role="status">Correct the highlighted details before confirming.</p>}
+        {historyDateError(reviewState.values) && <p className={styles.fieldError} role="status">{historyDateError(reviewState.values)}</p>}
         {!hasApplicantValue(reviewState.values) && (
           <p className={styles.confirmationHint}>
             Add at least one applicant detail before confirming this profile.
@@ -204,26 +375,14 @@ export default function ProfileReview({ resume, draft, onContinue }: ProfileRevi
       </div>
 
       {isConfirmed && (
-        <div>
-          <div ref={readyRef} tabIndex={-1} className={styles.readyState} role="status"><strong>✓ Your profile is ready.</strong> Choose where to prepare an application. You will always preview before filling.</div>
-          <div className={styles.choiceGrid}>
-            <section className={styles.choice}>
-              <p className={styles.eyebrow}>Explore safely</p>
-              <h3>Try an application example</h3>
-              <p>See exactly what gets filled, what stays untouched, and what needs your attention.</p>
-              <button type="button" className="btn-primary" onClick={() => onContinue(reviewState.values)}>Preview application →</button>
-            </section>
-            <section className={styles.choice}>
-              <p className={styles.eyebrow}>Take it with you</p>
-              <h3>Use on an external application</h3>
-              <p>Send only these details to the HireSense extension. Your account information stays here. Choose an active resume separately inside the extension; attachments always require their own action.</p>
-              <button type="button" className="btn-outline" disabled={!canUseAutofillExtension() || sending} onClick={() => void sendToBrowserBridge()}>
-                {sending ? 'Sending profile…' : 'Send to extension'}
-              </button>
-              {!canUseAutofillExtension() && <p className={styles.confirmationHint}>Requires the HireSense Chrome extension and a configured connection. You can still try the application examples.</p>}
-              {bridgeStatus && <p className={styles.bridgeStatus} role="status">{bridgeStatus}</p>}
-            </section>
-          </div>
+        <div ref={readyRef} tabIndex={-1} className={styles.readyState} role="status">
+          <strong>Your profile is ready.</strong>
+          <p>Open the application in Chrome and choose Preview in HireSense Autofill. This profile stays available for 30 minutes.</p>
+          <button type="button" className="btn-primary" disabled={!canUseAutofillExtension() || sending} onClick={() => void sendToBrowserBridge()}>
+            {sending ? 'Sending profile…' : 'Send to extension'}
+          </button>
+          {!canUseAutofillExtension() && <p className={styles.confirmationHint}>Requires the HireSense Chrome extension.</p>}
+          {bridgeStatus && <p className={styles.bridgeStatus} role="status">{bridgeStatus}</p>}
         </div>
       )}
     </section>

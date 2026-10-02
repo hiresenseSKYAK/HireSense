@@ -25,6 +25,10 @@ export function ClassicApplication() {
           <label>LinkedIn URL<input name="linkedin_url" type="url" /></label>
           <label>GitHub URL<input name="github_url" type="url" disabled /></label>
           <label>Portfolio website<input name="portfolio_website" type="url" /></label>
+          <label>School<input name="school" /></label>
+          <label>Degree<input name="degree" /></label>
+          <label>Company name<input name="company_name" /></label>
+          <label>Job title<input name="job_title" /></label>
         </div>
       </section>
       <fieldset className={styles.formSection}>

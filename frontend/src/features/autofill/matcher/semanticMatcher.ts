@@ -1,13 +1,17 @@
 import { validateApplicantProfile } from '../core/profile'
 import { fieldLabels as getLabelText, ariaLabels as getAriaLabelText } from './fieldLabels'
 import type { ApplicantProfile } from '../core/types'
+
+type FillKey = {
+  [K in keyof ApplicantProfile]: ApplicantProfile[K] extends string ? K : never
+}[keyof ApplicantProfile]
 import type {
   ApplicationControl,
   FieldDecision,
   MatchEvidence,
 } from './types'
 
-const aliases: Record<keyof ApplicantProfile, string[]> = {
+const aliases: Record<FillKey, string[]> = {
   fullName: ['full name', 'legal name', 'applicant name'],
   firstName: ['first name', 'given name', 'first'],
   lastName: ['last name', 'family name', 'surname', 'last'],
@@ -22,9 +26,20 @@ const aliases: Record<keyof ApplicantProfile, string[]> = {
   linkedin: ['linkedin url', 'linkedin'],
   github: ['github url', 'github'],
   portfolio: ['portfolio website', 'personal website', 'website url', 'portfolio', 'website'],
+  skills: ['technical skills', 'skills', 'skill'],
+  school: ['school', 'university', 'college'],
+  degree: ['degree'],
+  fieldOfStudy: ['field of study', 'area of study', 'major'],
+  educationStart: ['education start date', 'school start date'],
+  educationEnd: ['education end date', 'graduation date', 'graduation year'],
+  company: ['company name', 'employer name', 'current employer', 'employer', 'company'],
+  jobTitle: ['job title', 'position title', 'current title'],
+  workLocation: ['work location', 'employer location', 'office location'],
+  employmentStart: ['employment start date', 'job start date', 'work start date'],
+  employmentEnd: ['employment end date', 'job end date'],
 }
 
-const autocompleteMap: Record<string, keyof ApplicantProfile> = {
+const autocompleteMap: Record<string, FillKey> = {
   name: 'fullName',
   'given-name': 'firstName',
   'family-name': 'lastName',
@@ -94,8 +109,8 @@ function containsPhrase(value: string, phrase: string): boolean {
   return normalizedValue.includes(` ${phrase} `)
 }
 
-function matchingKeys(value: string): Array<keyof ApplicantProfile> {
-  return (Object.keys(aliases) as Array<keyof ApplicantProfile>).filter((key) =>
+function matchingKeys(value: string): FillKey[] {
+  return (Object.keys(aliases) as FillKey[]).filter((key) =>
     aliases[key].some((alias) => ['first', 'last'].includes(alias)
       ? normalize(value) === alias : containsPhrase(value, alias)),
   )
@@ -105,7 +120,7 @@ function addEvidence(
   evidence: MatchEvidence[],
   source: MatchEvidence['source'],
   text: string,
-  keys: Array<keyof ApplicantProfile>,
+  keys: FillKey[],
 ) {
   // Keep unmatched text too: sensitive questions often have no applicant alias.
   if (keys.length === 0) evidence.push({ source, text })
@@ -158,15 +173,25 @@ function controlType(element: ApplicationControl): string {
   return element instanceof HTMLInputElement ? element.type : element.tagName.toLowerCase()
 }
 
+function dateControlValue(element: HTMLInputElement, value: string): string | null {
+  if (element.type !== 'date' && element.type !== 'month') return value
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(value)
+  const month = /^\d{4}-\d{2}$/.test(value)
+  if (element.type === 'date' && day) return value
+  if (element.type === 'date' && month) return `${value}-01`
+  if (element.type === 'month' && (month || day)) return value.slice(0, 7)
+  return null
+}
+
 function isCompatible(
   element: ApplicationControl,
-  key: keyof ApplicantProfile,
+  key: FillKey,
 ): boolean {
   if (element instanceof HTMLSelectElement) {
     return ['state', 'country'].includes(key) && !element.multiple
   }
   if (element instanceof HTMLTextAreaElement) {
-    return false
+    return key === 'skills'
   }
 
   const type = element.type
@@ -178,6 +203,9 @@ function isCompatible(
   if (key === 'phone') return ['tel', 'text'].includes(type)
   if (['linkedin', 'github', 'portfolio'].includes(key)) {
     return ['url', 'text'].includes(type)
+  }
+  if (['educationStart', 'educationEnd', 'employmentStart', 'employmentEnd'].includes(key)) {
+    return ['text', 'search', 'date', 'month'].includes(type)
   }
   return ['text', 'search'].includes(type)
 }
@@ -320,7 +348,11 @@ export function matchApplicationFields(
       return { element, outcome: 'sensitive', reason: 'Sensitive or application-specific questions need your answer.', evidence }
     }
     if (element instanceof HTMLTextAreaElement) {
-      return { element, outcome: 'unsupported', manual: true, reason: 'Free-text questions need your answer.', evidence }
+      const texts = [...getLabelText(element), ...getAriaLabelText(element)]
+      const keys = [...new Set(texts.flatMap((text) => matchingKeys(text)))]
+      if (!(keys.length === 1 && keys[0] === 'skills')) {
+        return { element, outcome: 'unsupported', manual: true, reason: 'Free-text questions need your answer.', evidence }
+      }
     }
     if (element instanceof HTMLInputElement && element.type === 'file') {
       const texts = [...getLabelText(element), ...getAriaLabelText(element), element.name, element.id].join(' ')
@@ -331,7 +363,7 @@ export function matchApplicationFields(
     }
     const questions = [...getLabelText(element), ...getAriaLabelText(element)]
     if (questions.some((text) => /^(why|describe|tell|explain|how|what|which|would|have you|do you|are you|can you)\b/.test(normalize(text)) ||
-      /\b(preferred|previous|employer|company|school|university|manager|salary|desired|birth)\b/.test(normalize(text)))) {
+      /\b(preferred|previous|manager|salary|desired|birth|first job)\b/.test(normalize(text)))) {
       return { element, outcome: 'unsupported', manual: true, reason: 'Screening questions need your own answer.', evidence }
     }
     if (questions.some((text) => matchingKeys(text).length === 0 && normalize(text) !== 'name')) {
@@ -341,9 +373,7 @@ export function matchApplicationFields(
     const strongEvidence = evidence.filter((item) =>
       item.profileKey && item.source !== 'placeholder',
     )
-    const matchedKeys = [...new Set(strongEvidence.map((item) => item.profileKey))] as Array<
-      keyof ApplicantProfile
-    >
+    const matchedKeys = [...new Set(strongEvidence.map((item) => item.profileKey))] as FillKey[]
 
     if (matchedKeys.length > 1) {
       return {
@@ -404,10 +434,22 @@ export function matchApplicationFields(
       }
     }
 
+    const datedValue = element instanceof HTMLInputElement ? dateControlValue(element, profileValue) : profileValue
+    if (datedValue === null) {
+      return {
+        element,
+        outcome: 'unsupported',
+        manual: true,
+        reason: 'This date field needs a specific date. Mark a current role on the application yourself.',
+        profileKey,
+        evidence,
+      }
+    }
+
     const value =
       element instanceof HTMLSelectElement
         ? profileKey === 'country' ? getCountrySelectValue(element, profileValue) : getStateSelectValue(element, profileValue)
-        : profileValue
+        : datedValue
     if (value === null) {
       return {
         element,

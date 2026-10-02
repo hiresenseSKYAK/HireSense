@@ -32,6 +32,11 @@ export interface ResumeUploadResponse {
   saved_at?: string
   parsed_data: ParsedResumeData
   analysis: ResumeAnalysis
+  applicant_profile?: {
+    skills?: string | string[]
+    education?: Array<{ school?: string; degree?: string; fieldOfStudy?: string; startDate?: string; endDate?: string; current?: boolean }>
+    experience?: Array<{ company?: string; title?: string; location?: string; startDate?: string; endDate?: string; description?: string; current?: boolean }>
+  }
 }
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024

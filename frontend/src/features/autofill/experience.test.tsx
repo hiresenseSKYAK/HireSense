@@ -22,16 +22,15 @@ const profile = { ...initializeApplicantProfile(resume), firstName: 'Ada', lastN
 
 describe('applicant review experience', () => {
   it('shows provenance, confirmation, and invalidates edits while allowing spaces', () => {
-    const next = vi.fn()
-    render(<ProfileReview resume={resume} onContinue={next} />)
+    render(<ProfileReview resume={resume} />)
     expect(document.body.textContent).toContain('ada-resume.pdf')
     expect(document.body.textContent).toContain('From resume')
     expect(button('Confirm my information').disabled).toBe(true)
-    click(document.querySelector<HTMLInputElement>('[type=checkbox]')!)
+    click(document.querySelector<HTMLInputElement>('#profile-review-confirm')!)
     click(button('Confirm my information'))
     expect(document.body.textContent).toContain('Your profile is ready')
-    click(button('Preview application'))
-    expect(next).toHaveBeenCalledWith(initializeApplicantProfile(resume))
+    expect(document.body.textContent).toContain('choose Preview in HireSense Autofill')
+    expect(document.body.textContent).not.toContain('See an example')
     const input = document.querySelector<HTMLInputElement>('input')!
     act(() => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Ada ')
@@ -43,7 +42,7 @@ describe('applicant review experience', () => {
     expect(document.body.textContent).not.toContain('Your profile is ready')
   })
   it('returns draft details without silently confirming them', () => {
-    render(<ProfileReview resume={resume} draft={profile} onContinue={() => {}} />)
+    render(<ProfileReview resume={resume} draft={profile} />)
     expect(document.querySelector<HTMLInputElement>('[autocomplete=given-name]')!.value).toBe('Ada')
     expect(button('Confirm my information').disabled).toBe(true)
   })

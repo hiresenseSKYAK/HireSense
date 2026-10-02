@@ -12,10 +12,13 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const testState = vi.hoisted(() => ({ resume: null as ResumeUploadResponse | null }))
 
 vi.mock('../api/jobs', () => ({
-  fetchJobs: vi.fn(async () => ({ items: [], total: 0, page: 1, pageSize: 20, cities: [], matchSummary: null })),
-  fetchMarketInsights: vi.fn(async () => ({
-    overview: { total_jobs: 0, remote_jobs: 0, hybrid_jobs: 0, onsite_jobs: 0 },
-    trending_skills: [], top_locations: [], top_companies: [],
+  fetchJobs: vi.fn(async () => ({
+    items: [],
+    total: 40,
+    page: 1,
+    pageSize: 1,
+    cities: [],
+    matchSummary: { strong: 12, average: 61, highest: 84, scored: 40 },
   })),
 }))
 vi.mock('../api/auth', () => ({
@@ -57,19 +60,30 @@ async function renderProfile() {
   })
 }
 
-describe('Profile autofill readiness', () => {
-  it('shows Review until the applicant profile has been confirmed', async () => {
+describe('Profile page', () => {
+  it('shows the account, resume, and a review prompt before autofill is confirmed', async () => {
     await renderProfile()
-    const summary = document.querySelector('[aria-label="Career readiness summary"]')
-    expect(summary?.textContent).toContain('Review')
-    expect(summary?.textContent).toContain('confirmation required before autofill')
+    expect(document.body.textContent).toContain('Name')
+    expect(document.body.textContent).toContain('Ada')
+    expect(document.body.textContent).toContain('Email')
+    expect(document.body.textContent).toContain('ada@example.com')
+    expect(document.body.textContent).toContain('Password')
+    expect(document.body.textContent).toContain('••••••••')
+    expect(document.body.textContent).toContain('resume.pdf')
+    expect(document.body.textContent).toContain('Python')
+    expect(document.body.textContent).toContain('12 strong matches, best 84%')
+    const autofill = document.querySelector('[aria-label="Autofill readiness"]')
+    expect(autofill?.textContent).toContain('Review')
+    expect(autofill?.textContent).toContain('confirmation required before autofill')
+    expect(document.body.textContent).not.toContain('Top opportunities')
+    expect(document.body.textContent).not.toContain('Where opportunity is concentrated')
   })
 
   it('shows Ready only for a confirmed profile tied to the current resume', async () => {
     markAutofillProfileConfirmed(resume)
     await renderProfile()
-    const summary = document.querySelector('[aria-label="Career readiness summary"]')
-    expect(summary?.textContent).toContain('Ready')
-    expect(summary?.textContent).toContain('applicant profile reviewed and confirmed')
+    const autofill = document.querySelector('[aria-label="Autofill readiness"]')
+    expect(autofill?.textContent).toContain('Ready')
+    expect(autofill?.textContent).toContain('applicant profile reviewed and confirmed')
   })
 })
