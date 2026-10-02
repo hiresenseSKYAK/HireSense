@@ -17,6 +17,20 @@ const profile: ApplicantProfile = {
   linkedin: 'https://www.linkedin.com/in/ada-lovelace',
   github: 'https://github.com/ada-lovelace',
   portfolio: 'https://ada.example.com',
+  skills: 'Python',
+  skillList: ['Python'],
+  school: 'University of Texas',
+  degree: 'B.S.',
+  fieldOfStudy: 'Computer Science',
+  educationStart: '2022-08',
+  educationEnd: '2026-05',
+  company: 'HireSense',
+  jobTitle: 'Software Engineer Intern',
+  workLocation: 'Dallas',
+  employmentStart: '2025-05',
+  employmentEnd: '2025-08',
+  education: [],
+  experience: [],
 }
 
 afterEach(() => {
@@ -91,6 +105,23 @@ describe('semantic application field matcher', () => {
       { id: 'hidden-email', outcome: 'unsupported', profileKey: undefined },
       { id: 'disabled-phone', outcome: 'unsupported', profileKey: undefined },
       { id: 'readonly-name', outcome: 'unsupported', profileKey: undefined },
+    ])
+  })
+
+  it('fills the first education and job on common application labels', () => {
+    document.body.innerHTML = `
+      <label for="school">School</label><input id="school" />
+      <label for="degree">Degree</label><input id="degree" />
+      <label for="employer">Company name</label><input id="employer" />
+      <label for="role">Job title</label><input id="role" />
+      <label for="skills">Skills</label><textarea id="skills"></textarea>
+    `
+    expect(outcomes()).toEqual([
+      { id: 'school', outcome: 'fill', profileKey: 'school' },
+      { id: 'degree', outcome: 'fill', profileKey: 'degree' },
+      { id: 'employer', outcome: 'fill', profileKey: 'company' },
+      { id: 'role', outcome: 'fill', profileKey: 'jobTitle' },
+      { id: 'skills', outcome: 'fill', profileKey: 'skills' },
     ])
   })
 

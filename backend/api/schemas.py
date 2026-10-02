@@ -35,6 +35,31 @@ SignupRequest = UserCreate
 LoginRequest = UserLogin
 
 
+class EducationProfileSchema(BaseModel):
+    school: str = ""
+    degree: str = ""
+    fieldOfStudy: str = ""
+    startDate: str = ""
+    endDate: str = ""
+    current: bool = False
+
+
+class ExperienceProfileSchema(BaseModel):
+    company: str = ""
+    title: str = ""
+    location: str = ""
+    startDate: str = ""
+    endDate: str = ""
+    description: str = ""
+    current: bool = False
+
+
+class ApplicantProfileSchema(BaseModel):
+    skills: List[str] = Field(default_factory=list)
+    education: List[EducationProfileSchema] = Field(default_factory=list)
+    experience: List[ExperienceProfileSchema] = Field(default_factory=list)
+
+
 class StructuredResumeEntrySchema(BaseModel):
     title: str
     bullets: List[str] = Field(default_factory=list)

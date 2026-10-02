@@ -6,7 +6,6 @@ import { previewSummary, reportField } from './matcher/report'
 import type { FieldDecision, FillResult } from './matcher/types'
 import { isApplicantProfile } from './review'
 import { ClassicApplication, CompactApplication } from './demoLayouts'
-import AutofillSteps from './AutofillSteps'
 import styles from './ControlledApplication.module.css'
 
 type ApplicationLayout = 'classic' | 'compact'
@@ -72,7 +71,6 @@ export default function ControlledApplicationPage() {
       <h1 tabIndex={-1} ref={headingRef}>Prepare your next application</h1>
       <p>Your information. Your decision. Preview the proposed changes, then fill only the supported details.</p>
     </div>
-    <AutofillSteps step={result ? 3 : 2} />
     <div className={styles.layoutPicker}>
       <div><span className={styles.sectionLabel}>Application examples</span><p>Two realistic layouts. The same confirmed profile. Switching resets the example.</p></div>
       <div className={styles.pickerButtons} role="group" aria-label="Application example layout">
@@ -111,7 +109,7 @@ export default function ControlledApplicationPage() {
         </div>
         {preview.length > 0 && <PreviewList decisions={preview} />}
         <p className={styles.safetyNote}>HireSense never clicks Submit or advances an application.</p>
-        {result && <div className={styles.nextAction}><strong>Ready for a real application?</strong><p>Use this profile with the HireSense Chrome extension on conventional application forms.</p><Link to="/application/prepare" state={{ draftProfile: profile }}>Review profile & connect extension →</Link></div>}
+        {result && <div className={styles.nextAction}><strong>This example is not submitted.</strong><p>Open a real application in Chrome and choose Preview in HireSense Autofill.</p><Link to="/application/prepare" state={{ draftProfile: profile }}>Back to your details</Link></div>}
       </aside>
     </div>
   </div>

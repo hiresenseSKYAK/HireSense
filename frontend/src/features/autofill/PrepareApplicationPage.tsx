@@ -1,20 +1,13 @@
-import { Link, useNavigate, useLocation } from 'react-router-dom'
-import type { ApplicantProfile } from './core/types'
+import { Link, useLocation } from 'react-router-dom'
 import { getResumeAnalysis } from '../../utils/resumeStorage'
 import ProfileReview from './ProfileReview'
-import AutofillSteps from './AutofillSteps'
 import { hasUsableResumeAnalysis, isApplicantProfile } from './review'
 import styles from './ProfileReview.module.css'
 
 export default function PrepareApplicationPage() {
-  const navigate = useNavigate()
   const location = useLocation()
   const draft = (location.state as { draftProfile?: unknown } | null)?.draftProfile
   const resume = getResumeAnalysis()
-
-  const handleContinue = (profile: ApplicantProfile) => {
-    navigate('/application/preview', { state: { profile } })
-  }
 
   if (!hasUsableResumeAnalysis(resume)) {
     return (
@@ -43,11 +36,10 @@ export default function PrepareApplicationPage() {
         </Link>
         <h1 className={styles.pageTitle}>Prepare Application</h1>
         <p className={styles.pageSubtitle}>
-          Your details, ready when you are. Review once, then prepare applications with confidence.
+          Review the details HireSense can fill. Blank fields stay blank.
         </p>
       </div>
-      <AutofillSteps step={1} />
-      <ProfileReview resume={resume} draft={isApplicantProfile(draft) ? draft : undefined} onContinue={handleContinue} />
+      <ProfileReview resume={resume} draft={isApplicantProfile(draft) ? draft : undefined} />
     </div>
   )
 }
