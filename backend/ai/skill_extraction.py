@@ -103,20 +103,28 @@ def _normalize_key(value: str) -> str:
     return " ".join(parts)
 
 
+def _skill_pattern(skill: str) -> re.Pattern:
+    lowered = skill.lower()
+    if lowered == "r":
+        body = "r"
+    elif lowered == "go":
+        body = r"(?:golang|go\s+(?:language|programming))"
+    elif lowered == "c":
+        body = r"c(?:\s+(?:language|programming))"
+    else:
+        body = re.escape(lowered)
+    return re.compile(
+        r"(?<![A-Za-z0-9+#])" + body + r"(?![A-Za-z0-9+#&])",
+        re.IGNORECASE,
+    )
+
+
 def _compile_allowlist() -> None:
     _CANONICAL_BY_KEY.clear()
     _ALLOWLIST_PATTERNS.clear()
     for skill in SKILL_ALLOWLIST:
         _CANONICAL_BY_KEY[_normalize_key(skill)] = skill
-        _ALLOWLIST_PATTERNS.append(
-            (
-                skill,
-                re.compile(
-                    r"(?<![A-Za-z0-9+#])" + re.escape(skill.lower()) + r"(?![A-Za-z0-9+#])",
-                    re.IGNORECASE,
-                ),
-            )
-        )
+        _ALLOWLIST_PATTERNS.append((skill, _skill_pattern(skill)))
     for alias, canonical in SKILL_ALIASES.items():
         _CANONICAL_BY_KEY[_normalize_key(alias)] = canonical
     _ALLOWLIST_PATTERNS.sort(key=lambda item: len(item[0]), reverse=True)

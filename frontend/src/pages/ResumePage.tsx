@@ -413,20 +413,11 @@ export default function ResumePage() {
                 )}
               </section>
 
-              <section className={styles.sectionCard}>
-                <div className={styles.analysisSectionTitle}>Education</div>
-                {parsed.education.length > 0 ? (
-                  <ul className={styles.detailList}>
-                    {parsed.education.map((item, index) => (
-                      <li key={`${item}-${index}`} className={styles.detailListItem}>
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className={styles.emptyMini}>No education found.</div>
-                )}
-              </section>
+              <StructuredEntrySection
+                title="Education"
+                entries={(parsed.education || []).map((item) => ({ title: item, bullets: [] }))}
+                emptyText="No education found."
+              />
 
               <StructuredEntrySection
                 title="Experience"

@@ -3,6 +3,8 @@
   flex-direction: column;
   gap: 16px;
   padding: 22px;
+  flex: 1;
+  min-height: 100%;
 }
 
 .headerRow {
@@ -129,6 +131,49 @@
   line-height: 1.6;
 }
 
+.answerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.answerHeader .questionLabel {
+  margin-bottom: 0;
+}
+
+.micButton {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-strong);
+  color: var(--accent-text);
+  cursor: pointer;
+}
+
+.micButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.micListening {
+  background: var(--accent-light);
+  border-color: var(--accent);
+}
+
+.submittedAnswer {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.92rem;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
 .answerBox {
   width: 100%;
   min-height: 140px;
@@ -168,11 +213,52 @@
   gap: 8px;
   padding: 8px 11px;
   border-radius: 999px;
-  background: var(--green-soft);
+  background: var(--surface2);
   color: var(--text-primary);
   font-size: 0.78rem;
   font-weight: 800;
+  border: 1px solid var(--border);
+}
+
+.scoreStrong {
+  background: var(--green-light);
   border: 1px solid rgba(var(--green-rgb), 0.5);
+}
+
+.scoreMid {
+  background: var(--amber-soft);
+  border: 1px solid rgba(var(--amber-rgb), 0.45);
+}
+
+.scoreLow {
+  background: var(--red-light);
+  border: 1px solid rgba(155, 27, 48, 0.28);
+}
+
+.dimensionList {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.dimensionItem {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.dimensionScore {
+  color: var(--text-primary);
+  font-weight: 800;
 }
 
 .benchmark {
@@ -210,11 +296,14 @@
 }
 
 .finalScore {
+  display: inline-flex;
   font-family: 'DM Sans', sans-serif;
   font-size: 2rem;
   line-height: 1;
-  color: var(--accent-text);
+  color: var(--text-primary);
   margin-bottom: 10px;
+  padding: 8px 12px;
+  border-radius: 12px;
 }
 
 .resultsSummary {

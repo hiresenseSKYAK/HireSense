@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ParsedResumeData } from '../api/resume'
 import {
   startInterview,
@@ -6,8 +6,65 @@ import {
   type FinalInterviewResult,
   type InterviewFeedback,
   type InterviewQuestion,
+  type InterviewScoreDimension,
 } from '../api/interview'
 import styles from './AIInterviewPanel.module.css'
+
+function scoreTone(score: number) {
+  if (score >= 70) return styles.scoreStrong
+  if (score >= 50) return styles.scoreMid
+  return styles.scoreLow
+}
+
+function DimensionList({ dimensions }: { dimensions?: InterviewScoreDimension[] }) {
+  if (!dimensions || dimensions.length === 0) {
+    return null
+  }
+
+  return (
+    <ul className={styles.dimensionList}>
+      {dimensions.map((item) => (
+        <li key={item.label} className={styles.dimensionItem}>
+          <span>{item.label}</span>
+          <span className={styles.dimensionScore}>{item.score}/{item.max_score}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+type SpeechRecognitionCtor = new () => {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  onresult: ((event: {
+    results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }>
+  }) => void) | null
+  onerror: ((event: { error: string }) => void) | null
+  onend: (() => void) | null
+  start: () => void
+  stop: () => void
+}
+
+function speechRecognitionCtor(): SpeechRecognitionCtor | null {
+  if (typeof window === 'undefined') return null
+  const browser = window as Window & {
+    SpeechRecognition?: SpeechRecognitionCtor
+    webkitSpeechRecognition?: SpeechRecognitionCtor
+  }
+  return browser.SpeechRecognition || browser.webkitSpeechRecognition || null
+}
+
+function MicIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M6 11a6 6 0 0 0 12 0" />
+      <path d="M12 17v4" />
+      <path d="M8 21h8" />
+    </svg>
+  )
+}
 
 type Props = {
   jobId: number
@@ -28,10 +85,66 @@ export default function AIInterviewPanel({
   const [sessionId, setSessionId] = useState<number | null>(null)
   const [currentQuestion, setCurrentQuestion] = useState<InterviewQuestion | null>(null)
   const [draftAnswer, setDraftAnswer] = useState('')
+  const [submittedAnswer, setSubmittedAnswer] = useState('')
   const [feedback, setFeedback] = useState<InterviewFeedback | null>(null)
   const [pendingNextQuestion, setPendingNextQuestion] = useState<InterviewQuestion | null>(null)
   const [finalResult, setFinalResult] = useState<FinalInterviewResult | null>(null)
   const [error, setError] = useState('')
+  const [isListening, setIsListening] = useState(false)
+  const recognitionRef = useRef<InstanceType<SpeechRecognitionCtor> | null>(null)
+  const speechBaseRef = useRef('')
+  const speechSupported = speechRecognitionCtor() !== null
+
+  const stopListening = () => {
+    recognitionRef.current?.stop()
+    recognitionRef.current = null
+    setIsListening(false)
+  }
+
+  useEffect(() => () => recognitionRef.current?.stop(), [])
+
+  const toggleListening = () => {
+    if (isListening) {
+      stopListening()
+      return
+    }
+
+    const Ctor = speechRecognitionCtor()
+    if (!Ctor) return
+
+    const recognition = new Ctor()
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = 'en-US'
+    speechBaseRef.current = draftAnswer.trim()
+    recognition.onresult = (event) => {
+      let finalText = ''
+      let interimText = ''
+      for (let index = 0; index < event.results.length; index += 1) {
+        const piece = event.results[index][0]?.transcript ?? ''
+        if (event.results[index].isFinal) finalText += piece
+        else interimText += piece
+      }
+      const spoken = `${finalText} ${interimText}`.replace(/\s+/g, ' ').trim()
+      setDraftAnswer([speechBaseRef.current, spoken].filter(Boolean).join(' '))
+    }
+    recognition.onerror = (event) => {
+      if (event.error === 'not-allowed') {
+        setError('Allow the microphone to dictate your answer.')
+      }
+      setIsListening(false)
+    }
+    recognition.onend = () => setIsListening(false)
+    recognitionRef.current = recognition
+    setError('')
+    setIsListening(true)
+    try {
+      recognition.start()
+    } catch {
+      setIsListening(false)
+      setError('Voice input could not start.')
+    }
+  }
 
   const canStart = Boolean(resumeData)
 
@@ -57,6 +170,8 @@ export default function AIInterviewPanel({
       setFeedback(null)
       setFinalResult(null)
       setPendingNextQuestion(null)
+      setSubmittedAnswer('')
+      stopListening()
       setIsLoading(true)
 
       const firstQuestion = await startInterview(jobId, resumeData)
@@ -84,9 +199,12 @@ export default function AIInterviewPanel({
     try {
       setError('')
       setIsSubmitting(true)
+      stopListening()
 
-      const result = await submitInterviewAnswer(sessionId, draftAnswer.trim())
+      const answer = draftAnswer.trim()
+      const result = await submitInterviewAnswer(sessionId, answer)
 
+      setSubmittedAnswer(answer)
       setFeedback(result.feedback)
       setDraftAnswer('')
 
@@ -115,6 +233,9 @@ export default function AIInterviewPanel({
 
     setCurrentQuestion(pendingNextQuestion)
     setPendingNextQuestion(null)
+    setFeedback(null)
+    setSubmittedAnswer('')
+    stopListening()
   }
 
   const handleRestart = () => {
@@ -122,7 +243,9 @@ export default function AIInterviewPanel({
     setSessionId(null)
     setCurrentQuestion(null)
     setDraftAnswer('')
+    setSubmittedAnswer('')
     setFeedback(null)
+    stopListening()
     setPendingNextQuestion(null)
     setFinalResult(null)
     setError('')
@@ -179,8 +302,9 @@ export default function AIInterviewPanel({
       ) : finalResult ? (
         <div className={styles.resultsCard}>
           <div className={styles.resultsLabel}>Final Interview Results</div>
-          <div className={styles.finalScore}>{finalResult.final_score}/100</div>
+          <div className={`${styles.finalScore} ${scoreTone(finalResult.final_score)}`}>{finalResult.final_score}/100</div>
           <div className={styles.resultsSummary}>{finalResult.overall_summary}</div>
+          <DimensionList dimensions={finalResult.dimensions} />
 
           <div className={styles.resultsGrid}>
             <div>
@@ -230,16 +354,24 @@ export default function AIInterviewPanel({
             </div>
           )}
 
+          {submittedAnswer && (
+            <div className={styles.startCard}>
+              <div className={styles.questionLabel}>Your Answer</div>
+              <p className={styles.submittedAnswer}>{submittedAnswer}</p>
+            </div>
+          )}
+
           {feedback && (
             <div className={styles.feedbackCard}>
               <div className={styles.feedbackLabel}>Feedback</div>
 
               <div className={styles.feedbackTopRow}>
-                <div className={styles.scoreBadge}>{feedback.score}/100</div>
+                <div className={`${styles.scoreBadge} ${scoreTone(feedback.score)}`}>{feedback.score}/100</div>
                 <div className={styles.benchmark}>{feedback.benchmark}</div>
               </div>
 
               <div className={styles.summary}>{feedback.summary}</div>
+              <DimensionList dimensions={feedback.dimensions} />
 
               <div className={styles.feedbackGrid}>
                 <div>
@@ -275,9 +407,22 @@ export default function AIInterviewPanel({
             </div>
           )}
 
-          {currentQuestion && !pendingNextQuestion && (
+          {currentQuestion && !feedback && (
             <div className={styles.startCard}>
-              <div className={styles.questionLabel}>Your Answer</div>
+              <div className={styles.answerHeader}>
+                <div className={styles.questionLabel}>Your Answer</div>
+                <button
+                  type="button"
+                  className={`${styles.micButton} ${isListening ? styles.micListening : ''}`}
+                  aria-label={isListening ? 'Stop voice input' : 'Start voice input'}
+                  aria-pressed={isListening}
+                  title={speechSupported ? 'Speak your answer' : 'Voice input is not available in this browser'}
+                  onClick={toggleListening}
+                  disabled={isSubmitting || !speechSupported}
+                >
+                  <MicIcon />
+                </button>
+              </div>
               <textarea
                 className={styles.answerBox}
                 placeholder="Write your answer here. Use a clear problem → action → result structure when possible."
