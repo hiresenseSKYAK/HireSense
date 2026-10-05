@@ -13,12 +13,19 @@ export type InterviewQuestion = {
   tips: string[]
 }
 
+export type InterviewScoreDimension = {
+  label: string
+  score: number
+  max_score: number
+}
+
 export type InterviewFeedback = {
   score: number
   benchmark: string
   summary: string
   strengths: string[]
   improvements: string[]
+  dimensions?: InterviewScoreDimension[]
 }
 
 export type FinalInterviewResult = {
@@ -26,6 +33,7 @@ export type FinalInterviewResult = {
   overall_summary: string
   top_strengths: string[]
   next_steps: string[]
+  dimensions?: InterviewScoreDimension[]
 }
 
 export type InterviewAnswerResult = {

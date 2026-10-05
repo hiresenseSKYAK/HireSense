@@ -9,148 +9,6 @@ import { formatDiscoveryAge, formatPostedDate, sourcePostedAt } from '../utils/j
 import AIInterviewPanel from '../components/AIInterviewPanel'
 import styles from './JobDetailPage.module.css'
 
-type DescriptionSection = {
-  heading?: string
-  items: string[]
-}
-
-function normalizeDescriptionText(job: Job | null): string {
-  if (!job) {
-    return ''
-  }
-
-  if (typeof job.description === 'string') {
-    return job.description.trim()
-  }
-
-  if (job.description?.about) {
-    return job.description.about.trim()
-  }
-
-  return ''
-}
-
-function cleanDescriptionText(text: string): string {
-  return text
-    .replace(/\r/g, '\n')
-    .replace(/\u2022/g, '\n• ')
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/\s+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/[ \t]{2,}/g, ' ')
-    .trim()
-}
-
-function sentenceSplitToParagraphs(text: string): string[] {
-  const normalized = text.replace(/\s+/g, ' ').trim()
-
-  if (!normalized) {
-    return []
-  }
-
-  const sentences = normalized
-    .split(/(?<=[.!?])\s+(?=[A-Z])/)
-    .map((sentence) => sentence.trim())
-    .filter(Boolean)
-
-  if (sentences.length <= 3) {
-    return sentences
-  }
-
-  const paragraphs: string[] = []
-
-  for (let i = 0; i < sentences.length; i += 3) {
-    paragraphs.push(sentences.slice(i, i + 3).join(' '))
-  }
-
-  return paragraphs
-}
-
-function buildDescriptionSections(text: string): DescriptionSection[] {
-  const cleaned = cleanDescriptionText(text)
-
-  if (!cleaned) {
-    return []
-  }
-
-  const rawLines = cleaned
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-
-  const headingPattern =
-    /^(about|overview|responsibilities|requirements|qualifications|preferred qualifications|preferred skills|skills|what you'll do|what you will do|benefits|why join|who you are|what we're looking for|what we are looking for)$/i
-
-  const bulletPattern = /^([•\-*]\s+|\d+\.\s+)/
-  const hasStructure = rawLines.some((line) => headingPattern.test(line) || bulletPattern.test(line))
-
-  if (!hasStructure) {
-    return [
-      {
-        heading: 'Overview',
-        items: sentenceSplitToParagraphs(cleaned),
-      },
-    ]
-  }
-
-  const sections: DescriptionSection[] = []
-  let currentSection: DescriptionSection = {
-    heading: 'Overview',
-    items: [],
-  }
-
-  for (const rawLine of rawLines) {
-    const line = rawLine.trim()
-
-    if (headingPattern.test(line)) {
-      if (currentSection.items.length > 0) {
-        sections.push(currentSection)
-      }
-
-      currentSection = {
-        heading: line,
-        items: [],
-      }
-      continue
-    }
-
-    if (bulletPattern.test(line)) {
-      currentSection.items.push(line.replace(bulletPattern, '').trim())
-      continue
-    }
-
-    const splitParagraphs = sentenceSplitToParagraphs(line)
-
-    if (splitParagraphs.length > 0) {
-      currentSection.items.push(...splitParagraphs)
-    }
-  }
-
-  if (currentSection.items.length > 0) {
-    sections.push(currentSection)
-  }
-
-  return sections.length > 0
-    ? sections
-    : [
-        {
-          heading: 'Overview',
-          items: sentenceSplitToParagraphs(cleaned),
-        },
-      ]
-}
-
-function formatSectionHeading(value?: string): string {
-  if (!value) {
-    return 'Overview'
-  }
-
-  return value
-    .split(' ')
-    .map((word) => (word ? word[0].toUpperCase() + word.slice(1) : word))
-    .join(' ')
-}
-
 export default function JobDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -197,11 +55,6 @@ export default function JobDetailPage() {
     return matchResumeToJob(savedResume?.parsed_data, job)
   }, [job, savedResume])
 
-  const descriptionSections = useMemo(() => {
-    const text = normalizeDescriptionText(job)
-    return buildDescriptionSections(text)
-  }, [job])
-
   const salaryText = useMemo(() => {
     if (!job) {
       return 'N/A'
@@ -241,7 +94,7 @@ export default function JobDetailPage() {
   }
 
   return (
-    <div className="page">
+    <div className={`page ${styles.page}`}>
       <button className={styles.backBtn} onClick={() => navigate('/')}>
         ← Back to Jobs
       </button>
@@ -259,13 +112,10 @@ export default function JobDetailPage() {
                 <div>
                   <div className={styles.company}>{job.company}</div>
                   <h1 className={styles.jobTitle}>{job.title}</h1>
-                <div className={styles.jobMeta}>
+                  <div className={styles.jobMeta}>
                   <span>{job.location}</span>
                   <span>•</span>
                   <span>{job.hybrid}</span>
-                  <span>•</span>
-                  <span>{job.type}</span>
-                  {formatPostedDate(sourcePostedAt(job)) && <><span>•</span><span>Posted {formatPostedDate(sourcePostedAt(job))}</span></>}
                 </div>
                   <div className={styles.freshnessRow}>
                     {formatDiscoveryAge(job.firstSeenAt) && <span>{formatDiscoveryAge(job.firstSeenAt)}</span>}
@@ -274,59 +124,7 @@ export default function JobDetailPage() {
                 </div>
               </div>
             </div>
-          </section>
 
-          <section className={styles.sectionCard}>
-            <h2 className={styles.sectionTitle}>Role Overview</h2>
-
-            {descriptionSections.length > 0 ? (
-              <div className={styles.descriptionLayout}>
-                {descriptionSections.map((section, index) => (
-                  <div
-                    key={`${section.heading || 'section'}-${index}`}
-                    className={styles.descriptionBlock}
-                  >
-                    <h3 className={styles.descriptionHeading}>
-                      {formatSectionHeading(section.heading)}
-                    </h3>
-
-                    <div className={styles.descriptionContent}>
-                      {section.items.map((item, itemIndex) => (
-                        <p
-                          key={`${section.heading || 'section'}-${itemIndex}`}
-                          className={styles.descriptionParagraph}
-                        >
-                          {item}
-                        </p>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className={styles.description}>No description available.</p>
-            )}
-          </section>
-
-          <section className={styles.sectionCard}>
-            <h2 className={styles.sectionTitle}>Key Skills</h2>
-            <div className={styles.tagsWrap}>
-              {Array.isArray(job.tags) && job.tags.length > 0 ? (
-                job.tags.map((tag) => (
-                  <span key={tag} className={styles.skillTag}>
-                    {tag}
-                  </span>
-                ))
-              ) : (
-                <div className={styles.matchEmpty}>
-                  No structured skills were available for this job.
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section className={styles.sectionCard}>
-            <h2 className={styles.sectionTitle}>Details</h2>
             <div className={styles.detailsGrid}>
               <div className={styles.detailCard}>
                 <div className={styles.detailLabel}>Experience</div>
@@ -346,10 +144,8 @@ export default function JobDetailPage() {
               </div>
             </div>
           </section>
-        </main>
 
-        <aside className={styles.sidebar}>
-          <div className={styles.matchCard}>
+          <section className={styles.matchCard}>
             <div className={styles.matchLabel}>Your Match Score</div>
 
             {!savedResume || !matchResult ? (
@@ -374,12 +170,14 @@ export default function JobDetailPage() {
               <div className={styles.matchEmpty}>This source has not provided enough structured skill evidence for a reliable percentage yet. Review the role requirements directly.</div>
             ) : (
               <>
-                <div className={styles.scoreCircle}>
-                  <span className={styles.scoreValue}>{matchResult.matchScore}%</span>
+                <div className={styles.matchTop}>
+                  <div className={styles.scoreCircle}>
+                    <span className={styles.scoreValue}>{matchResult.matchScore}%</span>
+                  </div>
+                  <div className={styles.matchSummary}>{matchResult.recommendation}</div>
                 </div>
 
-                <div className={styles.matchSummary}>{matchResult.recommendation}</div>
-
+                <div className={styles.matchSections}>
                 <div className={styles.matchSection}>
                   <div className={styles.matchSectionTitle}>Matched Skills</div>
                   {matchResult.matchedSkills.length > 0 ? (
@@ -411,6 +209,7 @@ export default function JobDetailPage() {
                     </div>
                   )}
                 </div>
+                </div>
 
               </>
             )}
@@ -420,8 +219,10 @@ export default function JobDetailPage() {
                 Apply directly →
               </a>
             )}
-          </div>
+          </section>
+        </main>
 
+        <aside className={styles.sidebar}>
           <div className={styles.interviewCard}>
             <AIInterviewPanel
               jobId={job.id}

@@ -94,12 +94,19 @@ class InterviewQuestionOut(BaseModel):
     tips: List[str] = Field(default_factory=list)
 
 
+class InterviewScoreDimension(BaseModel):
+    label: str
+    score: int
+    max_score: int
+
+
 class InterviewFeedbackOut(BaseModel):
     score: int
     benchmark: str
     summary: str
     strengths: List[str] = Field(default_factory=list)
     improvements: List[str] = Field(default_factory=list)
+    dimensions: List[InterviewScoreDimension] = Field(default_factory=list)
 
 
 class FinalInterviewResultOut(BaseModel):
@@ -107,6 +114,7 @@ class FinalInterviewResultOut(BaseModel):
     overall_summary: str
     top_strengths: List[str] = Field(default_factory=list)
     next_steps: List[str] = Field(default_factory=list)
+    dimensions: List[InterviewScoreDimension] = Field(default_factory=list)
 
 
 class InterviewAnswerRequest(BaseModel):
