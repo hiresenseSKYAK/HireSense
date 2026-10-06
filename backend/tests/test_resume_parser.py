@@ -209,6 +209,46 @@ class ResumeParserTests(unittest.TestCase):
             ["Mapped campus buildings and highlighted accessible entrances"],
         )
 
+    def test_supports_unusual_section_order_without_mixing_content(self):
+        parsed = parse_resume_text(
+            """
+            Grace Hopper
+            grace@example.com
+
+            Projects
+            Compiler Toolkit
+            - Built a parser in Python
+
+            Skills
+            Python, SQL
+
+            Education
+            Yale University
+            M.S. in Computer Science
+            September 1930 - May 1934
+            """
+        )
+
+        self.assertEqual(parsed["name"], "Grace Hopper")
+        self.assertEqual(len(parsed["project_entries"]), 1)
+        self.assertIn("Python", parsed["skills"])
+        self.assertEqual(parsed["education_entries"][0]["school"], "Yale University")
+        self.assertNotIn("Compiler Toolkit", " ".join(parsed["education"]))
+
+    def test_deduplicates_skills_in_a_sparse_resume(self):
+        parsed = parse_resume_text(
+            """
+            Grace Hopper
+            grace@example.com
+
+            Skills
+            Python, Python, SQL, SQL
+            """
+        )
+
+        self.assertEqual(parsed["skills"].count("Python"), 1)
+        self.assertEqual(parsed["skills"].count("SQL"), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

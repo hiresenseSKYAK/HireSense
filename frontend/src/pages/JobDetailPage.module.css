@@ -1,5 +1,5 @@
 .page {
-  height: calc(100vh - 80px);
+  min-height: calc(100vh - 80px);
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -106,6 +106,14 @@
   margin: 0 0 14px 0;
   font-size: 24px;
   color: var(--text-primary);
+}
+
+.description {
+  color: var(--text-secondary);
+  font-size: 0.94rem;
+  line-height: 1.75;
+  margin: 0;
+  white-space: pre-line;
 }
 
 .tagsWrap {
@@ -274,7 +282,9 @@
 .detailSkeleton span:first-child { height:36px; width:55%; }
 .detailSkeleton span:nth-child(3) { width:94%; }
 @keyframes pulse { to { background-position:-200% 0; } }
-.applyButton { width:100%; padding:12px; justify-content:center; margin-top:auto; text-decoration:none; }
+.applicationActions { display:grid; gap:10px; margin-top:auto; padding-top:18px; }
+.applicationActions > * { width:100%; justify-content:center; }
+.applyButton { padding:12px; text-decoration:none; }
 
 @media (max-width: 1080px) {
   .page {

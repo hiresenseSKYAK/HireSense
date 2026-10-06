@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import { getResumeAnalysis } from '../../utils/resumeStorage'
 import ProfileReview from './ProfileReview'
+import AutofillSteps from './AutofillSteps'
 import { hasUsableResumeAnalysis, isApplicantProfile } from './review'
 import styles from './ProfileReview.module.css'
 
@@ -39,6 +40,7 @@ export default function PrepareApplicationPage() {
           Review the details HireSense can fill. Blank fields stay blank.
         </p>
       </div>
+      <AutofillSteps step={1} />
       <ProfileReview resume={resume} draft={isApplicantProfile(draft) ? draft : undefined} />
     </div>
   )

@@ -9,6 +9,18 @@ import { formatDiscoveryAge, formatPostedDate, sourcePostedAt } from '../utils/j
 import AIInterviewPanel from '../components/AIInterviewPanel'
 import styles from './JobDetailPage.module.css'
 
+function jobDescription(job: Job): string {
+  if (job.fullDescription?.trim()) return job.fullDescription.trim()
+  if (typeof job.description === 'string') return job.description.trim()
+  if (!job.description) return ''
+  return [
+    job.description.about,
+    ...job.description.responsibilities,
+    ...job.description.requirements,
+    ...job.description.benefits,
+  ].filter(Boolean).join('\n')
+}
+
 export default function JobDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -22,8 +34,10 @@ export default function JobDetailPage() {
 
   useEffect(() => {
     async function loadJob() {
-      if (!id) {
-        setError('Missing job id.')
+      const jobId = Number(id)
+      if (!Number.isInteger(jobId) || jobId <= 0) {
+        setJob(null)
+        setError('This job link is invalid.')
         setIsLoading(false)
         return
       }
@@ -31,9 +45,11 @@ export default function JobDetailPage() {
       try {
         setIsLoading(true)
         setError('')
-        const data = await fetchJob(Number(id))
+        const data = await fetchJob(jobId)
         setJob(data)
+        setLogoFailed(false)
       } catch (err) {
+        setJob(null)
         if (err instanceof Error) {
           setError(err.message)
         } else {
@@ -62,6 +78,7 @@ export default function JobDetailPage() {
 
     return formatSalary(job.salaryRange || job.salary)
   }, [job])
+  const description = useMemo(() => job ? jobDescription(job) : '', [job])
   const hasMatchSignal = Boolean(
     matchResult && (matchResult.matchedSkills.length || matchResult.missingSkills.length)
   )
@@ -87,7 +104,9 @@ export default function JobDetailPage() {
         </button>
         <div className={styles.emptyState} role="alert">
           <strong>{error || 'Job not found.'}</strong>
-          <button type="button" className="btn-outline" onClick={() => setLoadKey((key) => key + 1)}>Try again</button>
+          {error !== 'This job link is invalid.' && error !== 'This job is no longer available.' && (
+            <button type="button" className="btn-outline" onClick={() => setLoadKey((key) => key + 1)}>Try again</button>
+          )}
         </div>
       </div>
     )
@@ -107,7 +126,7 @@ export default function JobDetailPage() {
                 <div className={styles.companyLogo}>
                   {(job.companyLogoUrl || job.logo) && !logoFailed
                     ? <img src={job.companyLogoUrl || job.logo} alt={`${job.company} logo`} onError={() => setLogoFailed(true)} />
-                    : <span aria-hidden="true">{job.company.charAt(0).toUpperCase()}</span>}
+                    : <span aria-hidden="true">{job.company?.charAt(0).toUpperCase() || '?'}</span>}
                 </div>
                 <div>
                   <div className={styles.company}>{job.company}</div>
@@ -145,8 +164,26 @@ export default function JobDetailPage() {
             </div>
           </section>
 
+          <section className={styles.sectionCard} aria-labelledby="role-description-heading">
+            <h2 id="role-description-heading" className={styles.sectionTitle}>Role description</h2>
+            {description
+              ? <p className={styles.description}>{description}</p>
+              : <p className={styles.matchEmpty}>The source did not provide a role description. Open the original listing for complete details.</p>}
+          </section>
+
+          <section className={styles.sectionCard} aria-labelledby="key-skills-heading">
+            <h2 id="key-skills-heading" className={styles.sectionTitle}>Key skills from the listing</h2>
+            {Array.isArray(job.tags) && job.tags.length > 0 ? (
+              <div className={styles.tagsWrap}>
+                {job.tags.map((tag) => <span key={tag} className={styles.skillTag}>{tag}</span>)}
+              </div>
+            ) : (
+              <p className={styles.matchEmpty}>No structured skills were available from this source.</p>
+            )}
+          </section>
+
           <section className={styles.matchCard}>
-            <div className={styles.matchLabel}>Your Match Score</div>
+            <div className={styles.matchLabel}>Resume skill match</div>
 
             {!savedResume || !matchResult ? (
               <>
@@ -214,11 +251,14 @@ export default function JobDetailPage() {
               </>
             )}
 
-            {job.applicationLink && (
-              <a className={`btn-primary ${styles.applyButton}`} href={job.applicationLink} target="_blank" rel="noopener noreferrer">
-                Apply directly →
-              </a>
-            )}
+            <div className={styles.applicationActions}>
+              <Link className="btn-outline" to="/application/prepare">Prepare application</Link>
+              {job.applicationLink && (
+                <a className={`btn-primary ${styles.applyButton}`} href={job.applicationLink} target="_blank" rel="noopener noreferrer">
+                  Apply directly →
+                </a>
+              )}
+            </div>
           </section>
         </main>
 

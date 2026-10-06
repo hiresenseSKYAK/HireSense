@@ -43,7 +43,7 @@ export default function LoginPage() {
   return (
     <div className={styles.page}>
       <div className={styles.card}>
-        <div className={styles.logo}>HireSense</div>
+        <img src="/logo.png" alt="HireSense" className={styles.logo} />
         <h1 className={styles.title}>{isSignup ? 'Create Account' : 'Welcome Back'}</h1>
         <p className={styles.sub}>
           {isSignup

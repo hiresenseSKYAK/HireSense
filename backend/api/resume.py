@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from services.applicant_profile import build_applicant_profile
 from services.file_extractor import extract_resume_text
@@ -5,6 +7,7 @@ from services.resume_parser import parse_resume_text
 from services.resume_scorer import score_resume
 
 router = APIRouter(prefix="/resume", tags=["resume"])
+logger = logging.getLogger(__name__)
 
 ALLOWED_EXTENSIONS = (".pdf", ".docx")
 MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
@@ -36,7 +39,14 @@ async def upload_resume(file: UploadFile = File(...)):
 
     try:
         extracted_text = extract_resume_text(filename, file_bytes)
+    except Exception:
+        logger.exception("Could not extract text from resume file %r", filename)
+        raise HTTPException(
+            status_code=400,
+            detail="We couldn't read this resume. Export it as a new PDF or DOCX file and try again.",
+        )
 
+    try:
         if not extracted_text.strip():
             raise HTTPException(
                 status_code=400,
@@ -67,8 +77,9 @@ async def upload_resume(file: UploadFile = File(...)):
 
     except HTTPException:
         raise
-    except Exception as exc:
+    except Exception:
+        logger.exception("Resume processing failed for file %r", filename)
         raise HTTPException(
             status_code=500,
-            detail=f"Resume processing failed: {str(exc)}",
+            detail="Resume processing failed. Please try again.",
         )

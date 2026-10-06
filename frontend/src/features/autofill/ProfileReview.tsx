@@ -241,7 +241,7 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
       </div>
 
       <p className={styles.fieldGuide}>Contact details & professional links <span>{fields.filter((field) => reviewState.values[field.name].trim()).length} of {fields.length} details available</span></p>
-      <p className={styles.confirmationHint}>Names and address details are yours to enter. Country means where you live, never citizenship. Blank fields remain manual.</p>
+      <p className={styles.confirmationHint}>Review names carefully; address details are yours to enter. Country means where you live, never citizenship. Blank fields remain manual.</p>
       <div className={styles.fieldGrid}>
         {fields.map((field) => {
           const error = errors[field.name]
@@ -399,7 +399,7 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
           <button type="button" className="btn-primary" disabled={!canUseAutofillExtension() || sending} onClick={() => void sendToBrowserBridge()}>
             {sending ? 'Sending profile…' : 'Send to extension'}
           </button>
-          {!canUseAutofillExtension() && <p className={styles.confirmationHint}>Requires the HireSense Chrome extension.</p>}
+          {!canUseAutofillExtension() && <p className={styles.confirmationHint}>The HireSense Chrome extension is not connected. Load or enable it, then refresh this page to send your confirmed profile.</p>}
           {bridgeStatus && <p className={styles.bridgeStatus} role="status">{bridgeStatus}</p>}
         </div>
       )}
