@@ -1,48 +1,91 @@
-# HireSense frontend
+# HireSense — Frontend
 
-HireSense is a React, TypeScript, and Vite application for discovering DFW and explicit U.S.-remote technology roles, understanding resume-to-job overlap, preparing applicant details, and practicing job-specific interview answers.
+DFW tech job board built with React, TypeScript, and Vite.
 
-## Local development
+## Getting Started
 
-Requirements: Node.js 18 or newer and the HireSense FastAPI service.
+### Prerequisites
+- [Node.js](https://nodejs.org/) v18 or higher
+- npm (comes with Node.js)
 
-```sh
-npm ci
+### Installation
+
+```bash
+# 1. Navigate into the project folder
+cd hiresense
+
+# 2. Install dependencies
+npm install
+
+# 3. Start the development server
 npm run dev
 ```
 
-The frontend defaults to `http://127.0.0.1:8000` for API requests. Set `VITE_API_BASE_URL` to use another backend. Set `VITE_AUTOFILL_EXTENSION_ID` when testing the Chrome extension bridge.
+The app will be running at **http://localhost:5173**
 
-## Routes
+---
 
-| Route | Purpose |
-|---|---|
-| `/login` | Account sign-in and registration |
-| `/` | Server-paginated job discovery, filters, sorting, matching, and market context |
-| `/jobs/:id` | Job details, resume overlap, application preparation, and interview practice |
-| `/resume` | PDF/DOCX upload, parsed resume evidence, and improvement guidance |
-| `/profile` | Account, current resume, match summary, and Autofill readiness |
-| `/application/prepare` | Review and confirm the applicant profile sent to Autofill |
-| `/application/preview` | Controlled local demonstration of preview-first filling |
-| `/privacy` | Autofill privacy policy |
+## Project Structure
 
-Protected routes require a current HireSense account session.
-
-## Validation
-
-```sh
-npm test -- --run
-npm run build
-npm run build:extension
+```
+hiresense/
+├── public/
+│   └── favicon.svg
+├── src/
+│   ├── components/
+│   │   ├── Icons.tsx           # All SVG icons
+│   │   ├── JobCard.tsx         # Job listing row card
+│   │   ├── JobCard.module.css
+│   │   ├── MarketSidebar.tsx   # Market analysis sidebar
+│   │   ├── MarketSidebar.module.css
+│   │   ├── Navbar.tsx          # Top navigation bar
+│   │   └── Navbar.module.css
+│   ├── data/
+│   │   └── mockData.ts         # All mock data (replace with API calls later)
+│   ├── pages/
+│   │   ├── HomePage.tsx        # Main job listings page
+│   │   ├── HomePage.module.css
+│   │   ├── JobDetailPage.tsx   # Individual job detail + interview
+│   │   ├── JobDetailPage.module.css
+│   │   ├── ResumePage.tsx      # Resume upload + analysis
+│   │   └── ResumePage.module.css
+│   ├── types/
+│   │   └── index.ts            # TypeScript interfaces
+│   ├── App.tsx                 # Route definitions
+│   ├── index.css               # Global styles + CSS variables
+│   └── main.tsx                # App entry point
+├── index.html
+├── package.json
+├── tsconfig.json
+└── vite.config.ts
 ```
 
-The main build includes TypeScript checking. The extension build separately type-checks and bundles the Manifest V3 background, content, popup, and resume-selection scripts.
+---
 
-## Architecture notes
+## Pages
 
-- Job search, filters, sorting, matching, and pagination are handled by the live backend; the browser renders one page of results at a time.
-- Resume analysis is saved in browser local storage for the current browser profile. A failed replacement upload preserves the last successful analysis.
-- Autofill requires explicit profile review and confirmation. The extension stores confirmed profile and optional resume data in Chrome session storage for up to 30 minutes.
-- Autofill previews before writing, preserves existing answers, rejects ambiguous or sensitive fields, verifies writes, and never submits or advances an application.
+| Route       | Page              | Description                                      |
+|-------------|-------------------|--------------------------------------------------|
+| `/`         | Home              | Search, filters, market sidebar, job listings    |
+| `/resume`   | Upload Resume     | File upload, resume analysis, skill scores       |
+| `/jobs/:id` | Job Detail        | Full JD, match score, AI practice interview      |
 
-See [`extension/README.md`](extension/README.md) for the installed-extension workflow and the repository-level `DEPLOYMENT.md` for production configuration.
+---
+
+## Connecting to the Backend
+
+All mock data lives in `src/data/mockData.ts`. When your Python backend is ready:
+
+1. Create an `src/api/` folder with fetch helpers
+2. Replace mock data imports in pages with API calls
+3. Update the `Job` and other types in `src/types/index.ts` to match your DB schema
+
+---
+
+## Available Scripts
+
+| Command         | Description                  |
+|-----------------|------------------------------|
+| `npm run dev`   | Start dev server             |
+| `npm run build` | Build for production         |
+| `npm run preview` | Preview production build   |

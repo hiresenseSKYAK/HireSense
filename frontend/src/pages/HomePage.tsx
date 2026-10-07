@@ -186,7 +186,6 @@ export default function HomePage() {
             <input
               type="text"
               placeholder="Search by title, company, or skill..."
-              aria-label="Search jobs by title, company, or skill"
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value)
@@ -275,7 +274,7 @@ export default function HomePage() {
             ) : jobs.length > 0 ? (
               jobs.map((job) => <JobCard key={job.id} job={job} showMatch={Boolean(savedResume)} />)
             ) : hasCriteria ? (
-              <div className={styles.emptyState} role="status">
+              <div className={styles.emptyState}>
                 <strong>No roles match those filters.</strong>
                 <p>Clear a filter or broaden your search to see more of the live feed.</p>
                 <button type="button" className="btn-outline" onClick={() => { setQuery(''); setFilters(buildEmptyFilters()); setPage(1) }}>
@@ -283,7 +282,7 @@ export default function HomePage() {
                 </button>
               </div>
             ) : (
-              <div className={styles.emptyState} role="status">
+              <div className={styles.emptyState}>
                 <strong>The live feed is between refreshes.</strong>
                 <p>No qualifying DFW or explicit U.S.-remote roles are available right now.</p>
                 <button type="button" className="btn-outline" onClick={() => setLoadKey((key) => key + 1)}>Refresh feed</button>
@@ -293,7 +292,7 @@ export default function HomePage() {
 
           {!error && total > 0 && (
             <div className={styles.pager}>
-              <p className={styles.pagerStatus} role="status" aria-live="polite">
+              <p className={styles.pagerStatus}>
                 Showing {rangeStart}–{rangeEnd} of {total}
               </p>
               {totalPages > 1 && (

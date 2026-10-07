@@ -17,11 +17,10 @@
 }
 
 .logo {
-  display: block;
-  height: 38px;
-  max-width: 190px;
-  object-fit: contain;
-  object-position: left center;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 800;
+  font-size: 1.2rem;
+  color: var(--accent-text);
   margin-bottom: 20px;
 }
 

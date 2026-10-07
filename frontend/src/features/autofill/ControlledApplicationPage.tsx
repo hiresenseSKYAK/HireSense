@@ -6,7 +6,6 @@ import { previewSummary, reportField } from './matcher/report'
 import type { FieldDecision, FillResult } from './matcher/types'
 import { isApplicantProfile } from './review'
 import { ClassicApplication, CompactApplication } from './demoLayouts'
-import AutofillSteps from './AutofillSteps'
 import styles from './ControlledApplication.module.css'
 
 type ApplicationLayout = 'classic' | 'compact'
@@ -72,7 +71,6 @@ export default function ControlledApplicationPage() {
       <h1 tabIndex={-1} ref={headingRef}>Prepare your next application</h1>
       <p>Your information. Your decision. Preview the proposed changes, then fill only the supported details.</p>
     </div>
-    <AutofillSteps step={2} />
     <div className={styles.layoutPicker}>
       <div><span className={styles.sectionLabel}>Application examples</span><p>Two realistic layouts. The same confirmed profile. Switching resets the example.</p></div>
       <div className={styles.pickerButtons} role="group" aria-label="Application example layout">

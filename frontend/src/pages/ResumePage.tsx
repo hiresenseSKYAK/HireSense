@@ -7,6 +7,7 @@ import {
   type StructuredResumeEntry,
 } from '../api/resume'
 import {
+  clearResumeAnalysis,
   getResumeAnalysis,
   saveResumeAnalysis,
 } from '../utils/resumeStorage'
@@ -171,13 +172,16 @@ export default function ResumePage() {
     try {
       setError('')
       setIsUploading(true)
+      setSelectedFileName(file.name)
 
       const result = await uploadResume(file)
       setResumeResult(result)
-      setSelectedFileName(result.filename || file.name)
       saveResumeAnalysis(result)
       setUploadedAt(formatTime())
     } catch (err) {
+      setResumeResult(null)
+      clearResumeAnalysis()
+
       if (err instanceof Error) {
         setError(err.message)
       } else {
@@ -229,7 +233,6 @@ export default function ResumePage() {
         ref={fileInputRef}
         type="file"
         accept=".pdf,.docx"
-        aria-label="Choose a PDF or DOCX resume"
         className={styles.hiddenInput}
         onChange={handleFileChange}
         disabled={isUploading}
@@ -256,7 +259,7 @@ export default function ResumePage() {
             </h3>
             <p className={styles.uploadSub}>
               {isUploading
-                ? 'We are extracting your information and reviewing the resume evidence.'
+                ? 'We are extracting content, grading it, and generating recommendations.'
                 : 'or click to browse your files'}
             </p>
 
@@ -275,7 +278,7 @@ export default function ResumePage() {
             <div className={styles.uploadFormats}>Supports PDF and DOCX • Max size 5 MB</div>
 
             {error && (
-              <div className={`${styles.statusMessage} ${styles.errorState}`} role="alert">{error}</div>
+              <div className={`${styles.statusMessage} ${styles.errorState}`}>{error}</div>
             )}
           </div>
         ) : (
@@ -311,7 +314,7 @@ export default function ResumePage() {
               </button>
             </div>
             {error && (
-              <div className={`${styles.statusMessage} ${styles.errorState}`} role="alert">{error} Your previously saved resume is still available.</div>
+              <div className={`${styles.statusMessage} ${styles.errorState}`}>{error}</div>
             )}
           </div>
         )}
@@ -335,7 +338,7 @@ export default function ResumePage() {
 
                 <div className={styles.scoreMeta}>
                   <div className={styles.scoreTopRow}>
-                    <div className={styles.scoreLabel}>Resume Evidence Score</div>
+                    <div className={styles.scoreLabel}>Overall Resume Score</div>
                     <span className={styles.scoreBadge}>{getScoreLabel(analysis.score)}</span>
                   </div>
                   <div className={styles.scoreSub}>{analysis.summary}</div>
