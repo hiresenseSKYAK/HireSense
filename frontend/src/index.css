@@ -1,36 +1,36 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&display=swap');
 
 :root {
-  --tan: #f5e9ff;
-  --caramel: #7c3aed;
-  --cream: #fbf8ff;
-  --sage: #d8b4fe;
-  --burgundy: #5b21b6;
-  --tan-rgb: 245, 233, 255;
-  --caramel-rgb: 124, 58, 237;
-  --cream-rgb: 251, 248, 255;
-  --sage-rgb: 216, 180, 254;
-  --burgundy-rgb: 91, 33, 182;
+  --tan: #f4f7fb;
+  --caramel: #2563eb;
+  --cream: #f7fafc;
+  --sage: #bfdbfe;
+  --burgundy: #1e3a8a;
+  --tan-rgb: 244, 247, 251;
+  --caramel-rgb: 37, 99, 235;
+  --cream-rgb: 247, 250, 252;
+  --sage-rgb: 191, 219, 254;
+  --burgundy-rgb: 30, 58, 138;
 
   /* Surfaces */
-  --bg: #f5e9ff;
-  --bg-soft: #ead6ff;
-  --surface: #fbf8ff;
-  --surface2: #f3e8ff;
+  --bg: #f4f7fb;
+  --bg-soft: #e6eef6;
+  --surface: #f7fafc;
+  --surface2: #e4edf6;
   --surface-strong: #ffffff;
-  --border: rgba(var(--burgundy-rgb), 0.28);
-  --border-strong: #a78bfa;
+  --border: rgba(var(--burgundy-rgb), 0.22);
+  --border-strong: #1d4ed8;
 
   /* Text */
-  --text-primary: #1c1428;
-  --text-secondary: #3f314f;
-  --text-muted: #6b5a80;
+  --text-primary: #102033;
+  --text-secondary: #24344a;
+  --text-muted: #5a6d84;
 
   /* Accent */
-  --accent: #6d28d9;
-  --accent-strong: #7c3aed;
-  --accent-light: rgba(var(--caramel-rgb), 0.18);
-  --accent-text: #6d28d9;
+  --accent: #1d4ed8;
+  --accent-strong: #2563eb;
+  --accent-light: rgba(var(--caramel-rgb), 0.16);
+  --accent-text: #1d4ed8;
 
   /* Status colours (fills, rings, borders, icons) */
   --green: #128a3e;
@@ -73,8 +73,8 @@ body {
   font-family: 'DM Sans', sans-serif;
   color: var(--text-primary);
   background:
-    radial-gradient(circle at top left, rgba(251, 248, 255, 0.22) 0, transparent 30%),
-    radial-gradient(circle at bottom right, rgba(139, 108, 181, 0.14) 0, transparent 36%),
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.7) 0, transparent 28%),
+    radial-gradient(circle at bottom right, rgba(37, 99, 235, 0.06) 0, transparent 34%),
     var(--bg);
   background-attachment: fixed;
 }
@@ -146,7 +146,7 @@ select {
 
 .btn-primary:hover {
   transform: translateY(-1px);
-  background: linear-gradient(180deg, #8b5cf6 0%, var(--accent-strong) 100%);
+  background: linear-gradient(180deg, #3b82f6 0%, var(--accent-strong) 100%);
 }
 
 .btn-outline {

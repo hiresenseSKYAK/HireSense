@@ -381,7 +381,19 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
           <button type="button" className="btn-primary" disabled={!canUseAutofillExtension() || sending} onClick={() => void sendToBrowserBridge()}>
             {sending ? 'Sending profile…' : 'Send to extension'}
           </button>
-          {!canUseAutofillExtension() && <p className={styles.confirmationHint}>Requires the HireSense Chrome extension.</p>}
+          {!canUseAutofillExtension() && (
+            <p className={styles.confirmationHint}>
+              Requires the{' '}
+              <a
+                href="https://chromewebstore.google.com/detail/joikcoanlbhcleekjhgmbhaphhnhaiad?utm_source=item-share-cb"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                HireSense Chrome extension
+              </a>
+              .
+            </p>
+          )}
           {bridgeStatus && <p className={styles.bridgeStatus} role="status">{bridgeStatus}</p>}
         </div>
       )}

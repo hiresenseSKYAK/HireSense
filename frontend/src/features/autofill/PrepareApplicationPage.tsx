@@ -20,6 +20,14 @@ export default function PrepareApplicationPage() {
           <p className={styles.emptyMessage}>
             Upload a resume before preparing an application.
           </p>
+          <a
+            className={styles.storeLink}
+            href="https://chromewebstore.google.com/detail/joikcoanlbhcleekjhgmbhaphhnhaiad?utm_source=item-share-cb"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Get HireSense Autofill for Chrome
+          </a>
           <Link to="/resume" className="btn-primary">
             Go to Resume Upload
           </Link>
@@ -38,6 +46,14 @@ export default function PrepareApplicationPage() {
         <p className={styles.pageSubtitle}>
           Review the details HireSense can fill. Blank fields stay blank.
         </p>
+        <a
+          className={styles.storeLink}
+          href="https://chromewebstore.google.com/detail/joikcoanlbhcleekjhgmbhaphhnhaiad?utm_source=item-share-cb"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Get HireSense Autofill for Chrome
+        </a>
       </div>
       <ProfileReview resume={resume} draft={isApplicantProfile(draft) ? draft : undefined} />
     </div>
