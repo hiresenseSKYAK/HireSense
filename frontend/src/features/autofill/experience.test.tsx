@@ -41,6 +41,27 @@ describe('applicant review experience', () => {
     expect(button('Confirm my information').disabled).toBe(true)
     expect(document.body.textContent).not.toContain('Your profile is ready')
   })
+  it('edits typed education and work history while preserving current-job behavior', () => {
+    render(<ProfileReview resume={resume} draft={{ ...profile,
+      education: [{ school: 'UNT', degree: 'BS', fieldOfStudy: 'CS', startDate: '', endDate: '', current: false }],
+      experience: [{ company: 'Example', title: 'Intern', location: 'Denton', startDate: '2024-01-01', endDate: '2024-06-01', current: false, description: 'Built tools.' }],
+    }} />)
+    const sections = [...document.querySelectorAll('section')]
+    const work = sections.find(s => s.querySelector('p')?.textContent === 'Work experience')!
+    const description = work.querySelector('textarea')!
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(description, 'Tested Python tools.')
+      description.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect(description.value).toBe('Tested Python tools.')
+    const end = work.querySelectorAll<HTMLInputElement>('input[type="date"]')[1]
+    click(work.querySelector<HTMLInputElement>('input[type="checkbox"]')!)
+    expect(end.value).toBe('')
+    expect(end.disabled).toBe(true)
+    const school = sections.find(s => s.querySelector('p')?.textContent === 'Education')!.querySelector<HTMLInputElement>('input[type="text"]')!
+    expect(school.value).toBe('UNT')
+    expect(button('Confirm my information').disabled).toBe(true)
+  })
   it('returns draft details without silently confirming them', () => {
     render(<ProfileReview resume={resume} draft={profile} />)
     expect(document.querySelector<HTMLInputElement>('[autocomplete=given-name]')!.value).toBe('Ada')

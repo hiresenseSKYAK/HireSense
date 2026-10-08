@@ -28,7 +28,7 @@ interface ProfileReviewProps {
   draft?: ApplicantProfile
 }
 
-function HistoryEditor({
+function HistoryEditor<T extends EducationEntry | ExperienceEntry>({
   title,
   note,
   currentLabel,
@@ -43,21 +43,26 @@ function HistoryEditor({
   title: string
   note: string
   currentLabel: string
-  rows: Array<Record<string, string | boolean>>
-  columns: Array<readonly [string, string]>
-  longField?: readonly [string, string]
+  rows: T[]
+  columns: Array<readonly [Extract<keyof T, string>, string]>
+  longField?: readonly [Extract<keyof T, string>, string]
   disabled: boolean
-  onChange: (rows: Array<Record<string, string | boolean>>) => void
+  onChange: (rows: T[]) => void
   onAdd: () => void
   canAdd: boolean
 }) {
-  const update = (index: number, key: string, value: string | boolean) => {
+  const update = (index: number, key: keyof T, value: string | boolean) => {
     onChange(rows.map((row, rowIndex) => {
       if (rowIndex !== index) return row
       const next = { ...row, [key]: value }
       if (key === 'current' && value === true) next.endDate = ''
       return next
     }))
+  }
+
+  const textValue = (row: T, key: keyof T): string => {
+    const value = row[key]
+    return typeof value === 'string' ? value : ''
   }
 
   return (
@@ -75,7 +80,7 @@ function HistoryEditor({
                   <input
                     className={styles.input}
                     type={isDate ? 'date' : 'text'}
-                    value={typeof row[key] === 'string' ? row[key] : ''}
+                    value={textValue(row, key)}
                     disabled={disabled || (key === 'endDate' && row.current === true)}
                     onChange={(event) => update(index, key, event.target.value)}
                   />
@@ -90,7 +95,7 @@ function HistoryEditor({
           {longField && (
             <label className={styles.field}>
               <span className={styles.fieldLabel}>{longField[1]}</span>
-              <textarea className={styles.input} rows={3} value={typeof row[longField[0]] === 'string' ? row[longField[0]] : ''} disabled={disabled} onChange={(event) => update(index, longField[0], event.target.value)} />
+              <textarea className={styles.input} rows={3} value={textValue(row, longField[0])} disabled={disabled} onChange={(event) => update(index, longField[0], event.target.value)} />
             </label>
           )}
           {rows.length > 1 && (
@@ -109,8 +114,10 @@ function HistoryEditor({
   )
 }
 
+type TextProfileKey = { [K in keyof ApplicantProfile]: ApplicantProfile[K] extends string ? K : never }[keyof ApplicantProfile]
+
 const fields: Array<{
-  name: keyof ApplicantProfile
+  name: TextProfileKey
   label: string
   type?: 'email' | 'tel' | 'url' | 'text'
   autoComplete?: string
@@ -168,7 +175,7 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
     }))
   }
 
-  const handleChange = (field: keyof ApplicantProfile, value: string) => {
+  const handleChange = (field: TextProfileKey, value: string) => {
     // Keep spaces while typing; normalize only on blur.
     replaceProfile({ ...reviewState.values, [field]: value })
   }
@@ -305,7 +312,7 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
           ['endDate', 'End'],
         ]}
         disabled={sending}
-        onChange={(rows) => replaceProfile({ ...reviewState.values, education: rows as EducationEntry[] })}
+        onChange={(rows) => replaceProfile({ ...reviewState.values, education: rows })}
         onAdd={() => replaceProfile({
           ...reviewState.values,
           education: [...(reviewState.values.education.length > 0 ? reviewState.values.education : [emptyEducationEntry()]), emptyEducationEntry()],
@@ -327,7 +334,7 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
         ]}
         longField={['description', 'Description']}
         disabled={sending}
-        onChange={(rows) => replaceProfile({ ...reviewState.values, experience: rows as ExperienceEntry[] })}
+        onChange={(rows) => replaceProfile({ ...reviewState.values, experience: rows })}
         onAdd={() => replaceProfile({
           ...reviewState.values,
           experience: [...(reviewState.values.experience.length > 0 ? reviewState.values.experience : [emptyExperienceEntry()]), emptyExperienceEntry()],
