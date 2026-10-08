@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ParsedResumeData } from '../api/resume'
 import {
   startInterview,
+  getInterviewSession,
+  interviewRecoveryKey,
+  InterviewApiError,
   submitInterviewAnswer,
   type FinalInterviewResult,
   type InterviewFeedback,
@@ -82,7 +85,11 @@ export default function AIInterviewPanel({
 }: Props) {
   const [mode, setMode] = useState<InterviewMode>('mixed')
   const [questionCount, setQuestionCount] = useState<3 | 5 | 8>(5)
-  const [sessionToken, setSessionToken] = useState<string | null>(null)
+  const recoveryKey = useMemo(() => interviewRecoveryKey(jobId, resumeData), [jobId, resumeData])
+  const [recoverableSessionId, setRecoverableSessionId] = useState<number | null>(null)
+  const [isRecovering, setIsRecovering] = useState(false)
+  const [needsRestart, setNeedsRestart] = useState(false)
+  const [needsLogin, setNeedsLogin] = useState(false)
   const operationRef = useRef(0)
   const busyRef = useRef(false)
   const [hasStarted, setHasStarted] = useState(false)
@@ -173,6 +180,8 @@ export default function AIInterviewPanel({
     const operation = ++operationRef.current
     try {
       setError('')
+      setNeedsRestart(false)
+      setNeedsLogin(false)
       setFeedback(null)
       setFinalResult(null)
       setPendingNextQuestion(null)
@@ -182,7 +191,8 @@ export default function AIInterviewPanel({
 
       const firstQuestion = await startInterview(jobId, resumeData, { mode, question_count: questionCount })
       if (operation !== operationRef.current) return
-      setSessionToken(firstQuestion.session_token ?? null)
+      try { if (recoveryKey) sessionStorage.setItem(recoveryKey, String(firstQuestion.session_id)) } catch { /* Recovery is optional when storage is unavailable. */ }
+      setRecoverableSessionId(null)
 
       setHasStarted(true)
       setSessionId(firstQuestion.session_id)
@@ -190,6 +200,10 @@ export default function AIInterviewPanel({
       setDraftAnswer('')
     } catch (err) {
       if (operation !== operationRef.current) return
+      if (err instanceof InterviewApiError && [401, 404, 410].includes(err.status)) {
+        setNeedsLogin(err.status === 401)
+        setNeedsRestart(true)
+      }
       if (err instanceof Error) {
         setError(err.message)
       } else {
@@ -216,7 +230,7 @@ export default function AIInterviewPanel({
       stopListening()
 
       const answer = draftAnswer.trim()
-      const result = await submitInterviewAnswer(sessionId, answer, currentQuestion.question_id, sessionToken)
+      const result = await submitInterviewAnswer(sessionId, answer, currentQuestion.question_id)
       if (operation !== operationRef.current) return
 
       setSubmittedAnswer(answer)
@@ -232,6 +246,10 @@ export default function AIInterviewPanel({
       }
     } catch (err) {
       if (operation !== operationRef.current) return
+      if (err instanceof InterviewApiError && [401, 404, 410].includes(err.status)) {
+        setNeedsLogin(err.status === 401)
+        setNeedsRestart(true)
+      }
       if (err instanceof Error) {
         setError(err.message)
       } else {
@@ -262,7 +280,11 @@ export default function AIInterviewPanel({
     busyRef.current = false
     setIsLoading(false)
     setIsSubmitting(false)
-    setSessionToken(null)
+    setIsRecovering(false)
+    setNeedsRestart(false)
+    setNeedsLogin(false)
+    setRecoverableSessionId(null)
+    try { if (recoveryKey) sessionStorage.removeItem(recoveryKey) } catch { /* Storage may be blocked. */ }
     setHasStarted(false)
     setSessionId(null)
     setCurrentQuestion(null)
@@ -275,15 +297,58 @@ export default function AIInterviewPanel({
     setError('')
   }
 
+  const handleRecover = async (id: number) => {
+    if (busyRef.current) return
+    busyRef.current = true
+    const operation = ++operationRef.current
+    setIsRecovering(true)
+    setError('')
+    try {
+      const recovered = await getInterviewSession(id)
+      if (operation !== operationRef.current) return
+      if (recovered.job_id !== jobId) throw new InterviewApiError('This interview belongs to a different job. Start a new interview.', 404)
+      setHasStarted(true)
+      setSessionId(id)
+      setMode(recovered.mode)
+      setCurrentQuestion(recovered.current_question)
+      setFinalResult(recovered.last_response?.final_result ?? null)
+      setRecoverableSessionId(null)
+      try { if (recoveryKey) sessionStorage.setItem(recoveryKey, String(id)) } catch { /* Storage is optional. */ }
+    } catch (err) {
+      if (operation !== operationRef.current) return
+      if (err instanceof InterviewApiError && [401, 404, 410].includes(err.status)) {
+        setNeedsLogin(err.status === 401)
+        setNeedsRestart(true)
+        setRecoverableSessionId(null)
+        try { if (recoveryKey) sessionStorage.removeItem(recoveryKey) } catch { /* Storage is optional. */ }
+      } else { setRecoverableSessionId(id) }
+      setError(err instanceof Error ? err.message : 'Unable to recover the interview. Retry or start a new one.')
+    } finally {
+      if (operation === operationRef.current) {
+        busyRef.current = false
+        setIsRecovering(false)
+      }
+    }
+  }
+
   useEffect(() => {
+    let saved: number | null = null
+    try { const raw = recoveryKey ? sessionStorage.getItem(recoveryKey) : null; saved = raw ? Number(raw) : null } catch { /* Storage is optional. */ }
     handleRestart()
+    if (saved && Number.isInteger(saved) && saved > 0) {
+      try { if (recoveryKey) sessionStorage.setItem(recoveryKey, String(saved)) } catch { /* Storage is optional. */ }
+      void handleRecover(saved)
+    }
     return () => { operationRef.current += 1; recognitionRef.current?.stop() }
-    // Reset when switching jobs or replacing the resume.
+    // Reset and recover when switching jobs, accounts or replacing career context.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobId, resumeData])
+  }, [jobId, recoveryKey])
+
 
   return (
-    <div className={styles.panel}>
+    <div className={styles.panel} aria-busy={isLoading || isSubmitting || isRecovering}>
+      <p role="status" aria-live="polite" className={styles.sub}>{isRecovering ? 'Recovering your interview…' : isLoading ? 'Preparing questions…' : isSubmitting ? 'Evaluating your answer…' : ''}</p>
+      {needsLogin && <p><a href="/login">Sign in again to continue</a></p>}
       <div className={styles.headerRow}>
         <div className={styles.titleBlock}>
           <div className={styles.eyebrow}>HireSense Interview Lab</div>
@@ -324,22 +389,23 @@ export default function AIInterviewPanel({
 
           <div className={styles.optionsRow}>
             <label>Interview mode
-              <select value={mode} disabled={isLoading} onChange={(e) => setMode(e.target.value as InterviewMode)}>
+              <select value={mode} disabled={isLoading || isRecovering} onChange={(e) => setMode(e.target.value as InterviewMode)}>
                 <option value="mixed">Mixed</option>
                 <option value="behavioral">Behavioral</option>
                 <option value="technical">Technical</option>
                 <option value="role_specific">Role specific</option>
               </select>
             </label>
-            <label>Core questions
-              <select value={questionCount} disabled={isLoading} onChange={(e) => setQuestionCount(Number(e.target.value) as 3 | 5 | 8)}>
+            <label>Total questions
+              <select value={questionCount} disabled={isLoading || isRecovering} onChange={(e) => setQuestionCount(Number(e.target.value) as 3 | 5 | 8)}>
                 <option value={3}>3</option><option value={5}>5</option><option value={8}>8</option>
               </select>
             </label>
           </div>
-          <p className={styles.sub}>Up to two follow-up questions may be added based on your answers.</p>
+          <p className={styles.sub}>Follow-ups count toward your selected total. The final turn remains a planned question.</p>
           <div className={styles.actionRow}>
-            <button className="btn-primary" onClick={() => void handleStart()} disabled={isLoading}>
+            {recoverableSessionId && <button className="btn-outline" disabled={isRecovering} onClick={() => void handleRecover(recoverableSessionId)}>Retry Recovery</button>}
+            <button className="btn-primary" onClick={() => void handleStart()} disabled={isLoading || isRecovering}>
               {isLoading ? 'Generating...' : 'Start Interview'}
             </button>
           </div>
@@ -352,6 +418,9 @@ export default function AIInterviewPanel({
           <div className={`${styles.finalScore} ${scoreTone(finalResult.final_score)}`}>{finalResult.final_score}/100</div>
           <div className={styles.resultsSummary}>{finalResult.overall_summary}</div>
           <p className={styles.sub}>{finalResult.source === 'ai' ? 'AI assisted debrief' : 'Guided practice debrief'} • Practice scores are coaching signals.</p>
+          {finalResult.strongest_responses?.length ? <div><strong>Strongest response evidence</strong><ul>{finalResult.strongest_responses.map((item, i) => <li key={i}>{item.question}<blockquote>{item.answer_excerpt}</blockquote></li>)}</ul></div> : null}
+          {finalResult.weakest_responses?.length ? <div><strong>Responses to improve</strong><ul>{finalResult.weakest_responses.map((item, i) => <li key={i}>{item.question}<blockquote>{item.answer_excerpt}</blockquote></li>)}</ul></div> : null}
+          {finalResult.specificity_needs?.length ? <div><strong>Add specificity</strong><ul>{finalResult.specificity_needs.map((item, i) => <li key={i}>{item}</li>)}</ul></div> : null}
           {finalResult.technical_signals && <p>{finalResult.technical_signals}</p>}
           {finalResult.communication_signals && <p>{finalResult.communication_signals}</p>}
           {finalResult.resume_evidence?.length ? <div><strong>Resume context</strong><ul>{finalResult.resume_evidence.map((item, i) => <li key={i}>{item}</li>)}</ul></div> : null}
@@ -497,7 +566,7 @@ export default function AIInterviewPanel({
                 <button
                   className="btn-primary"
                   onClick={() => void handleSubmit()}
-                  disabled={isSubmitting || draftAnswer.trim().length === 0}
+                  disabled={isSubmitting || needsRestart || draftAnswer.trim().length === 0}
                 >
                   {isSubmitting ? 'Scoring Answer...' : 'Submit Answer'}
                 </button>
@@ -508,6 +577,7 @@ export default function AIInterviewPanel({
               </div>
 
               {error && <div role="alert" className={styles.errorText}>{error}</div>}
+              {needsRestart && <button className="btn-outline" onClick={handleRestart}>Start New Interview</button>}
             </div>
           )}
         </>

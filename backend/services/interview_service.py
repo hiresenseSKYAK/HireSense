@@ -66,10 +66,22 @@ def _top_resume_experience(resume_data: Dict[str, Any]) -> str:
 
 def _description_text(job: Dict[str, Any]) -> str:
     description = job.get("job_description") or job.get("description") or ""
-
+    if isinstance(description, str):
+        try:
+            parsed = json.loads(description)
+            if isinstance(parsed, dict):
+                description = parsed
+        except (ValueError, TypeError):
+            pass
     if isinstance(description, dict):
-        return str(description.get("about", "")).strip()
-
+        sections = []
+        for key in ("about", "description", "responsibilities", "requirements", "qualifications"):
+            value = description.get(key)
+            if isinstance(value, list):
+                value = " ".join(str(item) for item in value)
+            if value:
+                sections.append(f"{key}: {value}")
+        return "\n".join(sections).strip()
     return str(description).strip()
 
 
