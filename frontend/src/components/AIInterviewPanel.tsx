@@ -5,6 +5,7 @@ import {
   submitInterviewAnswer,
   type FinalInterviewResult,
   type InterviewFeedback,
+  type InterviewMode,
   type InterviewQuestion,
   type InterviewScoreDimension,
 } from '../api/interview'
@@ -79,6 +80,11 @@ export default function AIInterviewPanel({
   company,
   resumeData,
 }: Props) {
+  const [mode, setMode] = useState<InterviewMode>('mixed')
+  const [questionCount, setQuestionCount] = useState<3 | 5 | 8>(5)
+  const [sessionToken, setSessionToken] = useState<string | null>(null)
+  const operationRef = useRef(0)
+  const busyRef = useRef(false)
   const [hasStarted, setHasStarted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -118,6 +124,7 @@ export default function AIInterviewPanel({
     recognition.lang = 'en-US'
     speechBaseRef.current = draftAnswer.trim()
     recognition.onresult = (event) => {
+      if (recognitionRef.current !== recognition) return
       let finalText = ''
       let interimText = ''
       for (let index = 0; index < event.results.length; index += 1) {
@@ -126,7 +133,7 @@ export default function AIInterviewPanel({
         else interimText += piece
       }
       const spoken = `${finalText} ${interimText}`.replace(/\s+/g, ' ').trim()
-      setDraftAnswer([speechBaseRef.current, spoken].filter(Boolean).join(' '))
+      setDraftAnswer([speechBaseRef.current, spoken].filter(Boolean).join(' ').slice(0, 5000))
     }
     recognition.onerror = (event) => {
       if (event.error === 'not-allowed') {
@@ -161,10 +168,9 @@ export default function AIInterviewPanel({
   }, [resumeData])
 
   const handleStart = async () => {
-    if (!resumeData) {
-      return
-    }
-
+    if (!resumeData || busyRef.current) return
+    busyRef.current = true
+    const operation = ++operationRef.current
     try {
       setError('')
       setFeedback(null)
@@ -174,35 +180,44 @@ export default function AIInterviewPanel({
       stopListening()
       setIsLoading(true)
 
-      const firstQuestion = await startInterview(jobId, resumeData)
+      const firstQuestion = await startInterview(jobId, resumeData, { mode, question_count: questionCount })
+      if (operation !== operationRef.current) return
+      setSessionToken(firstQuestion.session_token ?? null)
 
       setHasStarted(true)
       setSessionId(firstQuestion.session_id)
       setCurrentQuestion(firstQuestion)
       setDraftAnswer('')
     } catch (err) {
+      if (operation !== operationRef.current) return
       if (err instanceof Error) {
         setError(err.message)
       } else {
         setError('Unable to start the interview right now.')
       }
     } finally {
-      setIsLoading(false)
+      if (operation === operationRef.current) {
+        busyRef.current = false
+        setIsLoading(false)
+      }
     }
   }
 
   const handleSubmit = async () => {
-    if (!sessionId || !currentQuestion || !draftAnswer.trim()) {
+    if (busyRef.current || !sessionId || !currentQuestion || !draftAnswer.trim()) {
       return
     }
 
+    busyRef.current = true
+    const operation = ++operationRef.current
     try {
       setError('')
       setIsSubmitting(true)
       stopListening()
 
       const answer = draftAnswer.trim()
-      const result = await submitInterviewAnswer(sessionId, answer)
+      const result = await submitInterviewAnswer(sessionId, answer, currentQuestion.question_id, sessionToken)
+      if (operation !== operationRef.current) return
 
       setSubmittedAnswer(answer)
       setFeedback(result.feedback)
@@ -216,13 +231,17 @@ export default function AIInterviewPanel({
         setPendingNextQuestion(result.next_question)
       }
     } catch (err) {
+      if (operation !== operationRef.current) return
       if (err instanceof Error) {
         setError(err.message)
       } else {
         setError('Unable to submit your answer.')
       }
     } finally {
-      setIsSubmitting(false)
+      if (operation === operationRef.current) {
+        busyRef.current = false
+        setIsSubmitting(false)
+      }
     }
   }
 
@@ -239,6 +258,11 @@ export default function AIInterviewPanel({
   }
 
   const handleRestart = () => {
+    operationRef.current += 1
+    busyRef.current = false
+    setIsLoading(false)
+    setIsSubmitting(false)
+    setSessionToken(null)
     setHasStarted(false)
     setSessionId(null)
     setCurrentQuestion(null)
@@ -250,6 +274,13 @@ export default function AIInterviewPanel({
     setFinalResult(null)
     setError('')
   }
+
+  useEffect(() => {
+    handleRestart()
+    return () => { operationRef.current += 1; recognitionRef.current?.stop() }
+    // Reset when switching jobs or replacing the resume.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId, resumeData])
 
   return (
     <div className={styles.panel}>
@@ -291,19 +322,41 @@ export default function AIInterviewPanel({
             </div>
           )}
 
+          <div className={styles.optionsRow}>
+            <label>Interview mode
+              <select value={mode} disabled={isLoading} onChange={(e) => setMode(e.target.value as InterviewMode)}>
+                <option value="mixed">Mixed</option>
+                <option value="behavioral">Behavioral</option>
+                <option value="technical">Technical</option>
+                <option value="role_specific">Role specific</option>
+              </select>
+            </label>
+            <label>Core questions
+              <select value={questionCount} disabled={isLoading} onChange={(e) => setQuestionCount(Number(e.target.value) as 3 | 5 | 8)}>
+                <option value={3}>3</option><option value={5}>5</option><option value={8}>8</option>
+              </select>
+            </label>
+          </div>
+          <p className={styles.sub}>Up to two follow-up questions may be added based on your answers.</p>
           <div className={styles.actionRow}>
             <button className="btn-primary" onClick={() => void handleStart()} disabled={isLoading}>
               {isLoading ? 'Generating...' : 'Start Interview'}
             </button>
           </div>
 
-          {error && <div className={styles.errorText}>{error}</div>}
+          {error && <div role="alert" className={styles.errorText}>{error}</div>}
         </div>
       ) : finalResult ? (
         <div className={styles.resultsCard}>
           <div className={styles.resultsLabel}>Final Interview Results</div>
           <div className={`${styles.finalScore} ${scoreTone(finalResult.final_score)}`}>{finalResult.final_score}/100</div>
           <div className={styles.resultsSummary}>{finalResult.overall_summary}</div>
+          <p className={styles.sub}>{finalResult.source === 'ai' ? 'AI assisted debrief' : 'Guided practice debrief'} • Practice scores are coaching signals.</p>
+          {finalResult.technical_signals && <p>{finalResult.technical_signals}</p>}
+          {finalResult.communication_signals && <p>{finalResult.communication_signals}</p>}
+          {finalResult.resume_evidence?.length ? <div><strong>Resume context</strong><ul>{finalResult.resume_evidence.map((item, i) => <li key={i}>{item}</li>)}</ul></div> : null}
+          {finalResult.strongest_questions?.length ? <div><strong>Strongest answers</strong><ul>{finalResult.strongest_questions.map((item, i) => <li key={i}>{item}</li>)}</ul></div> : null}
+          {finalResult.practice_questions?.length ? <div><strong>Practice next</strong><ul>{finalResult.practice_questions.map((item, i) => <li key={i}>{item}</li>)}</ul></div> : null}
           <DimensionList dimensions={finalResult.dimensions} />
 
           <div className={styles.resultsGrid}>
@@ -340,7 +393,8 @@ export default function AIInterviewPanel({
         <>
           {currentQuestion && (
             <div className={styles.questionCard}>
-              <div className={styles.questionLabel}>Current Question</div>
+              <div className={styles.questionLabel}>{currentQuestion.is_follow_up ? 'Follow-up Question' : 'Current Question'}</div>
+              <p className={styles.sub}>{currentQuestion.source === 'ai' ? 'AI generated question' : 'Guided practice question'}</p>
               <div className={styles.focusArea}>{currentQuestion.focus_area}</div>
               <div className={styles.questionPrompt}>{currentQuestion.prompt}</div>
 
@@ -371,6 +425,12 @@ export default function AIInterviewPanel({
               </div>
 
               <div className={styles.summary}>{feedback.summary}</div>
+              <p className={styles.sub}>{feedback.source === 'ai' ? 'AI assisted feedback' : 'Heuristic practice feedback'}</p>
+              {feedback.technical_depth && <p>{feedback.technical_depth}</p>}
+              {feedback.communication && <p>{feedback.communication}</p>}
+              {feedback.role_relevance && <p>{feedback.role_relevance}</p>}
+              {feedback.suggested_approach && <p><strong>Suggested approach:</strong> {feedback.suggested_approach}</p>}
+              {feedback.evidence?.length ? <ul>{feedback.evidence.map((item, i) => <li key={i}>{item}</li>)}</ul> : null}
               <DimensionList dimensions={feedback.dimensions} />
 
               <div className={styles.feedbackGrid}>
@@ -425,6 +485,9 @@ export default function AIInterviewPanel({
               </div>
               <textarea
                 className={styles.answerBox}
+                aria-label="Interview answer"
+                maxLength={5000}
+                disabled={isSubmitting}
                 placeholder="Write your answer here. Use a clear problem → action → result structure when possible."
                 value={draftAnswer}
                 onChange={(e) => setDraftAnswer(e.target.value)}
@@ -444,7 +507,7 @@ export default function AIInterviewPanel({
                 </button>
               </div>
 
-              {error && <div className={styles.errorText}>{error}</div>}
+              {error && <div role="alert" className={styles.errorText}>{error}</div>}
             </div>
           )}
         </>
