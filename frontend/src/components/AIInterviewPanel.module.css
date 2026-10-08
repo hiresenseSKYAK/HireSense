@@ -338,3 +338,7 @@
     align-items: flex-start;
   }
 }
+
+.optionsRow { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0; }
+.optionsRow label { display: grid; gap: 6px; font-size: 14px; }
+.optionsRow select { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border, #ddd); color: inherit; background: var(--surface, white); }

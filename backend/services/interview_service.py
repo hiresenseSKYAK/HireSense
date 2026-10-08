@@ -52,14 +52,16 @@ def _top_resume_project(resume_data: Dict[str, Any]) -> str:
     projects = resume_data.get("project_entries", []) or []
     if projects and isinstance(projects[0], dict):
         return projects[0].get("title", "one of your recent technical projects")
-    return "one of your recent technical projects"
+    projects = resume_data.get("projects", []) or []
+    return str(projects[0]) if projects else "one of your recent technical projects"
 
 
 def _top_resume_experience(resume_data: Dict[str, Any]) -> str:
     experiences = resume_data.get("experience_entries", []) or []
     if experiences and isinstance(experiences[0], dict):
         return experiences[0].get("title", "your recent experience")
-    return "your recent experience"
+    experiences = resume_data.get("experience", []) or []
+    return str(experiences[0]) if experiences else "your recent experience"
 
 
 def _description_text(job: Dict[str, Any]) -> str:
@@ -301,7 +303,7 @@ def _keyword_terms(question: Dict[str, Any]) -> List[str]:
     for term in raw_terms:
         cleaned = re.sub(r"\s+", " ", term).strip(" -")
         lowered = cleaned.lower()
-        if not cleaned or lowered in _FILLER_TERMS or len(lowered) < 3 or lowered in seen:
+        if not cleaned or lowered in _FILLER_TERMS or (len(lowered) < 3 and lowered not in {"r", "c", "go"}) or lowered in seen:
             continue
         seen.add(lowered)
         terms.append(cleaned)
@@ -311,7 +313,7 @@ def _keyword_terms(question: Dict[str, Any]) -> List[str]:
 def _term_mentioned(term: str, answer: str) -> bool:
     if " " in term:
         return term.lower() in answer
-    return re.search(rf"\b{re.escape(term)}\b", answer, re.IGNORECASE) is not None
+    return re.search(rf"(?<!\w){re.escape(term)}(?!\w)", answer, re.IGNORECASE) is not None
 
 
 def _benchmark(score: int) -> str:

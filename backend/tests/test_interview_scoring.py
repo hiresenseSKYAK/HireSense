@@ -32,6 +32,13 @@ STAR_ANSWER = (
 
 
 class InterviewScoringTests(unittest.TestCase):
+    def test_short_skill_names_and_punctuation_are_matched_exactly(self):
+        for skill in ('R', 'Go', 'C++'):
+            question = dict(QUESTION, focus_area=f'Technical Depth: {skill}', target_keywords=[skill])
+            feedback = evaluate_answer(question, f'I built a parser using {skill} because the task needed faster processing. This reduced review time by 30 percent.')
+            relevance = next(d for d in feedback['dimensions'] if d['label'] == 'Relevance')
+            self.assertGreater(relevance['score'], 0)
+
     def test_short_answer_scores_low(self):
         feedback = evaluate_answer(QUESTION, "Python")
 

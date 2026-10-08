@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class UserCreate(BaseModel):
@@ -80,45 +80,74 @@ class ParsedResumeDataSchema(BaseModel):
 
 
 class InterviewStartRequest(BaseModel):
-    job_id: int
+    job_id: int = Field(gt=0)
     resume_data: ParsedResumeDataSchema
+    mode: Literal["behavioral", "technical", "mixed", "role_specific"] = "mixed"
+    question_count: Literal[3, 5, 8] = 5
 
 
 class InterviewQuestionOut(BaseModel):
     session_id: int
+    session_token: Optional[str] = None
     question_index: int
     total_questions: int
     question_id: str
     focus_area: str
     prompt: str
     tips: List[str] = Field(default_factory=list)
+    question_type: str = "mixed"
+    source: Literal["ai", "fallback"] = "fallback"
+    is_follow_up: bool = False
+    mode: str = "mixed"
 
 
 class InterviewScoreDimension(BaseModel):
     label: str
-    score: int
-    max_score: int
+    score: int = Field(ge=0, le=100)
+    max_score: int = Field(gt=0, le=100)
 
 
 class InterviewFeedbackOut(BaseModel):
-    score: int
+    score: int = Field(ge=0, le=100)
     benchmark: str
     summary: str
     strengths: List[str] = Field(default_factory=list)
     improvements: List[str] = Field(default_factory=list)
     dimensions: List[InterviewScoreDimension] = Field(default_factory=list)
+    source: Literal["ai", "fallback"] = "fallback"
+    technical_depth: str = ""
+    communication: str = ""
+    role_relevance: str = ""
+    evidence: List[str] = Field(default_factory=list)
+    suggested_approach: str = ""
+    follow_up: Optional[str] = None
 
 
 class FinalInterviewResultOut(BaseModel):
-    final_score: int
+    final_score: int = Field(ge=0, le=100)
     overall_summary: str
     top_strengths: List[str] = Field(default_factory=list)
     next_steps: List[str] = Field(default_factory=list)
     dimensions: List[InterviewScoreDimension] = Field(default_factory=list)
+    source: Literal["ai", "fallback"] = "fallback"
+    technical_signals: str = ""
+    communication_signals: str = ""
+    resume_evidence: List[str] = Field(default_factory=list)
+    strongest_questions: List[str] = Field(default_factory=list)
+    practice_questions: List[str] = Field(default_factory=list)
 
 
 class InterviewAnswerRequest(BaseModel):
     answer: str = Field(min_length=1, max_length=5000)
+    question_id: str = Field(min_length=1, max_length=100)
+
+
+    @field_validator("answer")
+    @classmethod
+    def non_blank_answer(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Answer must contain text.")
+        return value.strip()
 
 
 class InterviewAnswerResponse(BaseModel):
