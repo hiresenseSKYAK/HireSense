@@ -1,16 +1,16 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&family=Outfit:wght@800&display=swap');
 
 :root {
   --tan: #f4f7fb;
-  --caramel: #2563eb;
+  --caramel: #2aa7fc;
   --cream: #f7fafc;
-  --sage: #bfdbfe;
-  --burgundy: #1e3a8a;
+  --sage: #c5f6fd;
+  --burgundy: #022d71;
   --tan-rgb: 244, 247, 251;
-  --caramel-rgb: 37, 99, 235;
+  --caramel-rgb: 42, 167, 252;
   --cream-rgb: 247, 250, 252;
-  --sage-rgb: 191, 219, 254;
-  --burgundy-rgb: 30, 58, 138;
+  --sage-rgb: 197, 246, 253;
+  --burgundy-rgb: 2, 45, 113;
 
   /* Surfaces */
   --bg: #f4f7fb;
@@ -19,7 +19,7 @@
   --surface2: #e4edf6;
   --surface-strong: #ffffff;
   --border: rgba(var(--burgundy-rgb), 0.22);
-  --border-strong: #1d4ed8;
+  --border-strong: #015bfc;
 
   /* Text */
   --text-primary: #102033;
@@ -27,10 +27,10 @@
   --text-muted: #5a6d84;
 
   /* Accent */
-  --accent: #1d4ed8;
-  --accent-strong: #2563eb;
+  --accent: #015bfc;
+  --accent-strong: #2aa7fc;
   --accent-light: rgba(var(--caramel-rgb), 0.16);
-  --accent-text: #1d4ed8;
+  --accent-text: #015bfc;
 
   /* Status colours (fills, rings, borders, icons) */
   --green: #128a3e;
@@ -74,7 +74,7 @@ body {
   color: var(--text-primary);
   background:
     radial-gradient(circle at top left, rgba(255, 255, 255, 0.7) 0, transparent 28%),
-    radial-gradient(circle at bottom right, rgba(37, 99, 235, 0.06) 0, transparent 34%),
+    radial-gradient(circle at bottom right, rgba(42, 167, 252, 0.08) 0, transparent 34%),
     var(--bg);
   background-attachment: fixed;
 }
@@ -138,7 +138,7 @@ select {
 
 .btn-primary {
   border: 1px solid var(--burgundy);
-  background: linear-gradient(180deg, var(--accent-strong) 0%, var(--accent) 100%);
+  background: linear-gradient(180deg, #2aa7fc 0%, #015bfc 100%);
   color: #fff;
   box-shadow: 0 8px 20px rgba(var(--burgundy-rgb), 0.18);
   padding: 12px 18px;
@@ -146,7 +146,7 @@ select {
 
 .btn-primary:hover {
   transform: translateY(-1px);
-  background: linear-gradient(180deg, #3b82f6 0%, var(--accent-strong) 100%);
+  background: linear-gradient(180deg, #8af8fb 0%, #2aa7fc 18%, #015bfc 55%);
 }
 
 .btn-outline {

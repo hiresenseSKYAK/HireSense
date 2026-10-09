@@ -52,8 +52,9 @@ export default function Navbar() {
   return (
     <nav className={styles.nav}>
       <div className={styles.inner}>
-        <NavLink to="/" className={styles.logo}>
-          <img src="/logo.png" alt="HireSense" className={styles.logoImg} />
+        <NavLink to="/" className={styles.logo} aria-label="HireSense">
+          <img src="/logo.png" alt="" className={styles.logoImg} />
+          <span className={styles.wordmark}>ireSense</span>
         </NavLink>
         <div className={styles.links}>
           <NavLink

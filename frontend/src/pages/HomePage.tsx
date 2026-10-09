@@ -178,7 +178,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="page" ref={pageRef}>
+    <div className={`page ${styles.home}`} ref={pageRef}>
       <div className={styles.controls} ref={controlsRef}>
         <div className={styles.searchWrap}>
           <div className={styles.searchBar}>

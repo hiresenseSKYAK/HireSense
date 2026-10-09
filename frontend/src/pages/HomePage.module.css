@@ -1,3 +1,7 @@
+:global(.page).home {
+  padding-top: 0;
+}
+
 .controls {
   position: sticky;
   top: var(--nav-h, 61px);
