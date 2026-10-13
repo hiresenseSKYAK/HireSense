@@ -28,7 +28,18 @@ interface ProfileReviewProps {
   draft?: ApplicantProfile
 }
 
-function HistoryEditor({
+type StringKey<T> = Extract<{
+  [K in keyof T]-?: T[K] extends string ? K : never
+}[keyof T], string>
+
+type HistoryRow = EducationEntry | ExperienceEntry
+
+function stringFieldValue<T>(row: T, key: StringKey<T>): string {
+  const value = row[key]
+  return typeof value === 'string' ? value : ''
+}
+
+function HistoryEditor<T extends HistoryRow>({
   title,
   note,
   currentLabel,
@@ -43,20 +54,25 @@ function HistoryEditor({
   title: string
   note: string
   currentLabel: string
-  rows: Array<Record<string, string | boolean>>
-  columns: Array<readonly [string, string]>
-  longField?: readonly [string, string]
+  rows: T[]
+  columns: Array<readonly [StringKey<T>, string]>
+  longField?: readonly [StringKey<T>, string]
   disabled: boolean
-  onChange: (rows: Array<Record<string, string | boolean>>) => void
+  onChange: (rows: T[]) => void
   onAdd: () => void
   canAdd: boolean
 }) {
-  const update = (index: number, key: string, value: string | boolean) => {
+  const updateText = (index: number, key: StringKey<T>, value: string) => {
     onChange(rows.map((row, rowIndex) => {
       if (rowIndex !== index) return row
-      const next = { ...row, [key]: value }
-      if (key === 'current' && value === true) next.endDate = ''
-      return next
+      return typeof row[key] === 'string' ? Object.assign({}, row, { [key]: value }) : row
+    }))
+  }
+
+  const updateCurrent = (index: number, current: boolean) => {
+    onChange(rows.map((row, rowIndex) => {
+      if (rowIndex !== index) return row
+      return Object.assign({}, row, { current, endDate: current ? '' : row.endDate })
     }))
   }
 
@@ -75,22 +91,22 @@ function HistoryEditor({
                   <input
                     className={styles.input}
                     type={isDate ? 'date' : 'text'}
-                    value={typeof row[key] === 'string' ? row[key] : ''}
+                    value={stringFieldValue(row, key)}
                     disabled={disabled || (key === 'endDate' && row.current === true)}
-                    onChange={(event) => update(index, key, event.target.value)}
+                    onChange={(event) => updateText(index, key, event.target.value)}
                   />
                 </label>
               )
             })}
           </div>
           <label className={styles.currentToggle}>
-            <input type="checkbox" checked={row.current === true} disabled={disabled} onChange={(event) => update(index, 'current', event.target.checked)} />
+            <input type="checkbox" checked={row.current === true} disabled={disabled} onChange={(event) => updateCurrent(index, event.target.checked)} />
             <span>{currentLabel}</span>
           </label>
           {longField && (
             <label className={styles.field}>
               <span className={styles.fieldLabel}>{longField[1]}</span>
-              <textarea className={styles.input} rows={3} value={typeof row[longField[0]] === 'string' ? row[longField[0]] : ''} disabled={disabled} onChange={(event) => update(index, longField[0], event.target.value)} />
+              <textarea className={styles.input} rows={3} value={stringFieldValue(row, longField[0])} disabled={disabled} onChange={(event) => updateText(index, longField[0], event.target.value)} />
             </label>
           )}
           {rows.length > 1 && (
@@ -109,8 +125,10 @@ function HistoryEditor({
   )
 }
 
+type StringProfileKey = StringKey<ApplicantProfile>
+
 const fields: Array<{
-  name: keyof ApplicantProfile
+  name: StringProfileKey
   label: string
   type?: 'email' | 'tel' | 'url' | 'text'
   autoComplete?: string
@@ -168,7 +186,7 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
     }))
   }
 
-  const handleChange = (field: keyof ApplicantProfile, value: string) => {
+  const handleChange = (field: StringProfileKey, value: string) => {
     // Keep spaces while typing; normalize only on blur.
     replaceProfile({ ...reviewState.values, [field]: value })
   }
@@ -305,7 +323,7 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
           ['endDate', 'End'],
         ]}
         disabled={sending}
-        onChange={(rows) => replaceProfile({ ...reviewState.values, education: rows as EducationEntry[] })}
+        onChange={(education) => replaceProfile({ ...reviewState.values, education })}
         onAdd={() => replaceProfile({
           ...reviewState.values,
           education: [...(reviewState.values.education.length > 0 ? reviewState.values.education : [emptyEducationEntry()]), emptyEducationEntry()],
@@ -327,7 +345,7 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
         ]}
         longField={['description', 'Description']}
         disabled={sending}
-        onChange={(rows) => replaceProfile({ ...reviewState.values, experience: rows as ExperienceEntry[] })}
+        onChange={(experience) => replaceProfile({ ...reviewState.values, experience })}
         onAdd={() => replaceProfile({
           ...reviewState.values,
           experience: [...(reviewState.values.experience.length > 0 ? reviewState.values.experience : [emptyExperienceEntry()]), emptyExperienceEntry()],
