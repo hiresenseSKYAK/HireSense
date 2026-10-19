@@ -14,10 +14,11 @@ export type InterviewQuestion = {
   focus_area: string
   prompt: string
   tips: string[]
-  source?: 'ai' | 'fallback'
-  is_follow_up?: boolean
+  question_type: InterviewMode
+  source: 'ai' | 'fallback'
+  is_follow_up: boolean
   parent_question_id?: string | null
-  mode?: InterviewMode
+  mode: InterviewMode
 }
 
 export type InterviewScoreDimension = {
@@ -33,12 +34,13 @@ export type InterviewFeedback = {
   strengths: string[]
   improvements: string[]
   dimensions?: InterviewScoreDimension[]
-  source?: 'ai' | 'fallback'
+  source: 'ai' | 'fallback'
   technical_depth?: string
   communication?: string
   role_relevance?: string
   evidence?: string[]
   suggested_approach?: string
+  follow_up?: string | null
 }
 
 export type FinalInterviewResult = {
@@ -47,7 +49,7 @@ export type FinalInterviewResult = {
   top_strengths: string[]
   next_steps: string[]
   dimensions?: InterviewScoreDimension[]
-  source?: 'ai' | 'fallback'
+  source: 'ai' | 'fallback'
   technical_signals?: string
   communication_signals?: string
   resume_evidence?: string[]
@@ -56,6 +58,8 @@ export type FinalInterviewResult = {
   strongest_responses?: InterviewResponseReference[]
   weakest_responses?: InterviewResponseReference[]
   specificity_needs?: string[]
+  patterns_across_answers?: string[]
+  practice_recommendations?: string[]
 }
 
 export type InterviewAnswerResult = {
@@ -106,8 +110,10 @@ function question(value: unknown): value is InterviewQuestion {
     Number.isInteger(value.question_index) && Number(value.question_index) > 0 && Number.isInteger(value.total_questions) &&
     Number(value.total_questions) >= Number(value.question_index) && typeof value.question_id === 'string' &&
     typeof value.prompt === 'string' && value.prompt.trim().length > 0 && typeof value.focus_area === 'string' && strings(value.tips) &&
-    (value.source === undefined || value.source === 'ai' || value.source === 'fallback') &&
-    (value.is_follow_up === undefined || typeof value.is_follow_up === 'boolean')
+    (value.source === 'ai' || value.source === 'fallback') && typeof value.is_follow_up === 'boolean' &&
+    ['mixed', 'technical', 'behavioral', 'role_specific'].includes(String(value.question_type)) &&
+    ['mixed', 'technical', 'behavioral', 'role_specific'].includes(String(value.mode)) &&
+    (value.parent_question_id === undefined || value.parent_question_id === null || typeof value.parent_question_id === 'string')
 }
 function optionalText(value: Record<string, unknown>, keys: string[]) { return keys.every(k => value[k] === undefined || typeof value[k] === 'string') }
 function optionalLists(value: Record<string, unknown>, keys: string[]) { return keys.every(k => value[k] === undefined || strings(value[k])) }
@@ -115,12 +121,14 @@ function references(value: unknown) { return value === undefined || (Array.isArr
 function feedback(value: unknown): value is InterviewFeedback {
   return object(value) && score(value.score) && typeof value.benchmark === 'string' && typeof value.summary === 'string' &&
     strings(value.strengths) && strings(value.improvements) && dimensions(value.dimensions) &&
-    optionalText(value, ['technical_depth', 'communication', 'role_relevance', 'suggested_approach']) && optionalLists(value, ['evidence'])
+    (value.source === 'ai' || value.source === 'fallback') &&
+    optionalText(value, ['technical_depth', 'communication', 'role_relevance', 'suggested_approach']) &&
+    (value.follow_up === undefined || value.follow_up === null || typeof value.follow_up === 'string') && optionalLists(value, ['evidence'])
 }
 function final(value: unknown): value is FinalInterviewResult {
   return object(value) && score(value.final_score) && typeof value.overall_summary === 'string' && strings(value.top_strengths) &&
-    strings(value.next_steps) && dimensions(value.dimensions) && optionalText(value, ['technical_signals', 'communication_signals']) &&
-    optionalLists(value, ['resume_evidence', 'strongest_questions', 'practice_questions', 'specificity_needs']) &&
+    strings(value.next_steps) && dimensions(value.dimensions) && (value.source === 'ai' || value.source === 'fallback') && optionalText(value, ['technical_signals', 'communication_signals']) &&
+    optionalLists(value, ['resume_evidence', 'strongest_questions', 'practice_questions', 'specificity_needs', 'patterns_across_answers', 'practice_recommendations']) &&
     references(value.strongest_responses) && references(value.weakest_responses)
 }
 function answerResult(value: unknown): value is InterviewAnswerResult {

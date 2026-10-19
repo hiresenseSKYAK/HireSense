@@ -2,6 +2,7 @@
 import json
 import logging
 import re
+import time
 from difflib import SequenceMatcher
 from typing import Annotated, Literal, Protocol
 
@@ -67,6 +68,8 @@ class Debrief(ModelOutput):
     next_steps: list[BriefText] = Field(max_length=5)
     technical_signals: str = Field(default='', max_length=1000)
     communication_signals: str = Field(default='', max_length=1000)
+    patterns_across_answers: list[BriefText] = Field(default_factory=list, max_length=5)
+    practice_recommendations: list[BriefText] = Field(default_factory=list, max_length=5)
     # Evidence is supplied by the server, never invented by the model.
 
 
@@ -86,6 +89,16 @@ def questions_overlap(left, right):
         return ' '.join(re.findall(r'[a-z]+', value.casefold()))
     a, b = normalized(left), normalized(right)
     return a == b or SequenceMatcher(None, a, b).ratio() >= 0.88
+
+
+def followup_is_grounded(follow_up: str, answer: str) -> bool:
+    ignored = {'about', 'after', 'could', 'describe', 'from', 'have', 'more', 'that', 'this', 'what', 'when',
+               'where', 'which', 'with', 'would', 'your'}
+    answer_terms = {term for term in re.findall(r'[a-z0-9+#.]+', answer.casefold())
+                    if len(term) >= 3 and term not in ignored}
+    followup_terms = {term for term in re.findall(r'[a-z0-9+#.]+', follow_up.casefold())
+                      if len(term) >= 3 and term not in ignored}
+    return bool(answer_terms & followup_terms)
 
 
 def interview_context(job: dict, resume: dict, mode: str, count: int) -> dict:
@@ -151,6 +164,7 @@ class InterviewEngine:
     def _call(self, method, schema, *args):
         if self.provider is None:
             return None
+        started = time.monotonic()
         try:
             raw = getattr(self.provider, method)(*args)
             if isinstance(raw, str):
@@ -164,7 +178,12 @@ class InterviewEngine:
             return result
         except Exception as error:
             # Never log provider errors verbatim: they can contain answers or credentials.
-            logger.warning('Interview provider %s failed (%s); using fallback', method, type(error).__name__)
+            logger.warning(
+                'interview_provider operation=%s provider=%s model=%s outcome=fallback duration_ms=%d error=%s',
+                method, getattr(self.provider, 'provider_name', 'configured'),
+                getattr(self.provider, 'model', 'unknown'), round((time.monotonic() - started) * 1000),
+                type(error).__name__,
+            )
             return None
 
     def questions(self, job, resume, mode='mixed', count=5):
@@ -233,6 +252,8 @@ class InterviewEngine:
         # Evidence must be a literal excerpt of the candidate's answer.
         if result and (not result['evidence'] or any(not e.strip() or e not in answer for e in result['evidence'])):
             result = None
+        if result and result.get('follow_up') and not followup_is_grounded(result['follow_up'], answer):
+            result['follow_up'] = None
         if result:
             return dict(result, benchmark=_benchmark(result['score']), source='ai')
         result = fallback_evaluation(question, answer)
@@ -274,13 +295,15 @@ class InterviewEngine:
                           improvement for r in responses for improvement in r.get('feedback', {}).get('improvements', [])))[:5])
         if not generated:
             result.update(technical_signals='Review technical correctness separately; these scores measure answer signals.',
-                          communication_signals=result['overall_summary'])
+                          communication_signals=result['overall_summary'], patterns_across_answers=[],
+                          practice_recommendations=result.get('next_steps', []))
         # Keep cached final answer + debrief within existing MySQL TEXT storage.
         # These are display excerpts; full answers remain in their response records.
         for key in ('strongest_responses', 'weakest_responses'):
             for item in result[key]:
                 item['answer_excerpt'] = item['answer_excerpt'][:200]
                 item['question'] = item['question'][:200]
-        for key in ('resume_evidence', 'strongest_questions', 'practice_questions', 'specificity_needs'):
+        for key in ('resume_evidence', 'strongest_questions', 'practice_questions', 'specificity_needs',
+                    'patterns_across_answers', 'practice_recommendations'):
             result[key] = [item[:200] for item in result[key]]
         return result

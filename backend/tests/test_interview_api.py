@@ -2,7 +2,7 @@ import json
 import os
 import unittest
 from datetime import datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 for key, value in {'DB_HOST': 'test.invalid', 'DB_PORT': '3306', 'DB_NAME': 'testdb', 'DB_USER': 'testuser', 'DB_PASSWORD': 'testpassword'}.items():
     os.environ.setdefault(key, value)
@@ -13,7 +13,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from api.interview import router
+from api.interview import get_interview_engine, router
 from database.connection import Base, get_db
 from database.models import InterviewResponse, InterviewSession, Job, User, UserSession
 
@@ -31,6 +31,7 @@ class InterviewApiTests(unittest.TestCase):
             db.commit()
         app = FastAPI()
         app.include_router(router)
+        self.app = app
         def database():
             with self.sessions() as db:
                 yield db
@@ -254,3 +255,72 @@ class InterviewApiTests(unittest.TestCase):
         q = self.start().json()
         with self.sessions() as db:
             self.assertLessEqual(len(db.get(InterviewSession, q['session_id']).job_snapshot.encode('utf-8')), 56000)
+
+    def test_provider_runs_after_processing_claim_is_committed(self):
+        from services.interview_engine import InterviewEngine
+        provider = Mock()
+        provider.generate.return_value = {}
+        provider.evaluate.return_value = {
+            'score': 40, 'summary': 'Add an outcome.', 'strengths': ['Relevant example.'],
+            'improvements': ['Measure the result.'],
+            'dimensions': [{'label': label, 'score': 10} for label in ('Relevance', 'Structure', 'Specificity', 'Impact')],
+            'evidence': ['Python parser'], 'follow_up': 'What changed after the Python parser was delivered?',
+        }
+        q = self.start().json()
+
+        def observe_claim(*_args):
+            with self.sessions() as other:
+                claimed = other.get(InterviewSession, q['session_id'])
+                self.assertEqual(claimed.processing_question_index, 0)
+                self.assertIsNotNone(claimed.processing_started_at)
+            return provider.evaluate.return_value
+
+        provider.evaluate.side_effect = observe_claim
+        self.app.dependency_overrides[get_interview_engine] = lambda: InterviewEngine(provider)
+        result = self.answer(q, answer='I built a Python parser for my team.').json()
+        self.assertEqual(result['feedback']['source'], 'ai')
+        with self.sessions() as db:
+            session = db.get(InterviewSession, q['session_id'])
+            self.assertIsNone(session.processing_question_index)
+            self.assertEqual(session.current_question_index, 1)
+
+    def test_stale_provider_result_is_not_persisted(self):
+        from services.interview_engine import InterviewEngine
+        provider = Mock()
+        q = self.start().json()
+
+        def make_stale(*_args):
+            with self.sessions() as other:
+                session = other.get(InterviewSession, q['session_id'])
+                session.current_question_index = 1
+                other.commit()
+            return {
+                'score': 40, 'summary': 'Stale.', 'strengths': [], 'improvements': ['Retry.'],
+                'dimensions': [{'label': label, 'score': 10} for label in ('Relevance', 'Structure', 'Specificity', 'Impact')],
+                'evidence': ['Python parser'], 'follow_up': None,
+            }
+
+        provider.evaluate.side_effect = make_stale
+        self.app.dependency_overrides[get_interview_engine] = lambda: InterviewEngine(provider)
+        result = self.answer(q, answer='I built a Python parser for my team.')
+        self.assertEqual(result.status_code, 409)
+        with self.sessions() as db:
+            self.assertEqual(db.query(InterviewResponse).filter(InterviewResponse.session_id == q['session_id']).count(), 0)
+            self.assertIsNone(db.get(InterviewSession, q['session_id']).processing_question_index)
+
+    def test_start_rate_limit_is_database_backed(self):
+        for _ in range(10):
+            self.assertEqual(self.start().status_code, 200)
+        self.assertEqual(self.start().status_code, 429)
+
+    def test_provider_call_budget_degrades_to_fallback(self):
+        from services.interview_engine import InterviewEngine
+        provider = Mock()
+        q = self.start().json()
+        with self.sessions() as db:
+            db.get(InterviewSession, q['session_id']).provider_call_count = 10
+            db.commit()
+        self.app.dependency_overrides[get_interview_engine] = lambda: InterviewEngine(provider)
+        result = self.answer(q, answer='I built a Python parser for my team.').json()
+        self.assertEqual(result['feedback']['source'], 'fallback')
+        provider.evaluate.assert_not_called()

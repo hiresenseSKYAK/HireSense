@@ -8,7 +8,7 @@ import { getInterviewSession, interviewRecoveryKey, InterviewApiError, startInte
 vi.mock('../api/interview', async () => ({ ...(await vi.importActual('../api/interview')), startInterview: vi.fn(), submitInterviewAnswer: vi.fn(), getInterviewSession: vi.fn() }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const resume = { name: null, email: null, phone: null, skills: ['Python'], education: [], experience: [], projects: [], leadership: [], experience_entries: [], project_entries: [], leadership_entries: [] }
-const q = { session_id: 1, question_id: 'q1', question_index: 1, total_questions: 3, prompt: 'Describe your Python project.', focus_area: 'Technical', tips: [], source: 'fallback' as const }
+const q = { session_id: 1, question_id: 'q1', question_index: 1, total_questions: 3, prompt: 'Describe your Python project.', focus_area: 'Technical', tips: [], source: 'fallback' as const, question_type: 'mixed' as const, is_follow_up: false, parent_question_id: null, mode: 'mixed' as const }
 const feedback = { score: 40, benchmark: 'Needs work', summary: 'Add an outcome.', strengths: [], improvements: ['Be specific'], source: 'fallback' as const }
 let root: Root
 let container: HTMLDivElement
@@ -50,10 +50,10 @@ describe('AIInterviewPanel', () => {
     await typeAnswer('I built a parser.')
     await click('Submit Answer')
     expect(submitInterviewAnswer).toHaveBeenCalledWith(1, 'I built a parser.', 'q1')
-    expect(container.textContent).toContain('Heuristic practice feedback')
+    expect(container.textContent).toContain('Standard coaching mode')
     await click('Continue to Next Question')
     expect(container.textContent).toContain('Follow-up Question')
-    vi.mocked(submitInterviewAnswer).mockResolvedValueOnce({ session_id: 1, question_index: 2, is_complete: true, feedback, next_question: null, final_result: { final_score: 60, overall_summary: 'Practice outcomes.', top_strengths: [], next_steps: ['Measure impact.'], practice_questions: ['What changed afterward?'] } })
+    vi.mocked(submitInterviewAnswer).mockResolvedValueOnce({ session_id: 1, question_index: 2, is_complete: true, feedback, next_question: null, final_result: { final_score: 60, overall_summary: 'Practice outcomes.', top_strengths: [], next_steps: ['Measure impact.'], practice_questions: ['What changed afterward?'], source: 'fallback' } })
     await typeAnswer('It reduced errors.')
     await click('Submit Answer')
     expect(container.textContent).toContain('Final Interview Results')
@@ -166,7 +166,7 @@ describe('AIInterviewPanel', () => {
   it('recovers a completed debrief and restart clears recovery state', async () => {
     const key = interviewRecoveryKey(1, resume)!
     sessionStorage.setItem(key, '1')
-    vi.mocked(getInterviewSession).mockResolvedValue({ session_id: 1, job_id: 1, status: 'completed', mode: 'mixed', total_questions: 3, current_question: null, last_response: { session_id: 1, question_index: 3, is_complete: true, feedback, next_question: null, final_result: { final_score: 60, overall_summary: 'Recovered debrief.', top_strengths: [], next_steps: [] } } })
+    vi.mocked(getInterviewSession).mockResolvedValue({ session_id: 1, job_id: 1, status: 'completed', mode: 'mixed', total_questions: 3, current_question: null, last_response: { session_id: 1, question_index: 3, is_complete: true, feedback, next_question: null, final_result: { final_score: 60, overall_summary: 'Recovered debrief.', top_strengths: [], next_steps: [], source: 'fallback' } } })
     await render()
     expect(container.textContent).toContain('Recovered debrief')
     await click('Start New Interview')
@@ -190,6 +190,41 @@ describe('AIInterviewPanel', () => {
     await act(async () => root.render(<AIInterviewPanel jobId={1} jobTitle="Engineer" company="Acme" resumeData={{ ...resume }} />))
     expect(container.querySelector('textarea')?.value).toBe('Keep this answer')
     expect(getInterviewSession).not.toHaveBeenCalled()
+  })
+
+  it('labels validated provider feedback as AI coaching without hiring claims', async () => {
+    await render()
+    await click('Start Interview')
+    vi.mocked(submitInterviewAnswer).mockResolvedValueOnce({
+      session_id: 1, question_index: 1, is_complete: false,
+      feedback: { ...feedback, source: 'ai' },
+      next_question: { ...q, question_id: 'q2', question_index: 2, source: 'ai' }, final_result: null,
+    })
+    await typeAnswer('I built and tested a Python parser.')
+    await click('Submit Answer')
+    expect(container.textContent).toContain('AI coaching active')
+    expect(container.textContent).toContain('not a hiring prediction')
+  })
+
+  it('handles a legacy stored resume without structured arrays', async () => {
+    const legacy = { name: null, email: null, phone: null, skills: ['Python'], education: [], experience: ['Developer'], projects: ['Parser'], leadership: [] }
+    await act(async () => root.render(<AIInterviewPanel jobId={1} jobTitle="Engineer" company="Acme" resumeData={legacy as never} />))
+    expect(container.textContent).toContain('1 experience entries')
+    expect(container.textContent).toContain('1 projects')
+  })
+
+  it('restores committed feedback before continuing after refresh', async () => {
+    sessionStorage.setItem(interviewRecoveryKey(1, resume)!, '1')
+    vi.mocked(getInterviewSession).mockResolvedValue({
+      session_id: 1, job_id: 1, status: 'in_progress', mode: 'mixed', total_questions: 3,
+      current_question: { ...q, question_id: 'q2', question_index: 2 },
+      last_response: { session_id: 1, question_index: 1, is_complete: false, feedback, next_question: { ...q, question_id: 'q2', question_index: 2 }, final_result: null },
+    })
+    await render()
+    expect(container.textContent).toContain('Add an outcome.')
+    expect(container.textContent).toContain('Continue to Next Question')
+    await click('Continue to Next Question')
+    expect(container.textContent).toContain('Q2/3')
   })
 
 })

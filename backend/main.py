@@ -10,8 +10,11 @@ from api.resume import router as resume_router
 from api.routers import auth
 from database.connection import Base, engine
 from database.queries import ensure_job_description_summary_column
+from services.interview_provider import build_openai_interview_provider
+from services.interview_settings import get_interview_ai_settings
 
 app = FastAPI(title="HireSense API")
+app.state.interview_provider = build_openai_interview_provider(get_interview_ai_settings())
 
 Base.metadata.create_all(bind=engine)
 ensure_job_description_summary_column()

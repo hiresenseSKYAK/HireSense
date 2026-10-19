@@ -129,12 +129,25 @@ class EngineTests(unittest.TestCase):
         self.assertNotIn(attack, call['messages'][0]['content'])
         self.assertIn(attack, call['messages'][1]['content'])
         self.assertIn('untrusted_interview_data', call['messages'][1]['content'])
-        self.assertEqual(call['timeout'], 15.0)
-        self.assertIn('properties', call['schema'])
+        self.assertEqual(call['timeout'], 20.0)
+        self.assertEqual(call['schema_model'].__name__, 'QuestionSet')
         provider.evaluate(context, {}, attack, [])
         self.assertIn(attack, client.complete.call_args.kwargs['messages'][1]['content'])
         provider.debrief(context, [])
         self.assertEqual(client.complete.call_count, 3)
+
+    def test_provider_followup_must_be_grounded_in_the_answer(self):
+        provider = Mock()
+        valid = {'score': 40, 'summary': 'Add detail.', 'strengths': [], 'improvements': ['Add evidence.'],
+                 'dimensions': [{'label': label, 'score': 10} for label in ('Relevance', 'Structure', 'Specificity', 'Impact')],
+                 'evidence': ['Python API'], 'follow_up': 'Which Kubernetes cluster configuration did you choose?'}
+        provider.evaluate.return_value = valid
+        result = InterviewEngine(provider).feedback(
+            interview_context(JOB, RESUME, 'technical', 3),
+            {'focus_area': 'Python', 'question_type': 'technical'}, 'I built a Python API for the project.', [],
+        )
+        self.assertEqual(result['source'], 'ai')
+        self.assertIsNone(result['follow_up'])
 
     def test_structured_job_requirements_are_real_and_missing_fields_stay_empty(self):
         import json

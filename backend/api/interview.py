@@ -1,4 +1,6 @@
+import hashlib
 import json
+import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -15,6 +17,11 @@ from services.job_location import assess_job_geography
 
 router = APIRouter(prefix='/interview', tags=['interview'])
 SESSION_LIFETIME = timedelta(hours=24)
+START_WINDOW = timedelta(hours=1)
+MAX_STARTS_PER_WINDOW = 10
+MAX_PROVIDER_CALLS_PER_SESSION = 10
+CLAIM_LIFETIME = timedelta(minutes=2)
+logger = logging.getLogger(__name__)
 
 
 def get_interview_engine(request: Request) -> InterviewEngine:
@@ -87,6 +94,12 @@ def start_interview(
     engine: InterviewEngine = Depends(get_interview_engine),
 ):
     user_id = _resolve_user_id(db, authorization)
+    recent_starts = db.query(InterviewSession).filter(
+        InterviewSession.user_id == user_id,
+        InterviewSession.created_at > datetime.utcnow() - START_WINDOW,
+    ).count()
+    if recent_starts >= MAX_STARTS_PER_WINDOW:
+        raise HTTPException(429, 'Interview start limit reached. Try again later.')
     job = db.query(Job).filter(Job.id == body.job_id, Job.active.is_(True),
                                Job.experience_level.in_(['Internship', 'Entry level'])).first()
     if not job or not assess_job_geography(job.location, job.work_style, job.job_description).accepted:
@@ -99,15 +112,19 @@ def start_interview(
         raise HTTPException(422, 'Resume context is too long. Shorten the extracted resume before starting.')
     if not any(resume.get(k) for k in ('skills', 'experience_entries', 'project_entries', 'education', 'experience', 'projects')):
         raise HTTPException(422, 'Add resume skills, education, or experience before starting.')
+    job_id = job.id
     job_data = _job_snapshot(job)
+    # Release the read transaction before the optional network call.
+    db.rollback()
     questions = engine.questions(job_data, resume, body.mode, body.question_count)
     # Store versioned session metadata in existing JSON, avoiding a production migration.
     resume['_interview'] = {'version': 2, 'mode': body.mode, 'base_count': body.question_count,
                             'count_semantics': 'total_turns'}
     session = InterviewSession(
-        user_id=user_id, job_id=job.id, status='in_progress', current_question_index=0,
+        user_id=user_id, job_id=job_id, status='in_progress', current_question_index=0,
         total_questions=len(questions), job_snapshot=json.dumps(job_data),
         resume_snapshot=json.dumps(resume), question_set=json.dumps(questions),
+        provider_call_count=1 if engine.provider is not None else 0,
     )
     db.add(session)
     db.commit()
@@ -139,25 +156,52 @@ def answer_interview_question(
     index = session.current_question_index
     if index >= len(questions) or questions[index]['question_id'] != body.question_id:
         raise HTTPException(409, 'This question is no longer current.')
-    # Compare-and-swap acquires a write lock before evaluation. Concurrent requests
-    # cannot record duplicate responses or skip questions. All changes commit together.
+    answer_hash = hashlib.sha256(body.answer.encode('utf-8')).hexdigest()
+    resume_snapshot = session.resume_snapshot
+    job_snapshot = session.job_snapshot
+    provider_call_count = session.provider_call_count
+    stale_before = datetime.utcnow() - CLAIM_LIFETIME
+    db.query(InterviewSession).filter(
+        InterviewSession.id == session.id,
+        InterviewSession.processing_started_at.isnot(None),
+        InterviewSession.processing_started_at < stale_before,
+    ).update({
+        'processing_question_index': None, 'processing_answer_hash': None,
+        'processing_started_at': None,
+    }, synchronize_session=False)
+    db.commit()
+
+    resume = json.loads(resume_snapshot)
+    metadata = resume.get('_interview', {})
+    context = interview_context(json.loads(job_snapshot), resume,
+                                metadata.get('mode', 'mixed'), metadata.get('base_count', len(questions)))
+    saved = db.query(InterviewResponse).filter(
+        InterviewResponse.session_id == session.id,
+    ).order_by(InterviewResponse.question_index).all()
+    history = [dict(question_prompt=r.question_prompt, answer=r.answer_text, score=r.score,
+                    feedback={k: v for k, v in json.loads(r.feedback_json).items() if k != '_response'}) for r in saved]
+    question = questions[index]
+    provider_calls_needed = 1 + (1 if index + 1 == len(questions) else 0)
+    use_provider = engine.provider is not None and provider_call_count + provider_calls_needed <= MAX_PROVIDER_CALLS_PER_SESSION
+
+    # Claim and commit before any provider work. The conditional claim prevents
+    # duplicate/concurrent turn processing without holding a database lock remotely.
     claimed = db.query(InterviewSession).filter(
         InterviewSession.id == session.id, InterviewSession.current_question_index == index,
-        InterviewSession.status == 'in_progress',
-    ).update({'current_question_index': index + 1}, synchronize_session=False)
+        InterviewSession.status == 'in_progress', InterviewSession.processing_question_index.is_(None),
+    ).update({
+        'processing_question_index': index, 'processing_answer_hash': answer_hash,
+        'processing_started_at': datetime.utcnow(),
+        'provider_call_count': InterviewSession.provider_call_count + (provider_calls_needed if use_provider else 0),
+    }, synchronize_session=False)
     if claimed != 1:
         db.rollback()
         raise HTTPException(409, 'Another answer is being processed. Retry this answer.')
+    db.commit()
+
+    operation_engine = engine if use_provider else InterviewEngine()
     try:
-        resume = json.loads(session.resume_snapshot)
-        metadata = resume.get('_interview', {})
-        context = interview_context(json.loads(session.job_snapshot), resume,
-                                    metadata.get('mode', 'mixed'), metadata.get('base_count', len(questions)))
-        saved = db.query(InterviewResponse).filter(InterviewResponse.session_id == session.id).order_by(InterviewResponse.question_index).all()
-        history = [dict(question_prompt=r.question_prompt, answer=r.answer_text, score=r.score,
-                        feedback={k: v for k, v in json.loads(r.feedback_json).items() if k != '_response'}) for r in saved]
-        question = questions[index]
-        feedback = engine.feedback(context, question, body.answer, history)
+        feedback = operation_engine.feedback(context, question, body.answer, history)
         # Follow-ups consume a selected turn and leave at least one planned turn.
         # Never chain follow-ups or repeat a prompt already planned/asked.
         probe = feedback.get('follow_up')
@@ -171,13 +215,25 @@ def answer_interview_question(
                                         tips=['Build on your previous answer with a concrete detail.'])
         else:
             feedback['follow_up'] = None
-        session.question_set = json.dumps(questions)
-        session.total_questions = len(questions)
-        session.current_question_index = index + 1
         complete = index + 1 == len(questions)
         final = None
         if complete:
-            final = engine.final(context, history + [dict(question_prompt=question['prompt'], answer=body.answer, score=feedback['score'], feedback=feedback)])
+            final = operation_engine.final(context, history + [dict(question_prompt=question['prompt'], answer=body.answer, score=feedback['score'], feedback=feedback)])
+
+        db.expire_all()
+        current = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
+        if (not current or current.current_question_index != index or current.status != 'in_progress'
+                or current.processing_question_index != index or current.processing_answer_hash != answer_hash):
+            db.rollback()
+            raise HTTPException(409, 'This answer is no longer current. Retry to load the saved result.')
+        session = current
+        session.question_set = json.dumps(questions)
+        session.total_questions = len(questions)
+        session.current_question_index = index + 1
+        session.processing_question_index = None
+        session.processing_answer_hash = None
+        session.processing_started_at = None
+        if complete:
             session.status = 'completed'
             session.final_score = final['final_score']
             session.overall_summary = final['overall_summary']
@@ -193,6 +249,15 @@ def answer_interview_question(
         return result
     except Exception:
         db.rollback()
+        db.query(InterviewSession).filter(
+            InterviewSession.id == session_id,
+            InterviewSession.processing_question_index == index,
+            InterviewSession.processing_answer_hash == answer_hash,
+        ).update({
+            'processing_question_index': None, 'processing_answer_hash': None,
+            'processing_started_at': None,
+        }, synchronize_session=False)
+        db.commit()
         raise
 
 

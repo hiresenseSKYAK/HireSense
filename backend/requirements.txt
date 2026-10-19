@@ -11,5 +11,6 @@ email-validator
 passlib
 pdfplumber
 python-docx
+openai>=1.66.0,<3
 transformers
 torch

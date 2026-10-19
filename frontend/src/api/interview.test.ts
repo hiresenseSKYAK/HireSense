@@ -3,8 +3,8 @@ import { getInterviewSession, startInterview, submitInterviewAnswer } from './in
 const auth = vi.hoisted(() => ({ token: 'account-token' as string | null }))
 vi.mock('./auth', () => ({ getAuthSession: () => auth.token ? ({ token: auth.token, user: { id: 1 } }) : null }))
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); auth.token = 'account-token' })
-const q = { session_id: 9, question_index: 1, total_questions: 3, question_id: 'q1', prompt: 'Describe your project.', focus_area: 'Project', tips: [] }
-const answer = { session_id: 9, question_index: 1, is_complete: false, feedback: { score: 50, benchmark: 'Developing', summary: 'Add evidence.', strengths: [], improvements: [] }, next_question: { ...q, question_index: 2, question_id: 'q2' }, final_result: null }
+const q = { session_id: 9, question_index: 1, total_questions: 3, question_id: 'q1', prompt: 'Describe your project.', focus_area: 'Project', tips: [], question_type: 'mixed', source: 'fallback', is_follow_up: false, parent_question_id: null, mode: 'mixed' }
+const answer = { session_id: 9, question_index: 1, is_complete: false, feedback: { score: 50, benchmark: 'Developing', summary: 'Add evidence.', strengths: [], improvements: [], source: 'fallback' }, next_question: { ...q, question_index: 2, question_id: 'q2' }, final_result: null }
 
 describe('interview API', () => {
   it('sends safe resume evidence, mode, count, current question and authentication', async () => {
@@ -34,7 +34,7 @@ describe('interview API', () => {
     await pending
   })
   it('rejects malformed success responses so drafts remain retryable', async () => {
-    for (const response of [{}, { ...answer, is_complete: true, final_result: null }, { ...answer, feedback: { ...answer.feedback, strengths: {} } }]) {
+    for (const response of [{}, { ...answer, is_complete: true, final_result: null }, { ...answer, feedback: { ...answer.feedback, strengths: {} } }, { ...answer, feedback: { ...answer.feedback, source: undefined } }]) {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => response }))
       await expect(submitInterviewAnswer(9, 'answer', 'q2')).rejects.toThrow('incomplete')
     }

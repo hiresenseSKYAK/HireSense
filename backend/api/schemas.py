@@ -164,6 +164,8 @@ class FinalInterviewResultOut(BaseModel):
     strongest_responses: List[InterviewResponseReference] = Field(default_factory=list)
     weakest_responses: List[InterviewResponseReference] = Field(default_factory=list)
     specificity_needs: List[str] = Field(default_factory=list)
+    patterns_across_answers: List[str] = Field(default_factory=list)
+    practice_recommendations: List[str] = Field(default_factory=list)
 
 
 class InterviewAnswerRequest(BaseModel):

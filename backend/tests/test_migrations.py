@@ -10,6 +10,16 @@ class MigrationTests(unittest.TestCase):
         self.assertNotIn("drop ", sql)
         self.assertNotIn("delete ", sql)
 
+    def test_interview_hardening_migration_is_additive_and_unique(self):
+        migration = Path(__file__).parents[1] / "database" / "migrations" / "005_harden_interview_sessions.sql"
+        sql = migration.read_text(encoding="utf-8").lower()
+        self.assertIn("processing_question_index", sql)
+        self.assertIn("provider_call_count", sql)
+        self.assertIn("unique index uq_interview_response_question", sql)
+        self.assertIn("unique index uq_interview_response_turn", sql)
+        self.assertNotIn("drop ", sql)
+        self.assertNotIn("delete ", sql)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -168,9 +168,9 @@ export default function AIInterviewPanel({
     }
 
     return {
-      skills: resumeData.skills.slice(0, 4),
-      experienceCount: resumeData.experience_entries.length,
-      projectCount: resumeData.project_entries.length,
+      skills: (resumeData.skills ?? []).slice(0, 4),
+      experienceCount: resumeData.experience_entries?.length ?? resumeData.experience?.length ?? 0,
+      projectCount: resumeData.project_entries?.length ?? resumeData.projects?.length ?? 0,
     }
   }, [resumeData])
 
@@ -310,8 +310,17 @@ export default function AIInterviewPanel({
       setHasStarted(true)
       setSessionId(id)
       setMode(recovered.mode)
-      setCurrentQuestion(recovered.current_question)
-      setFinalResult(recovered.last_response?.final_result ?? null)
+      const last = recovered.last_response
+      setFinalResult(last?.final_result ?? null)
+      if (last && !last.is_complete && recovered.current_question) {
+        setCurrentQuestion(null)
+        setFeedback(last.feedback)
+        setPendingNextQuestion(recovered.current_question)
+      } else {
+        setCurrentQuestion(recovered.current_question)
+        setFeedback(null)
+        setPendingNextQuestion(null)
+      }
       setRecoverableSessionId(null)
       try { if (recoveryKey) sessionStorage.setItem(recoveryKey, String(id)) } catch { /* Storage is optional. */ }
     } catch (err) {
@@ -417,10 +426,12 @@ export default function AIInterviewPanel({
           <div className={styles.resultsLabel}>Final Interview Results</div>
           <div className={`${styles.finalScore} ${scoreTone(finalResult.final_score)}`}>{finalResult.final_score}/100</div>
           <div className={styles.resultsSummary}>{finalResult.overall_summary}</div>
-          <p className={styles.sub}>{finalResult.source === 'ai' ? 'AI assisted debrief' : 'Guided practice debrief'} • Practice scores are coaching signals.</p>
+          <p className={styles.sub}>{finalResult.source === 'ai' ? 'AI coaching active' : 'Standard coaching mode'} • Scores are coaching signals, not hiring probabilities.</p>
           {finalResult.strongest_responses?.length ? <div><strong>Strongest response evidence</strong><ul>{finalResult.strongest_responses.map((item, i) => <li key={i}>{item.question}<blockquote>{item.answer_excerpt}</blockquote></li>)}</ul></div> : null}
           {finalResult.weakest_responses?.length ? <div><strong>Responses to improve</strong><ul>{finalResult.weakest_responses.map((item, i) => <li key={i}>{item.question}<blockquote>{item.answer_excerpt}</blockquote></li>)}</ul></div> : null}
           {finalResult.specificity_needs?.length ? <div><strong>Add specificity</strong><ul>{finalResult.specificity_needs.map((item, i) => <li key={i}>{item}</li>)}</ul></div> : null}
+          {finalResult.patterns_across_answers?.length ? <div><strong>Patterns across answers</strong><ul>{finalResult.patterns_across_answers.map((item, i) => <li key={i}>{item}</li>)}</ul></div> : null}
+          {finalResult.practice_recommendations?.length ? <div><strong>Practice recommendations</strong><ul>{finalResult.practice_recommendations.map((item, i) => <li key={i}>{item}</li>)}</ul></div> : null}
           {finalResult.technical_signals && <p>{finalResult.technical_signals}</p>}
           {finalResult.communication_signals && <p>{finalResult.communication_signals}</p>}
           {finalResult.resume_evidence?.length ? <div><strong>Resume context</strong><ul>{finalResult.resume_evidence.map((item, i) => <li key={i}>{item}</li>)}</ul></div> : null}
@@ -494,7 +505,7 @@ export default function AIInterviewPanel({
               </div>
 
               <div className={styles.summary}>{feedback.summary}</div>
-              <p className={styles.sub}>{feedback.source === 'ai' ? 'AI assisted feedback' : 'Heuristic practice feedback'}</p>
+              <p className={styles.sub}>{feedback.source === 'ai' ? 'AI coaching active' : 'Standard coaching mode'} • This is coaching feedback, not a hiring prediction.</p>
               {feedback.technical_depth && <p>{feedback.technical_depth}</p>}
               {feedback.communication && <p>{feedback.communication}</p>}
               {feedback.role_relevance && <p>{feedback.role_relevance}</p>}
