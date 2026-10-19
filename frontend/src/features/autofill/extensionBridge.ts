@@ -1,38 +1,52 @@
 import type { ApplicantProfile } from './core/types'
-import { transferableProfile } from './bridgeContract'
+import { BRIDGE_PROTOCOL_VERSION, transferableProfile } from './bridgeContract'
 
-const extensionId = import.meta.env.VITE_AUTOFILL_EXTENSION_ID?.trim()
+type BridgeResponse = { ok?: boolean; error?: string; version?: string; fingerprint?: string; syncedAt?: number }
 
-export function canUseAutofillExtension(): boolean {
-  return Boolean(extensionId && window.chrome?.runtime?.sendMessage)
+function requestExtension(type: 'ping' | 'set-confirmed-profile' | 'clear-profile', profile?: ApplicantProfile): Promise<BridgeResponse> {
+  const requestId = crypto.randomUUID()
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      window.removeEventListener('message', onMessage)
+      reject(new Error(type === 'ping'
+        ? 'HireSense Autofill was not detected. Install or reload the extension, refresh this page, then retry.'
+        : 'The extension stopped responding. Reload it, then retry sending your profile.'))
+    }, 3000)
+    function onMessage(event: MessageEvent) {
+      const data = event.data
+      if (event.source !== window || event.origin !== window.location.origin ||
+          data?.channel !== 'hiresense-extension-response' || data.requestId !== requestId) return
+      window.clearTimeout(timeout)
+      window.removeEventListener('message', onMessage)
+      if (data.protocolVersion !== BRIDGE_PROTOCOL_VERSION) {
+        reject(new Error('HireSense Autofill is outdated. Reload or reinstall the extension, then refresh this page.'))
+        return
+      }
+      resolve(data.response ?? { ok: false, error: 'The extension returned an invalid response.' })
+    }
+    window.addEventListener('message', onMessage)
+    window.postMessage({ channel: 'hiresense-extension-request', requestId, protocolVersion: BRIDGE_PROTOCOL_VERSION, type, ...(profile ? { profile } : {}) }, window.location.origin)
+  })
 }
 
-export function sendConfirmedProfileToExtension(
-  profile: ApplicantProfile,
-): Promise<void> {
-  if (!extensionId || !window.chrome?.runtime) {
-    return Promise.reject(new Error('The HireSense browser bridge is not configured.'))
-  }
+export async function detectAutofillExtension(): Promise<{ version: string }> {
+  const response = await requestExtension('ping')
+  if (!response.ok || !response.version) throw new Error(response.error || 'HireSense Autofill is unavailable. Reload it and retry.')
+  return { version: response.version }
+}
 
+export async function sendConfirmedProfileToExtension(profile: ApplicantProfile): Promise<{ fingerprint: string; syncedAt: number }> {
   const safeProfile = transferableProfile(profile)
-  if (!safeProfile) return Promise.reject(new Error('Review and confirm valid applicant details first.'))
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('The extension did not respond. Open HireSense Autofill in Chrome, then try again.')), 10000)
-    window.chrome?.runtime?.sendMessage(
-      extensionId,
-      { type: 'set-confirmed-profile', profile: safeProfile },
-      (response?: { ok?: boolean; error?: string }) => {
-        clearTimeout(timeout)
-        if (window.chrome?.runtime?.lastError) {
-          reject(new Error('Could not connect to HireSense Autofill. Check that the extension is enabled, reload this page, and try again.'))
-          return
-        }
-        if (!response?.ok) {
-          reject(new Error(response?.error || 'The browser bridge did not accept this profile.'))
-          return
-        }
-        resolve()
-      },
-    )
-  })
+  if (!safeProfile) throw new Error('Review and confirm valid applicant details first.')
+  await detectAutofillExtension()
+  const response = await requestExtension('set-confirmed-profile', safeProfile)
+  if (!response.ok || !response.fingerprint || typeof response.syncedAt !== 'number') {
+    throw new Error(response.error || 'The extension could not store your profile. Retry from Profile Review.')
+  }
+  return { fingerprint: response.fingerprint, syncedAt: response.syncedAt }
+}
+
+export async function clearSyncedProfile(): Promise<void> {
+  const response = await requestExtension('clear-profile')
+  if (!response.ok) throw new Error(response.error || 'Could not clear the extension profile.')
 }

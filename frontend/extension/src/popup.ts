@@ -5,6 +5,7 @@ const pageStatus = document.querySelector<HTMLElement>('#page-status')!
 const previewButton = document.querySelector<HTMLButtonElement>('#preview')!
 const fillButton = document.querySelector<HTMLButtonElement>('#fill')!
 const clearButton = document.querySelector<HTMLButtonElement>('#clear')!
+const openProfileButton = document.querySelector<HTMLButtonElement>('#open-profile')!
 const chooseButton = document.querySelector<HTMLButtonElement>('#choose-resume')!
 const attachButton = document.querySelector<HTMLButtonElement>('#attach-resume')!
 const activeResume = document.querySelector<HTMLElement>('#active-resume')!
@@ -12,10 +13,11 @@ const attachmentStatus = document.querySelector<HTMLElement>('#attachment-status
 const attachmentWarning = document.querySelector<HTMLElement>('#attachment-warning')!
 const report = document.querySelector<HTMLElement>('#report')!
 let approved: { previewId: string; tabId: number; resumeToken?: string } | null = null
+let profileUrl = 'https://hiresense-9yub.onrender.com/application/prepare'
 
 type Response = {
   ok?: boolean; error?: string; state?: string; supported?: boolean; summary?: string; ready?: number;
-  previewId?: string; tabId?: number; host?: string; attachmentReady?: boolean; resumeStatus?: string;
+  previewId?: string; tabId?: number; host?: string; attachmentReady?: boolean; resumeStatus?: string; syncedAt?: number;
   resume?: { name: string; token: string }; attached?: boolean;
   fields?: Array<{ label: string; status: string; reason: string; value?: string; tone: string; section: string }>
 }
@@ -57,7 +59,7 @@ async function send(message: object): Promise<Response> {
   return response
 }
 function resumeState(response: Response) {
-  activeResume.textContent = response.resume?.name ? 'Active: ' + response.resume.name : 'No active resume — choose a PDF or DOCX once for this session.'
+  activeResume.textContent = response.resume?.name ? 'Selected for optional attachment: ' + response.resume.name : 'No file selected for attachment.'
   if (response.resumeStatus) attachmentStatus.textContent = response.resumeStatus
 }
 function busy(value: boolean) {
@@ -71,14 +73,17 @@ function busy(value: boolean) {
 async function refresh() {
   try {
     const response = await send({ type: 'get-profile' })
-    profileStatus.textContent = response.state === 'ready' ? 'Ready · up to 30 min' : response.state === 'expired' ? 'Expired — resend from HireSense' : 'Not received'
+    if (response.host === 'localhost') profileUrl = 'http://localhost:5173/application/prepare'
+    profileStatus.textContent = response.state === 'ready'
+      ? 'Profile ready · synced ' + (response.syncedAt ? new Date(response.syncedAt).toLocaleString() : 'time unavailable')
+      : response.state === 'expired' ? 'Expired — resync from HireSense' : 'Not synced'
     pageStatus.textContent = response.supported ? response.host || 'Ready to inspect' : 'Unsupported / unavailable'
     previewButton.disabled = response.state !== 'ready' || !response.supported
     clearButton.disabled = response.state !== 'ready' && !response.resume
     resumeState(response)
     status.textContent = response.state === 'ready'
       ? 'Preview this application before filling. Existing answers stay yours.'
-      : 'In HireSense, review and confirm your details, then choose Send to extension.'
+      : 'Already uploaded a resume? Open HireSense Profile Review and choose Send to extension. Otherwise, upload it there first. No second upload is needed for autofill.'
   } catch (error) {
     status.textContent = error instanceof Error ? error.message : 'Could not connect.'
   }
@@ -115,6 +120,10 @@ previewButton.addEventListener('click', async () => {
     previewButton.textContent = 'Preview again'
     previewButton.classList.add('secondary')
   }
+})
+
+openProfileButton.addEventListener('click', () => {
+  void chrome.tabs.create({ url: profileUrl })
 })
 
 fillButton.addEventListener('click', async () => {

@@ -7,7 +7,7 @@ HireSense can be deployed as a static Vite frontend plus a FastAPI service backe
 - Build command from the repository root: `cd frontend && npm ci && npm run build`
 - Publish directory: `frontend/dist`
 - Required environment variable: `VITE_API_BASE_URL=https://<your-api-origin>`
-- Optional browser-bridge variable: `VITE_AUTOFILL_EXTENSION_ID=<unpacked-or-published-extension-id>`
+- Browser extension handoff needs no extension-ID build variable; the exact-origin content-script bridge handles detection.
 
 The `VITE_` values are public build-time configuration. Do not place database passwords, API secrets, or auth tokens in them.
 
@@ -108,7 +108,7 @@ reasons without credentials.
 
 ## Browser bridge production setup
 
-The extension is intentionally local/unpacked for the capstone demonstration. Before a deployed HireSense origin can send a confirmed profile, add that exact HTTPS origin to `frontend/extension/static/manifest.json` under `externally_connectable.matches`, build the extension, load or publish it, and set its resulting ID as `VITE_AUTOFILL_EXTENSION_ID` for the frontend build. The extension uses session-only storage and never receives auth tokens or resume text.
+The extension can be loaded unpacked for the capstone demonstration. The exact production and localhost origins are listed in `frontend/extension/static/manifest.json` under `content_scripts.matches`; add any changed production origin there and to `bridgeContract.ts`, then rebuild and reload the extension. No extension ID is needed in the frontend build. The extension receives only a confirmed, validated applicant profile, never auth tokens or resume text. The profile expires after 24 hours in extension-local storage; optional resume file bytes remain session-only.
 
 ## Remaining external actions
 

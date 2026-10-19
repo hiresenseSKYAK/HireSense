@@ -7,6 +7,7 @@ import {
   clearAutofillProfileConfirmation,
   getAutofillReadiness,
 } from '../features/autofill/readiness'
+import { clearSyncedProfile } from '../features/autofill/extensionBridge'
 import styles from './ProfilePage.module.css'
 
 export default function ProfilePage() {
@@ -59,6 +60,7 @@ export default function ProfilePage() {
 
   const handleLogout = async () => {
     clearAutofillProfileConfirmation()
+    void clearSyncedProfile().catch(() => { /* The popup also offers explicit clearing if the extension is unavailable. */ })
     await logout(authSession?.token)
     navigate('/login')
   }

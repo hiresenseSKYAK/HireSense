@@ -2,8 +2,19 @@ import type { ApplicantProfile } from './core/types'
 import { initializeApplicantProfile, MAX_PROFILE_ENTRIES, MAX_SKILLS, mirrorPrimaryEntries, normalizeIsoDate, validateApplicantProfile } from './core/profile'
 import { hasApplicantValue, isApplicantProfile } from './review'
 
-export const PROFILE_TTL_MS = 30 * 60 * 1000
+export const BRIDGE_PROTOCOL_VERSION = 1
+export const PROFILE_TTL_MS = 24 * 60 * 60 * 1000
 export const allowedOrigins = ['https://hiresense-9yub.onrender.com', 'http://localhost:5173']
+
+export function profileFingerprint(profile: ApplicantProfile): string {
+  // A change marker, not an authentication secret.
+  const value = JSON.stringify(profile)
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash = Math.imul(hash ^ value.charCodeAt(index), 16777619)
+  }
+  return (hash >>> 0).toString(36)
+}
 
 export function allowedSender(url: string | undefined): boolean {
   try { return Boolean(url && allowedOrigins.includes(new URL(url).origin)) } catch { return false }

@@ -1,9 +1,9 @@
 :root {
-  --tan: #d69775; --caramel: #a06c33; --cream: #eff7cf; --sage: #bad9b5; --burgundy: #420c14;
-  --surface-strong: #f8fce9; --bg-soft: #dcebc6;
-  --border: rgba(66, 12, 20, .2);
-  --text: #000; --text-secondary: #1a1a1a;
-  --caramel-tint: rgba(160, 108, 51, .25); --amber-tint: rgba(183, 121, 31, .25);
+  --tan: #f3f8ff; --caramel: #015bfc; --cream: #fff; --sage: #d8f4e4; --burgundy: #0647b5;
+  --surface-strong: #eef5ff; --bg-soft: #e6f0ff;
+  --border: rgba(1, 91, 252, .2);
+  --text: #102033; --text-secondary: #40546b;
+  --caramel-tint: rgba(1, 91, 252, .1); --amber-tint: rgba(183, 121, 31, .15);
 }
 * { box-sizing: border-box; }
 body { background: var(--tan); color: var(--text); font-family: 'DM Sans', Arial, sans-serif; margin: 0; width: 380px; }
@@ -13,7 +13,7 @@ h1 { font-size: 23px; line-height: 1.2; letter-spacing: -.025em; margin: 0 0 20p
 .state { display: grid; grid-template-columns: 1fr; gap: 5px; padding: 15px; background: var(--cream); border: 1px solid var(--border); border-radius: 14px; font-size: 12px; }
 .state span { color: var(--text-secondary); }.state strong + span { margin-top: 9px; }
 #status, .note { color: var(--text-secondary); font-size: 13px; line-height: 1.6; }
-button { background: var(--caramel); border: 1px solid var(--burgundy); border-radius: 11px; color: #000; cursor: pointer; font-weight: 700; margin-top: 8px; padding: 12px; width: 100%; }
+button { background: var(--caramel); border: 1px solid var(--burgundy); border-radius: 11px; color: #fff; cursor: pointer; font-weight: 700; margin-top: 8px; padding: 12px; width: 100%; }
 button:disabled { cursor: not-allowed; opacity: .5; }button:focus-visible { outline: 3px solid var(--burgundy); outline-offset: 3px; }
 button.secondary { background: var(--surface-strong); border-color: var(--caramel); color: var(--text); }
 .note { font-size: 11px; margin: 16px 0 0; }#report { max-height: 280px; overflow: auto; margin-top: 12px; }
@@ -27,6 +27,7 @@ button.secondary { background: var(--surface-strong); border-color: var(--carame
 #report { max-height: 190px; }
 
 .resume-card { margin-top: 16px; background: var(--cream); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+.resume-card summary { cursor: pointer; font-size: 12px; font-weight: 700; }
 .resume-card strong, .resume-card p { font-size: 12px; overflow-wrap: anywhere; }
 .resume-card p { color: var(--text-secondary); line-height: 1.5; }
 #report h2 { font-size: 13px; margin: 16px 0 10px; }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import manifest from '../../../extension/static/manifest.json'
-import { allowedOrigins, allowedSender, profileExpired, PROFILE_TTL_MS, transferableProfile } from './bridgeContract'
+import { allowedOrigins, allowedSender, profileExpired, PROFILE_TTL_MS, transferableProfile, profileFingerprint } from './bridgeContract'
 import { initializeApplicantProfile } from './core/profile'
 
 describe('extension privacy and origin contract', () => {
@@ -18,13 +18,16 @@ describe('extension privacy and origin contract', () => {
     expect(allowedSender('https://hiresense-9yub.onrender.com/application/prepare')).toBe(true)
     expect(allowedSender('http://localhost:5173/application/prepare')).toBe(true)
     for (const url of ['https://hiresense-9yub.onrender.com.evil.test', 'http://hiresense-9yub.onrender.com', 'https://evil.test', undefined]) expect(allowedSender(url)).toBe(false)
-    expect(manifest.externally_connectable.matches).toEqual(allowedOrigins.map((origin) => origin + '/*').reverse())
+    expect(manifest.content_scripts[0].matches).toEqual(allowedOrigins.map((origin) => origin + '/*').reverse())
   })
-  it('expires at 30 minutes and rejects invalid expiry values', () => {
-    expect(PROFILE_TTL_MS).toBe(1800000)
+  it('expires at 24 hours and rejects invalid expiry values', () => {
+    expect(PROFILE_TTL_MS).toBe(86400000)
     expect(profileExpired(1001, 1000)).toBe(false)
     expect(profileExpired(1000, 1000)).toBe(true)
     expect(profileExpired(undefined)).toBe(true)
     expect(profileExpired(NaN)).toBe(true)
+  })
+  it('changes the sync marker when reviewed values change', () => {
+    expect(profileFingerprint(profile)).not.toBe(profileFingerprint({ ...profile, email: 'new@example.com' }))
   })
 })

@@ -5,24 +5,31 @@ import { initializeApplicantProfile } from './core/profile'
 // Chrome APIs are mocked at the boundary; real background/content listeners execute.
 type Listener = (message: any, sender: any, respond: (value: any) => void) => unknown
 let internal: Listener
-let external: Listener
 const profile = { ...initializeApplicantProfile(null), fullName: 'Ada Lovelace', email: 'ada@example.com' }
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); document.body.replaceChildren(); delete (window as any).__hireSenseAutofillListener })
 async function setupBackground() {
   vi.resetModules()
   const store: Record<string, any> = {}
+  const sessionStore: Record<string, any> = {}
   const api = {
     runtime: {
       id: 'test-extension',
       getURL: (path: string) => 'chrome-extension://test-extension/' + path,
-      onMessageExternal: { addListener: (listener: Listener) => { external = listener } },
+      getManifest: () => ({ version: '0.4.0' }),
       onMessage: { addListener: (listener: Listener) => { internal = listener } },
     },
-    storage: { session: {
-      get: vi.fn(async () => store),
-      set: vi.fn(async (values) => { Object.assign(store, values) }),
-      remove: vi.fn(async (key) => { for (const name of Array.isArray(key) ? key : [key]) delete store[name] }),
-    } },
+    storage: {
+      local: {
+        get: vi.fn(async () => store),
+        set: vi.fn(async (values) => { Object.assign(store, values) }),
+        remove: vi.fn(async (key) => { for (const name of Array.isArray(key) ? key : [key]) delete store[name] }),
+      },
+      session: {
+        get: vi.fn(async () => sessionStore),
+        set: vi.fn(async (values) => { Object.assign(sessionStore, values) }),
+        remove: vi.fn(async (key) => { for (const name of Array.isArray(key) ? key : [key]) delete sessionStore[name] }),
+      },
+    },
     tabs: { query: vi.fn(async () => [{ id: 7, url: 'https://example.com/apply' }]), sendMessage: vi.fn(async (_tabId: number, _message: any) => ({ ok: true, previewId: 'preview' })) },
     scripting: { executeScript: vi.fn(async () => []) },
   }
@@ -30,14 +37,16 @@ async function setupBackground() {
   await import('../../../extension/src/background')
   const call = (message: unknown) => new Promise<any>((resolve) => internal(message, { url: api.runtime.getURL('popup.html') }, resolve))
   const resumeCall = (message: unknown) => new Promise<any>((resolve) => internal(message, { url: api.runtime.getURL('resume.html') }, resolve))
-  const transfer = (url = 'https://hiresense-9yub.onrender.com/application/prepare') => new Promise<any>((resolve) => external({ type: 'set-confirmed-profile', profile: { ...profile, token: 'secret' } }, { url }, resolve))
-  return { api, store, call, transfer, resumeCall }
+  const transfer = (url = 'https://hiresense-9yub.onrender.com/application/prepare') => new Promise<any>((resolve) => internal(
+    { type: 'site-bridge-profile', profile: { ...profile, token: 'secret' } },
+    { id: 'test-extension', url, tab: { url } }, resolve))
+  return { api, store, sessionStore, call, transfer, resumeCall }
 }
 
 describe('extension background handoff and permissions', () => {
   it('acknowledges only successful storage and returns state without PII to popup', async () => {
     const { transfer, call, store } = await setupBackground()
-    expect(await transfer()).toEqual({ ok: true })
+    expect(await transfer()).toMatchObject({ ok: true, fingerprint: expect.any(String), syncedAt: expect.any(Number) })
     expect(store.confirmedApplicantProfile.profile).toEqual(profile)
     const response = await call({ type: 'get-profile' })
     expect(response.state).toBe('ready')
@@ -45,13 +54,47 @@ describe('extension background handoff and permissions', () => {
     expect(JSON.stringify(response)).not.toContain('ada@example.com')
   })
   it('rejects a foreign origin without storing anything', async () => {
-    const { transfer, store } = await setupBackground()
-    expect((await transfer('https://evil.example')).ok).toBe(false)
+    const { store } = await setupBackground()
+    const response = vi.fn()
+    internal({ type: 'site-bridge-profile', profile },
+      { id: 'test-extension', url: 'https://evil.example', tab: { url: 'https://evil.example' } }, response)
+    expect(response).not.toHaveBeenCalled()
     expect(store).toEqual({})
+  })
+  it('rejects forged sender tabs and malformed website messages', async () => {
+    const { store } = await setupBackground()
+    const forgedResponse = vi.fn()
+    internal(
+      { type: 'site-bridge-profile', profile },
+      { id: 'test-extension', url: 'https://hiresense-9yub.onrender.com/application/prepare', tab: { url: 'https://evil.example' } }, forgedResponse)
+    expect(forgedResponse).not.toHaveBeenCalled()
+    const malformed = await new Promise<any>((resolve) => internal(
+      { type: 'site-bridge-profile', profile: { email: 'ada@example.com' } },
+      { id: 'test-extension', url: 'https://hiresense-9yub.onrender.com/application/prepare', tab: { url: 'https://hiresense-9yub.onrender.com/application/prepare' } }, resolve))
+    expect(malformed.ok).toBe(false)
+    expect(store).toEqual({})
+  })
+  it('keeps the validated profile after a service-worker restart', async () => {
+    const { transfer, call } = await setupBackground()
+    await transfer()
+    vi.resetModules()
+    await import('../../../extension/src/background')
+    expect((await call({ type: 'get-profile' })).state).toBe('ready')
+  })
+  it('replaces the sync fingerprint on update and accepts website revocation', async () => {
+    const { transfer, store } = await setupBackground()
+    await transfer()
+    const first = store.confirmedApplicantProfile.fingerprint
+    const siteSender = { id: 'test-extension', url: 'https://hiresense-9yub.onrender.com/application/prepare',
+      tab: { url: 'https://hiresense-9yub.onrender.com/application/prepare' } }
+    await new Promise<any>((resolve) => internal({ type: 'site-bridge-profile', profile: { ...profile, email: 'new@example.com' } }, siteSender, resolve))
+    expect(store.confirmedApplicantProfile.fingerprint).not.toBe(first)
+    expect((await new Promise<any>((resolve) => internal({ type: 'site-bridge-clear' }, siteSender, resolve))).ok).toBe(true)
+    expect(store.confirmedApplicantProfile).toBeUndefined()
   })
   it('reports storage failures to the website', async () => {
     const { api, transfer } = await setupBackground()
-    api.storage.session.set.mockRejectedValueOnce(new Error('storage unavailable'))
+    api.storage.local.set.mockRejectedValueOnce(new Error('storage unavailable'))
     expect((await transfer()).ok).toBe(false)
   })
   it('expires and clears profiles before a page can receive them', async () => {
@@ -70,7 +113,7 @@ describe('extension background handoff and permissions', () => {
     expect(api.scripting.executeScript).not.toHaveBeenCalled()
   })
   it('keeps resume bytes session-only and sends them only for an explicit attachment', async () => {
-    const { transfer, call, resumeCall, store, api } = await setupBackground()
+    const { transfer, call, resumeCall, store, sessionStore, api } = await setupBackground()
     const file = { name: 'resume.pdf', type: 'application/pdf', size: 4, lastModified: 1, base64: btoa('demo') }
     await transfer()
     expect((await resumeCall({ type: 'set-active-resume', file })).ok).toBe(true)
@@ -79,21 +122,22 @@ describe('extension background handoff and permissions', () => {
     expect(JSON.stringify(state)).not.toContain(file.base64)
     await call({ type: 'preview-active-tab' })
     expect(api.tabs.sendMessage.mock.calls[0][1]).not.toHaveProperty('resume')
-    const token = store.activeResume.token
+    const token = sessionStore.activeResume.token
     expect((await call({ type: 'attach-active-resume', tabId: 7, resumeToken: 'wrong' })).ok).toBe(false)
     await call({ type: 'attach-active-resume', tabId: 7, resumeToken: token, previewId: 'preview' })
     expect(api.tabs.sendMessage.mock.calls[api.tabs.sendMessage.mock.calls.length - 1][1].resume).toEqual(file)
     await call({ type: 'clear-profile' })
     expect(store).toEqual({})
+    expect(sessionStore).toEqual({})
   })
   it('expires the resume and rejects unauthorized popup file replacements', async () => {
-    const { call, resumeCall, store } = await setupBackground()
+    const { call, resumeCall, sessionStore } = await setupBackground()
     const file = { name: 'resume.pdf', type: 'application/pdf', size: 4, lastModified: 1, base64: btoa('demo') }
     expect((await call({ type: 'set-active-resume', file })).ok).toBe(false)
     await resumeCall({ type: 'set-active-resume', file })
-    store.activeResume.expiresAt = 0
+    sessionStore.activeResume.expiresAt = 0
     expect((await resumeCall({ type: 'get-resume' })).resume).toBeNull()
-    expect(store.activeResume).toBeUndefined()
+    expect(sessionStore.activeResume).toBeUndefined()
   })
   it('rejects tab changes and restricted pages', async () => {
     const { transfer, call, api } = await setupBackground()
@@ -133,5 +177,19 @@ describe('extension content preview handshake', () => {
     expect((await call({ type: 'fill-supported-fields', previewId: 'wrong-preview' })).ok).toBe(false)
     expect((await call({ type: 'fill-supported-fields', previewId: preview.previewId, expiresAt: 0 })).ok).toBe(false)
     expect(document.querySelector('input')!.value).toBe('')
+  })
+  it('waits briefly for a dynamically mounted application form', async () => {
+    const call = await setupContent()
+    document.body.replaceChildren()
+    setTimeout(() => { document.body.innerHTML = '<form><label>Email<input type="email" name="email"></label></form>' }, 20)
+    const preview = await call({ type: 'preview-supported-fields' })
+    expect(preview.ready).toBe(1)
+  })
+  it('reports no fields instead of attempting a fill', async () => {
+    const call = await setupContent()
+    document.body.replaceChildren()
+    const preview = await call({ type: 'preview-supported-fields' })
+    expect(preview.ready).toBe(0)
+    expect(preview.fields).toEqual([])
   })
 })

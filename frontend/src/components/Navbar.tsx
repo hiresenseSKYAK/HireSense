@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { getAuthSession, logout } from '../api/auth'
 import { clearAutofillProfileConfirmation } from '../features/autofill/readiness'
+import { clearSyncedProfile } from '../features/autofill/extensionBridge'
 import styles from './Navbar.module.css'
 
 function accountInitials(username?: string | null) {
@@ -45,6 +46,7 @@ export default function Navbar() {
   const handleLogout = async () => {
     setMenuOpen(false)
     clearAutofillProfileConfirmation()
+    void clearSyncedProfile().catch(() => { /* The popup also offers explicit clearing if the extension is unavailable. */ })
     await logout(session?.token)
     navigate('/login')
   }

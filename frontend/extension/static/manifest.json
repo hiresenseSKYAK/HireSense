@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "HireSense Autofill",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Explicitly fills supported applicant details without submitting applications.",
   "permissions": [
     "activeTab",
@@ -15,10 +15,9 @@
   "background": {
     "service_worker": "background.js"
   },
-  "externally_connectable": {
-    "matches": [
-      "http://localhost:5173/*",
-      "https://hiresense-9yub.onrender.com/*"
-    ]
-  }
+  "content_scripts": [{
+    "matches": ["http://localhost:5173/*", "https://hiresense-9yub.onrender.com/*"],
+    "js": ["siteBridge.js"],
+    "run_at": "document_start"
+  }]
 }

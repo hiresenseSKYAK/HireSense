@@ -13,7 +13,8 @@ import {
   hasApplicantValue,
 } from './review'
 import {
-  canUseAutofillExtension,
+  detectAutofillExtension,
+  clearSyncedProfile,
   sendConfirmedProfileToExtension,
 } from './extensionBridge'
 import styles from './ProfileReview.module.css'
@@ -161,8 +162,10 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
   const initialValues = useMemo(() => initializeProfileReviewState(resume).values, [resume])
   const [edited, setEdited] = useState(false)
   const [sending, setSending] = useState(false)
+  const [revoking, setRevoking] = useState(false)
   const [hasReviewed, setHasReviewed] = useState(false)
   const [bridgeStatus, setBridgeStatus] = useState('')
+  const [extensionState, setExtensionState] = useState<'checking' | 'available' | 'unavailable'>('checking')
   const readyRef = useRef<HTMLDivElement>(null)
 
   const errors = useMemo(
@@ -170,14 +173,34 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
     [reviewState],
   )
   const isConfirmed = isProfileReviewConfirmed(reviewState)
-  const canConfirm = canConfirmProfile(reviewState, hasReviewed)
+  const canConfirm = canConfirmProfile(reviewState, hasReviewed) && !revoking
   useEffect(() => { if (isConfirmed) readyRef.current?.focus() }, [isConfirmed])
+  useEffect(() => {
+    if (!isConfirmed) return
+    let cancelled = false
+    setExtensionState('checking')
+    void detectAutofillExtension().then(() => {
+      if (!cancelled) setExtensionState('available')
+    }).catch((error: unknown) => {
+      if (!cancelled) {
+        setExtensionState('unavailable')
+        setBridgeStatus(error instanceof Error ? error.message : 'HireSense Autofill is unavailable.')
+      }
+    })
+    return () => { cancelled = true }
+  }, [isConfirmed])
 
   const replaceProfile = (values: ApplicantProfile) => {
+    setBridgeStatus('')
+    if (isConfirmed) {
+      setRevoking(true)
+      void clearSyncedProfile().catch(() => {
+        setBridgeStatus('Your earlier extension copy may still be present. Clear it in the popup before filling, then confirm and resend your changes.')
+      }).finally(() => setRevoking(false))
+    }
     clearAutofillProfileConfirmation()
     if (isConfirmed) setEdited(true)
     setHasReviewed(false)
-    setBridgeStatus('')
     setReviewState((current) => ({
       ...current,
       values: mirrorPrimaryEntries(values),
@@ -207,9 +230,11 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
     setSending(true)
     setBridgeStatus('Sending your confirmed details…')
     try {
-      await sendConfirmedProfileToExtension(reviewState.values)
-      setBridgeStatus('Profile received. Open an application tab, then choose Preview in HireSense Autofill. Available for 30 minutes or until cleared.')
+      const result = await sendConfirmedProfileToExtension(reviewState.values)
+      setExtensionState('available')
+      setBridgeStatus(`Profile synced ${new Date(result.syncedAt).toLocaleString()}. Open an application tab, then choose Preview in HireSense Autofill.`)
     } catch (error) {
+      setExtensionState('unavailable')
       setBridgeStatus(error instanceof Error ? error.message : 'Could not send the profile to the browser bridge.')
     } finally {
       setSending(false)
@@ -362,6 +387,12 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
             onChange={(event) => {
               setHasReviewed(event.target.checked)
               if (!event.target.checked) {
+                if (isConfirmed) {
+                  setRevoking(true)
+                  void clearSyncedProfile().catch(() => {
+                    setBridgeStatus('Clear the earlier extension copy in its popup before filling.')
+                  }).finally(() => setRevoking(false))
+                }
                 clearAutofillProfileConfirmation()
                 setReviewState((current) => ({ ...current, confirmedRevision: null }))
               }
@@ -374,6 +405,7 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
         </label>
 
         {edited && !isConfirmed && <p className={styles.confirmationHint} role="status">Your details changed. Review and confirm again before continuing. If you already sent a profile to the extension, resend it after confirming to replace that copy.</p>}
+        {!isConfirmed && bridgeStatus && <p className={styles.fieldError} role="alert">{bridgeStatus}</p>}
         {Object.keys(errors).length > 0 && <p className={styles.fieldError} role="status">Correct the highlighted details before confirming.</p>}
         {historyDateError(reviewState.values) && <p className={styles.fieldError} role="status">{historyDateError(reviewState.values)}</p>}
         {!hasApplicantValue(reviewState.values) && (
@@ -395,13 +427,14 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
       {isConfirmed && (
         <div ref={readyRef} tabIndex={-1} className={styles.readyState} role="status">
           <strong>Your profile is ready.</strong>
-          <p>Open the application in Chrome and choose Preview in HireSense Autofill. This profile stays available for 30 minutes.</p>
-          <button type="button" className="btn-primary" disabled={!canUseAutofillExtension() || sending} onClick={() => void sendToBrowserBridge()}>
-            {sending ? 'Sending profile…' : 'Send to extension'}
+          <p>Send your reviewed details to the extension, then choose Preview in HireSense Autofill on an application page. They expire after 24 hours and can be cleared in the popup. Original resume files and sign-in credentials are not transferred.</p>
+          <p className={styles.confirmationHint} role="status">Extension: {extensionState === 'checking' ? 'checking…' : extensionState === 'available' ? 'detected' : 'not detected or unavailable'}</p>
+          <button type="button" className="btn-primary" disabled={sending || extensionState === 'checking'} onClick={() => void sendToBrowserBridge()}>
+            {sending ? 'Sending profile…' : extensionState === 'unavailable' ? 'Retry extension connection' : 'Send to extension'}
           </button>
-          {!canUseAutofillExtension() && (
+          {extensionState === 'unavailable' && (
             <p className={styles.confirmationHint}>
-              Requires the{' '}
+              Install or reload the{' '}
               <a
                 href="https://chromewebstore.google.com/detail/joikcoanlbhcleekjhgmbhaphhnhaiad?utm_source=item-share-cb"
                 target="_blank"
@@ -409,7 +442,7 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
               >
                 HireSense Chrome extension
               </a>
-              .
+              , then refresh this page and retry. Your confirmed profile remains here.
             </p>
           )}
           {bridgeStatus && <p className={styles.bridgeStatus} role="status">{bridgeStatus}</p>}

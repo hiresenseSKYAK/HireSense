@@ -1,17 +1,17 @@
-import { allowedSender, PROFILE_TTL_MS, profileExpired, transferableProfile } from '../../src/features/autofill/bridgeContract'
+import { allowedSender, PROFILE_TTL_MS, profileExpired, profileFingerprint, transferableProfile } from '../../src/features/autofill/bridgeContract'
 import { RESUME_TTL_MS, validResume, type SessionResume } from '../../src/features/autofill/resume/contract'
 
 const profileKey = 'confirmedApplicantProfile'
 const resumeKey = 'activeResume'
-type StoredProfile = { profile: NonNullable<ReturnType<typeof transferableProfile>>; expiresAt: number; token: string }
+type StoredProfile = { profile: NonNullable<ReturnType<typeof transferableProfile>>; expiresAt: number; token: string; fingerprint: string; syncedAt: number }
 type StoredResume = { file: SessionResume; expiresAt: number; token: string }
 
 async function readProfile(): Promise<{ state: 'ready' | 'expired' | 'missing'; stored?: StoredProfile }> {
-  const data = await chrome.storage.session.get(profileKey)
+  const data = await chrome.storage.local.get(profileKey)
   const stored = data[profileKey] as StoredProfile | undefined
   if (!stored) return { state: 'missing' }
   if (profileExpired(stored.expiresAt) || !transferableProfile(stored.profile) || !stored.token) {
-    await chrome.storage.session.remove(profileKey)
+    await chrome.storage.local.remove(profileKey)
     return { state: 'expired' }
   }
   return { state: 'ready', stored }
@@ -27,23 +27,29 @@ async function readResume(): Promise<StoredResume | undefined> {
   return stored
 }
 
-chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
-  const profile = message?.type === 'set-confirmed-profile' ? transferableProfile(message.profile) : null
-  if (!allowedSender(sender.url) || !profile) {
-    sendResponse({ ok: false, error: 'Only valid applicant details from HireSense can be accepted.' })
-    return
-  }
-  chrome.storage.session.set({ [profileKey]: { profile, expiresAt: Date.now() + PROFILE_TTL_MS, token: crypto.randomUUID() } })
-    .then(() => sendResponse({ ok: true }))
-    .catch(() => sendResponse({ ok: false, error: 'Could not store the profile. Please try again.' }))
-  return true
-})
-
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const fromPopup = sender.url === chrome.runtime.getURL('popup.html')
   const fromResumePage = sender.url === chrome.runtime.getURL('resume.html')
-  if (!fromPopup && !fromResumePage) return
+  const fromHireSense = sender.id === chrome.runtime.id && allowedSender(sender.url) &&
+    Boolean(sender.tab && (!sender.tab.url || allowedSender(sender.tab.url)))
+  if (!fromPopup && !fromResumePage && !fromHireSense) return
   void (async () => {
+    if (fromHireSense) {
+      if (message?.type === 'site-bridge-ping') return { ok: true, version: chrome.runtime.getManifest().version }
+      if (message?.type === 'site-bridge-clear') {
+        await chrome.storage.local.remove(profileKey)
+        return { ok: true }
+      }
+      if (message?.type !== 'site-bridge-profile') throw new Error('Unknown website action.')
+      const profile = transferableProfile(message.profile)
+      if (!profile) throw new Error('Review and confirm valid applicant details first.')
+      const syncedAt = Date.now()
+      const fingerprint = profileFingerprint(profile)
+      await chrome.storage.local.set({ [profileKey]: {
+        profile, expiresAt: syncedAt + PROFILE_TTL_MS, token: crypto.randomUUID(), fingerprint, syncedAt,
+      } satisfies StoredProfile })
+      return { ok: true, fingerprint, syncedAt }
+    }
     if (message?.type === 'set-active-resume' && fromResumePage) {
       if (!validResume(message.file)) throw new Error('Choose a PDF or DOCX resume up to 2 MB.')
       // Store only the explicitly defined file contract, not arbitrary message properties.
@@ -67,7 +73,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return { ok: true }
     }
     if (message?.type === 'clear-profile') {
-      await chrome.storage.session.remove([profileKey, resumeKey])
+      await chrome.storage.local.remove(profileKey)
+      await chrome.storage.session.remove(resumeKey)
       return { ok: true }
     }
     const { state, stored } = await readProfile()
@@ -76,7 +83,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
     const supported = Boolean(tab?.id && tab.url && /^https?:\/\//.test(tab.url))
     const host = supported ? new URL(tab!.url!).hostname : ''
-    if (message?.type === 'get-profile') return { ok: true, state, supported, host, expiresAt: stored?.expiresAt, resume: resumeInfo }
+    if (message?.type === 'get-profile') return { ok: true, state, supported, host, expiresAt: stored?.expiresAt,
+      fingerprint: stored?.fingerprint, syncedAt: stored?.syncedAt, resume: resumeInfo }
     if (!['preview-active-tab', 'fill-active-tab', 'attach-active-resume'].includes(message?.type)) throw new Error('Unknown action.')
     if (!stored) throw new Error(state === 'expired' ? 'Profile expired. Send it again from HireSense.' : 'Send a confirmed profile from HireSense first.')
     if (!supported || !tab?.id) throw new Error('Open a regular application webpage. Browser settings and protected pages cannot be filled.')

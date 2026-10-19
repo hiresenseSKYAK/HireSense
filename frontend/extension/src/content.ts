@@ -8,6 +8,35 @@ import type { FieldDecision } from '../../src/features/autofill/matcher/types'
 
 const bridgeWindow = window as typeof window & { __hireSenseAutofillListener?: boolean }
 
+async function matchMountedFields(profile: NonNullable<ReturnType<typeof transferableProfile>>): Promise<FieldDecision[]> {
+  const initial = matchApplicationFields(document, profile)
+  if (initial.length) return initial
+  // Some SPAs mount the form just after navigation. Wait briefly, then stop observing.
+  return new Promise((resolve) => {
+    let pending = false
+    let finished = false
+    const finish = (decisions: FieldDecision[]) => {
+      if (finished) return
+      finished = true
+      clearTimeout(limit)
+      observer.disconnect()
+      resolve(decisions)
+    }
+    const observer = new MutationObserver(() => {
+      if (pending) return
+      pending = true
+      setTimeout(() => {
+        if (finished) return
+        pending = false
+        const decisions = matchApplicationFields(document, profile)
+        if (decisions.length) finish(decisions)
+      }, 80)
+    })
+    observer.observe(document.documentElement, { childList: true, subtree: true })
+    const limit = setTimeout(() => finish(matchApplicationFields(document, profile)), 1500)
+  })
+}
+
 if (!bridgeWindow.__hireSenseAutofillListener) {
   bridgeWindow.__hireSenseAutofillListener = true
   let preview: {
@@ -20,7 +49,7 @@ if (!bridgeWindow.__hireSenseAutofillListener) {
       const profile = transferableProfile(message.profile)
       if (!profile || profileExpired(message.expiresAt)) throw new Error('Profile unavailable or expired. Send it again from HireSense.')
       if (message.type === 'preview-supported-fields') {
-        const decisions = matchApplicationFields(document, profile)
+        const decisions = await matchMountedFields(profile)
         const files = decisions.filter((d) => d.attachment)
         const resumeStatus = files.some((d) => d.outcome === 'preserve') ? 'Existing resume preserved'
           : files.length === 1 ? 'Resume still needed' : 'Resume: use the site’s Attach button'

@@ -20,23 +20,13 @@ The extension build also type-checks its background, content, popup, and resume-
 2. Enable **Developer mode**.
 3. Choose **Load unpacked**.
 4. Select **HireSense/frontend/extension/dist** (the folder containing manifest.json).
-5. Copy the 32-letter **ID** shown on the HireSense Autofill card. Keep loading the same directory so that Chrome keeps the same ID.
-6. Pin HireSense Autofill using Chrome's Extensions menu.
+5. Pin HireSense Autofill using Chrome's Extensions menu.
 
-After rebuilding, click **Reload** on the extension card. Refresh any open application tabs before testing a new content-script build.
+After rebuilding, click **Reload** on the extension card. Refresh the HireSense website and any open application tabs before testing a new content-script build.
 
-## Connect the deployed website
+## Connect the website
 
-On the Render **frontend static site**, set:
-
-```text
-VITE_AUTOFILL_EXTENSION_ID=your_actual_32_letter_extension_id
-VITE_API_BASE_URL=https://hiresense-api-qg6u.onrender.com
-```
-
-Paste only the extension ID as the value: no quotes, URL, or angle brackets. Vite reads these variables at build time, so rebuild/redeploy the frontend after setting them. Each person loading an unpacked extension may have a different ID; the website must target the presenter's ID. A published extension with a stable ID is outside this pass.
-
-The exact production origin `https://hiresense-9yub.onrender.com/*` and intentional development origin `http://localhost:5173/*` are already allowed in the manifest and checked again by the background script. For local development set the same ID in `frontend/.env.local` and restart Vite. Use **localhost**, not 127.0.0.1, for extension handoff.
+No extension ID environment variable is needed. The manifest injects a small bridge only on `https://hiresense-9yub.onrender.com/*` and `http://localhost:5173/*`. The website pings it, checks protocol version 1, then sends the validated profile. The background worker checks both sender and tab origin. Use **localhost**, not 127.0.0.1, for development handoff. Do not add wildcard origins.
 
 ## User flow
 
@@ -44,10 +34,9 @@ The exact production origin `https://hiresense-9yub.onrender.com/*` and intentio
 2. Review/correct the applicant details. Blank details stay blank. Confirm the profile.
 3. Choose **Send to extension** and wait for **Profile received**.
 4. Open the external application page and click HireSense Autofill.
-5. Optionally choose **Choose active resume**. In the extension's separate page, select a PDF or DOCX up to 2 MB and choose **Use this resume for this session**. Return to the application and reopen the popup.
-6. Choose **Preview autofill**. Read the proposed values and manual questions.
+5. Choose **Preview autofill**. Read the proposed values and manual questions. No second resume upload is required for profile autofill.
 7. Choose **Fill supported fields**. Review the grouped results and the actual application.
-8. For a recognized resume input, separately choose **Attach resume to [site]**. This may immediately upload the file to that site. Check its filename and upload status before proceeding.
+8. If an application separately requires a resume file, use its own upload button. The optional attachment controls in the popup allow a separate, explicit file selection (PDF/DOCX up to 2 MB) and may immediately upload to the application site. The original bytes are not retained by the HireSense website, so file attachment cannot be silently synced from the earlier upload.
 9. Answer the remaining questions yourself and submit manually.
 10. Use **Clear profile & resume** when finished.
 
@@ -55,13 +44,13 @@ Changing profile details invalidates website confirmation. Confirm and resend to
 
 ## Privacy and limits
 
-Only fourteen explicitly allowed applicant fields are transferred from the website: name fields, email, phone, city, state, country of residence, two address lines, postal code, LinkedIn, GitHub, and portfolio. New address/country fields start blank and must be entered and confirmed; country never answers citizenship. Extra properties, auth tokens, original resume files, and raw resume text are excluded from the website handoff. After updating from an older extension, confirm and resend the expanded profile.
+Only the validated, reviewed `ApplicantProfile` is transferred from the website. The same serializer is used on both sides; extra properties, auth tokens, original resume files, and raw resume text are excluded. Country of residence never answers citizenship. After updating from an older extension, confirm and resend the profile.
 
-The optional active resume is selected separately in the extension. Its real file bytes stay in Chrome session memory, never local/sync storage or URLs. Profiles and resumes are usable for 30 minutes; expired data is cleared on the next extension action. Chrome clears session storage on browser restart or extension reload/disable. Only filename/size metadata is returned to the popup; bytes reach an application tab only for the separate authorized attachment action. Clear profile & resume removes both stored items, but cannot erase answers or recall a file already sent to a site.
+The confirmed profile is stored in Chrome local extension storage with a 24-hour expiry, surviving service-worker and browser restarts; expired records are removed on the next extension read. Use **Clear synced profile & optional file** to remove it sooner. Profile edits and website logout request a best-effort clear, but if the extension is disabled during that request the prior copy may remain until expiry or explicit clearing. The optional resume file bytes stay in Chrome session storage for 30 minutes and disappear on browser restart or extension reload. Only filename/size metadata is returned to the popup; bytes reach an application tab only for the separate authorized attachment action. Clearing cannot erase answers or recall a file already sent to a site. On a shared browser, clear the profile before switching users.
 
 The 2 MB limit leaves room for base64 encoding within Chrome's session-storage quota. Supported file attachment uses an actual File and DataTransfer FileList, then input/change events. Verification checks retained filename, type, size, and bytes; it does not prove server acceptance. Sites may reject synthetic events or replace/clear the file control after uploading. In those cases check the site's status and use its own Attach button if needed. Existing attachments are never replaced; ambiguous, hidden, or multiple-file controls remain manual.
 
-Preview inspects only the top-level document after the user's action. Standard inputs, single state/country selects, and separately approved conventional resume inputs are supported. Cross-origin frames, shadow-DOM controls, custom widgets, other attachments, CAPTCHA, and application-page navigation require manual work. External ATS support is not universal.
+Preview inspects only the top-level document after the user's action and waits at most 1.5 seconds for a dynamically mounted form. Re-preview after a route or form step change. Standard inputs, single state/country selects, and separately approved conventional resume inputs are supported. Radio buttons and checkboxes stay manual. Cross-origin frames, shadow-DOM controls, custom widgets, other attachments, CAPTCHA, and application-page navigation require manual work. External ATS support is not universal.
 
 The Greenhouse pilot uses custom city and phone-country comboboxes; these remain manual because typing search text does not prove an option was selected. Its ITAR question is classified as sensitive before any state-field alias can match. Citizenship, export controls, work authorization, sponsorship, demographics, legal declarations, references, and arbitrary screening/free-text answers remain manual. No company/job identifiers are hardcoded.
 
@@ -69,4 +58,4 @@ The writer rechecks each approved field, dispatches input/change events, and che
 
 ## Final presenter check
 
-After deploying your reviewed changes and configuring the ID, reload extension version 0.3.0 and refresh the application tab. Test production profile handoff, active-resume selection, popup preview, phone formatting, manual ITAR classification, preserved existing answers, explicit attachment and the site's upload status, and Clear profile & resume. Automated tests mock Chrome API boundaries; they do not replace this installed-extension check.
+After deploying your reviewed changes, reload extension version 0.4.0 and refresh HireSense and the application tab. Test production profile handoff, browser restart, popup preview, phone formatting, manual ITAR classification, preserved existing answers, optional explicit attachment and the site's upload status, and Clear synced profile & optional file. Automated tests mock Chrome API boundaries; they do not replace this installed-extension check.
