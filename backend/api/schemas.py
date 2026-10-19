@@ -221,6 +221,27 @@ class InterviewHistoryItem(BaseModel):
     mode: Literal["behavioral", "technical", "mixed", "role_specific"]
     difficulty: Literal["warm_up", "realistic", "challenging"] = "realistic"
     overall_band: str
+    final_score: int = Field(ge=0, le=100)
     major_strengths: List[str] = Field(default_factory=list)
     improvement_areas: List[str] = Field(default_factory=list)
     source: Literal["ai", "fallback"] = "fallback"
+
+
+class InterviewReviewTurn(BaseModel):
+    question_index: int
+    question: str
+    answer: str
+    feedback: InterviewFeedbackOut
+    is_follow_up: bool = False
+
+
+class InterviewReportOut(BaseModel):
+    session_id: int
+    job_id: int
+    job_title: str
+    company: str
+    completed_at: datetime
+    mode: Literal["behavioral", "technical", "mixed", "role_specific"]
+    difficulty: Literal["warm_up", "realistic", "challenging"]
+    final_result: FinalInterviewResultOut
+    turns: List[InterviewReviewTurn]

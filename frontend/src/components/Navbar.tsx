@@ -57,6 +57,9 @@ export default function Navbar() {
           <span className={styles.wordmark}>ireSense</span>
         </NavLink>
         <div className={styles.links}>
+          <NavLink to="/interviews" className={`${styles.link} ${location.pathname.startsWith('/interviews') ? styles.active : ''}`}>
+            Interviews
+          </NavLink>
           <NavLink
             to="/resume"
             className={({ isActive }) =>

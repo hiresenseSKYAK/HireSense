@@ -9,7 +9,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from api.schemas import (InterviewAnswerRequest, InterviewAnswerResponse, InterviewHistoryItem,
-                         InterviewQuestionOut, InterviewStartRequest, InterviewSessionOut)
+                         InterviewQuestionOut, InterviewStartRequest, InterviewSessionOut,
+                         InterviewReportOut, InterviewReviewTurn)
 from database.connection import get_db
 from database.models import InterviewResponse, InterviewSession, Job, UserSession
 from services.interview_engine import InterviewEngine, _benchmark, interview_context, questions_overlap
@@ -164,16 +165,56 @@ def interview_history(
         final = (cached or {}).get('final_result') or {}
         job = json.loads(session.job_snapshot)
         metadata = json.loads(session.resume_snapshot).get('_interview', {})
+        if metadata.get('version') != 2 or not final:
+            continue
         history.append(InterviewHistoryItem(
             session_id=session.id, job_id=session.job_id, job_title=job.get('job_title') or 'Role',
             company=job.get('company') or 'Company', completed_at=session.updated_at,
             mode=metadata.get('mode', 'mixed'), difficulty=metadata.get('difficulty', 'realistic'),
             overall_band=_benchmark(session.final_score or 0),
+            final_score=session.final_score or 0,
             major_strengths=(final.get('top_strengths') or [])[:3],
             improvement_areas=(final.get('next_steps') or [])[:3],
             source=final.get('source', 'fallback'),
         ))
     return history
+
+
+@router.get('/{session_id}/report', response_model=InterviewReportOut)
+def interview_report(
+    session_id: int,
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    """Return the owned, completed session's persisted coaching and turn review."""
+    user_id = _resolve_user_id(db, authorization)
+    session = _owned_session(db, session_id, user_id)
+    if session.status != 'completed':
+        raise HTTPException(409, 'Finish this interview before opening its debrief.')
+    responses = db.query(InterviewResponse).filter(
+        InterviewResponse.session_id == session.id,
+    ).order_by(InterviewResponse.question_index).all()
+    if not responses:
+        raise HTTPException(409, 'This debrief is not available yet.')
+    final = json.loads(responses[-1].feedback_json).get('_response', {}).get('final_result')
+    if not final:
+        raise HTTPException(409, 'This debrief is not available yet.')
+    questions = json.loads(session.question_set)
+    job = json.loads(session.job_snapshot)
+    metadata = json.loads(session.resume_snapshot).get('_interview', {})
+    return InterviewReportOut(
+        session_id=session.id, job_id=session.job_id,
+        job_title=job.get('job_title') or 'Role', company=job.get('company') or 'Company',
+        completed_at=session.updated_at, mode=metadata.get('mode', 'mixed'),
+        difficulty=metadata.get('difficulty', 'realistic'), final_result=final,
+        turns=[InterviewReviewTurn(
+            question_index=response.question_index + 1,
+            question=response.question_prompt, answer=response.answer_text,
+            feedback={key: value for key, value in json.loads(response.feedback_json).items()
+                      if key != '_response'},
+            is_follow_up=bool(questions[response.question_index].get('is_follow_up')),
+        ) for response in responses],
+    )
 
 
 @router.post('/{session_id}/answer', response_model=InterviewAnswerResponse)

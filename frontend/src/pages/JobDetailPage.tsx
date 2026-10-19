@@ -6,7 +6,6 @@ import { getResumeAnalysis } from '../utils/resumeStorage'
 import { matchResumeToJob } from '../utils/jobMatcher'
 import { formatSalary } from '../utils/formatSalary'
 import { formatDiscoveryAge, formatPostedDate, sourcePostedAt } from '../utils/jobFreshness'
-import AIInterviewPanel from '../components/AIInterviewPanel'
 import JobPreparationPanel from '../components/JobPreparationPanel'
 import styles from './JobDetailPage.module.css'
 
@@ -20,6 +19,9 @@ export default function JobDetailPage() {
   const [error, setError] = useState('')
   const [loadKey, setLoadKey] = useState(0)
   const [logoFailed, setLogoFailed] = useState(false)
+  const [openedApplicationJobId, setOpenedApplicationJobId] = useState(() => {
+    try { return sessionStorage.getItem('hiresense_last_opened_application_job') } catch { return null }
+  })
 
   useEffect(() => {
     async function loadJob() {
@@ -217,24 +219,18 @@ export default function JobDetailPage() {
             )}
 
             {job.applicationLink && (
-              <a className={`btn-primary ${styles.applyButton}`} href={job.applicationLink} target="_blank" rel="noopener noreferrer">
+              <a className={`btn-primary ${styles.applyButton}`} href={job.applicationLink} target="_blank" rel="noopener noreferrer" onClick={() => { setOpenedApplicationJobId(String(job.id)); try { sessionStorage.setItem('hiresense_last_opened_application_job', String(job.id)) } catch { /* Optional return state. */ } }}>
                 Apply directly →
               </a>
             )}
           </section>
           <JobPreparationPanel jobId={job.id} resume={savedResume?.parsed_data ?? null} />
+          <section className={styles.interviewEntry} aria-labelledby="interview-entry-title">
+            <div className={styles.journeyLabel}>Understand role <span>→</span> Prepare <span>→</span> <strong>Practice</strong> <span>→</span> Review</div>
+            {openedApplicationJobId === String(job.id) && <div className={styles.applicationNote}><span aria-hidden="true">↗</span><div><strong>You chose Apply directly</strong><p>Submission happens on the employer’s site. Whenever you’re ready, prepare for the conversation here.</p></div></div>}
+            <div className={styles.interviewEntryContent}><div><span className={styles.interviewEyebrow}>HireSense interview practice</span><h2 id="interview-entry-title">Practice this role with purpose.</h2><p>Step into a focused interview shaped by this job and your resume, then review detailed coaching afterward.</p><div className={styles.interviewFacts}><span>5–12 minutes</span><span>Role-specific</span><span>Personalized feedback</span></div></div><Link className="btn-primary" to={`/interviews/new/${job.id}`}>Practice this role →</Link></div>
+          </section>
         </main>
-
-        <aside className={styles.sidebar}>
-          <div className={styles.interviewCard}>
-            <AIInterviewPanel
-              jobId={job.id}
-              jobTitle={job.title}
-              company={job.company}
-              resumeData={savedResume?.parsed_data ?? null}
-            />
-          </div>
-        </aside>
       </div>
     </div>
   )

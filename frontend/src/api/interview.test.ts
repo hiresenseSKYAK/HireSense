@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { getInterviewSession, startInterview, submitInterviewAnswer } from './interview'
+import { getInterviewReport, getInterviewSession, startInterview, submitInterviewAnswer } from './interview'
 const auth = vi.hoisted(() => ({ token: 'account-token' as string | null }))
 vi.mock('./auth', () => ({ getAuthSession: () => auth.token ? ({ token: auth.token, user: { id: 1 } }) : null }))
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); auth.token = 'account-token' })
@@ -53,5 +53,13 @@ describe('interview API', () => {
     expect(await getInterviewSession(9)).toEqual(state)
     expect(fetcher.mock.calls[0][1].method).toBe('GET')
     expect(fetcher.mock.calls[0][1].body).toBeUndefined()
+  })
+  it('validates a complete question-by-question report', async () => {
+    const report = { session_id: 9, job_id: 7, job_title: 'Engineer', company: 'Acme', completed_at: '2026-10-19T12:00:00', mode: 'mixed', difficulty: 'realistic', final_result: { final_score: 72, overall_summary: 'Good evidence.', top_strengths: [], next_steps: [], source: 'fallback' }, turns: [{ question_index: 1, question: 'Why?', answer: 'Because...', feedback: answer.feedback, is_follow_up: false }] }
+    const fetcher = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => report }).mockResolvedValueOnce({ ok: true, json: async () => ({ ...report, turns: [{ ...report.turns[0], feedback: {} }] }) })
+    vi.stubGlobal('fetch', fetcher)
+    expect(await getInterviewReport(9)).toEqual(report)
+    expect(fetcher.mock.calls[0][1].method).toBe('GET')
+    await expect(getInterviewReport(9)).rejects.toThrow('incomplete')
   })
 })

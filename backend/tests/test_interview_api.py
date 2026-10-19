@@ -125,7 +125,27 @@ class InterviewApiTests(unittest.TestCase):
         self.assertEqual(len(owned.json()), 1)
         self.assertEqual(owned.json()[0]['session_id'], q['session_id'])
         self.assertEqual(owned.json()[0]['difficulty'], 'challenging')
+        self.assertEqual(owned.json()[0]['final_score'], result['final_result']['final_score'])
         self.assertEqual(other.json(), [])
+
+    def test_completed_report_is_owned_and_contains_full_turn_review(self):
+        q = self.start(question_count=3).json()
+        session_id = q['session_id']
+        self.assertEqual(self.client.get(f'/interview/{session_id}/report', headers={'Authorization': 'Bearer user1'}).status_code, 409)
+        self.assertEqual(self.client.get(f'/interview/{session_id}/report', headers={'Authorization': 'Bearer user2'}).status_code, 404)
+        while True:
+            result = self.answer(q).json()
+            if result['is_complete']:
+                break
+            q = result['next_question']
+        report = self.client.get(f'/interview/{session_id}/report', headers={'Authorization': 'Bearer user1'})
+        self.assertEqual(report.status_code, 200)
+        self.assertEqual(report.json()['final_result'], result['final_result'])
+        self.assertEqual(len(report.json()['turns']), 3)
+        self.assertTrue(report.json()['turns'][0]['question'])
+        self.assertEqual(report.json()['turns'][0]['answer'], 'I built a Python parser to help my team.')
+        self.assertTrue(report.json()['turns'][1]['is_follow_up'])
+        self.assertEqual(self.client.get(f'/interview/{session_id}/report', headers={'Authorization': 'Bearer user2'}).status_code, 404)
 
     def test_career_coaching_is_authenticated_and_uses_authoritative_job(self):
         payload = {'resume_data': {'skills': ['Python'], 'email': 'private@example.com',

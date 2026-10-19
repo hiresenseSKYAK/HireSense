@@ -131,7 +131,7 @@ describe('AIInterviewPanel', () => {
     vi.mocked(getInterviewHistory).mockResolvedValueOnce([{
       session_id: 7, job_id: 1, job_title: 'Engineer', company: 'Acme',
       completed_at: '2026-10-18T12:00:00', mode: 'mixed', difficulty: 'realistic',
-      overall_band: 'Strong', major_strengths: ['Clear ownership'], improvement_areas: [], source: 'ai',
+      overall_band: 'Strong', final_score: 75, major_strengths: ['Clear ownership'], improvement_areas: [], source: 'ai',
     }])
     vi.mocked(getInterviewSession).mockResolvedValueOnce({
       session_id: 7, job_id: 1, status: 'completed', mode: 'mixed', total_questions: 3,

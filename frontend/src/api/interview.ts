@@ -73,8 +73,14 @@ export type FinalInterviewResult = {
 
 export type InterviewHistoryItem = {
   session_id: number; job_id: number; job_title: string; company: string; completed_at: string; mode: InterviewMode
-  difficulty: InterviewDifficulty; overall_band: string; major_strengths: string[]
+  difficulty: InterviewDifficulty; overall_band: string; final_score: number; major_strengths: string[]
   improvement_areas: string[]; source: 'ai' | 'fallback'
+}
+
+export type InterviewReport = {
+  session_id: number; job_id: number; job_title: string; company: string; completed_at: string
+  mode: InterviewMode; difficulty: InterviewDifficulty; final_result: FinalInterviewResult
+  turns: { question_index: number; question: string; answer: string; feedback: InterviewFeedback; is_follow_up: boolean }[]
 }
 
 export type InterviewAnswerResult = {
@@ -199,8 +205,19 @@ export async function getInterviewHistory(): Promise<InterviewHistoryItem[]> {
   return interviewRequest('/interview/history', undefined, (value): value is InterviewHistoryItem[] => Array.isArray(value) && value.every(item =>
     object(item) && Number.isInteger(item.session_id) && Number.isInteger(item.job_id) && typeof item.job_title === 'string' && typeof item.company === 'string' &&
     typeof item.completed_at === 'string' && ['mixed', 'technical', 'behavioral', 'role_specific'].includes(String(item.mode)) &&
-    ['warm_up', 'realistic', 'challenging'].includes(String(item.difficulty)) && typeof item.overall_band === 'string' &&
+    ['warm_up', 'realistic', 'challenging'].includes(String(item.difficulty)) && typeof item.overall_band === 'string' && score(item.final_score) &&
     strings(item.major_strengths) && strings(item.improvement_areas) && (item.source === 'ai' || item.source === 'fallback')))
+}
+
+export async function getInterviewReport(sessionId: number): Promise<InterviewReport> {
+  return interviewRequest(`/interview/${sessionId}/report`, undefined, (value): value is InterviewReport =>
+    object(value) && Number.isInteger(value.session_id) && Number.isInteger(value.job_id) &&
+    typeof value.job_title === 'string' && typeof value.company === 'string' && typeof value.completed_at === 'string' &&
+    ['mixed', 'technical', 'behavioral', 'role_specific'].includes(String(value.mode)) &&
+    ['warm_up', 'realistic', 'challenging'].includes(String(value.difficulty)) && final(value.final_result) &&
+    Array.isArray(value.turns) && value.turns.every(turn => object(turn) && Number.isInteger(turn.question_index) &&
+      typeof turn.question === 'string' && typeof turn.answer === 'string' && feedback(turn.feedback) &&
+      typeof turn.is_follow_up === 'boolean'))
 }
 
 export function interviewRecoveryKey(jobId: number, resume: ParsedResumeData | null): string | null {
