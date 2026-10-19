@@ -75,9 +75,9 @@ jobs:
       - name: Report provider failures
         if: always()
         run: |
-          echo "ATS: ${{ steps.ats.outcome }}"
-          echo "LinkedIn: ${{ steps.linkedin.outcome }}"
-          echo "Handshake: ${{ steps.handshake.outcome }}"
-          echo "Adzuna: ${{ steps.adzuna.outcome }}"
-          echo "USAJOBS: ${{ steps.usajobs.outcome }}"
+          echo "ATS: ${{ steps.ats.outputs.status || steps.ats.outcome }} inserted=${{ steps.ats.outputs.inserted }} updated=${{ steps.ats.outputs.updated }} database_errors=${{ steps.ats.outputs.database_errors }}"
+          echo "LinkedIn: ${{ steps.linkedin.outputs.status || steps.linkedin.outcome }}"
+          echo "Handshake: ${{ steps.handshake.outputs.status || steps.handshake.outcome }}"
+          echo "Adzuna: ${{ steps.adzuna.outputs.status || steps.adzuna.outcome }}"
+          echo "USAJOBS: ${{ steps.usajobs.outputs.status || steps.usajobs.outcome }}"
           if [ "${{ steps.ats.outcome }}" = failure ] || [ "${{ steps.linkedin.outcome }}" = failure ] || [ "${{ steps.handshake.outcome }}" = failure ] || [ "${{ steps.adzuna.outcome }}" = failure ] || [ "${{ steps.usajobs.outcome }}" = failure ]; then exit 1; fi

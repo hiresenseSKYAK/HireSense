@@ -7,6 +7,7 @@ except ImportError:
         from connection import DB_NAME, get_connection
 
 import json
+import re
 import mysql.connector
 from dataclasses import dataclass
 from urllib.parse import urlsplit
@@ -48,6 +49,7 @@ ALLOWED_EXPERIENCE_LEVELS = {
 }
 
 TARGET_EXPERIENCE_LEVELS = {"Internship", "Entry level"}
+LOCATION_MAX_LENGTH = 512
 
 
 def _normalize_job_type_for_db(raw, title=None):
@@ -221,6 +223,27 @@ def _nonempty_str(value):
     return s if s else None
 
 
+def _normalize_location_for_db(value):
+    """Keep distinct location labels within the location column's character limit."""
+    if value is None:
+        return None
+    # Replace invalid surrogate code points before slicing so the result is UTF-8 encodable.
+    raw = str(value).encode("utf-8", "replace").decode("utf-8")
+    parts = re.split(r"\s*[;|\n\r]+\s*|\s+/\s+", raw)
+    locations = []
+    seen = set()
+    for part in parts:
+        normalized = " ".join(part.split()).strip(" ,")
+        key = normalized.casefold()
+        if normalized and key not in seen:
+            locations.append(normalized)
+            seen.add(key)
+    concise = "; ".join(locations)
+    if len(concise) <= LOCATION_MAX_LENGTH:
+        return concise or None
+    return concise[: LOCATION_MAX_LENGTH - 1].rstrip() + "…"
+
+
 def _sanitize_salary_for_db(raw_salary):
     if raw_salary is None:
         return None
@@ -310,7 +333,7 @@ def _prepare_job_record(job):
         "job_title": title,
         "company": company,
         "company_logo_url": _sanitize_http_url(job.get("company_logo_url")),
-        "location": _nonempty_str(job.get("location")),
+        "location": _normalize_location_for_db(job.get("location")),
         "salary": salary_value,
         "date_posted": job.get("date_posted"),
         "application_link": identity.canonical_url,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import time
 
 try:
@@ -214,8 +215,10 @@ def run(*, dry_run=False, source="all", limit=None, skip_cleanup=False):
         backfill_missing_summaries()
         backfill_job_skills(only_empty=True)
 
+    result = {**totals, **counts, "unique_candidates": len(jobs)}
+    result["status"] = crawl_status(result, dry_run=dry_run)
     print(
-        f"[crawl] summary source={source} discovered={totals['discovered']} "
+        f"[crawl] summary source={source} status={result['status']} discovered={totals['discovered']} "
         f"accepted={totals['accepted']} rejected={totals['rejected']} "
         f"inserted={counts['inserted']} updated={counts['updated']} "
         f"idempotent={counts['unchanged']} invalid={counts['skipped']} "
@@ -224,7 +227,28 @@ def run(*, dry_run=False, source="all", limit=None, skip_cleanup=False):
         f"source_errors={totals['source_errors']} duration_seconds={time.monotonic() - run_started:.1f}",
         flush=True,
     )
-    return {**totals, **counts, "unique_candidates": len(jobs)}
+    return result
+
+
+def crawl_status(result, *, dry_run=False):
+    persisted = result["unchanged"] + result["inserted"] + result["updated"]
+    if dry_run:
+        persisted += result["would_insert"] + result["would_update"]
+    row_errors = result["error"] + result["conflict"]
+    if (result["source_errors"] and not result["unique_candidates"]) or (row_errors and not persisted):
+        return "failure"
+    if result["source_errors"] or row_errors:
+        return "partial_success"
+    return "success"
+
+
+def _write_actions_output(result):
+    output_path = os.environ.get("GITHUB_OUTPUT")
+    if output_path:
+        with open(output_path, "a", encoding="utf-8") as output:
+            for key in ("status", "inserted", "updated", "error", "source_errors"):
+                output_name = "database_errors" if key == "error" else key
+                output.write(f"{output_name}={result[key]}\n")
 
 
 def main():
@@ -240,9 +264,8 @@ def main():
         dry_run=args.dry_run, source=args.source,
         limit=args.limit, skip_cleanup=args.skip_cleanup,
     )
-    if result["error"] or result["conflict"]:
-        raise SystemExit(1)
-    if result["source_errors"] and not result["unique_candidates"]:
+    _write_actions_output(result)
+    if result["status"] == "failure":
         raise SystemExit(1)
 
 

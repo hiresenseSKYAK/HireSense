@@ -1,8 +1,38 @@
+import os
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
+
+os.environ.setdefault("DB_HOST", "test.invalid")
+os.environ.setdefault("DB_PORT", "3306")
+os.environ.setdefault("DB_NAME", "testdb")
+os.environ.setdefault("DB_USER", "testuser")
+os.environ.setdefault("DB_PASSWORD", "testpassword")
+
+from database import migrate  # noqa: E402
 
 
 class MigrationTests(unittest.TestCase):
+    def test_location_migration_upgrades_existing_schema_without_touching_rows(self):
+        migration = Path(__file__).parents[1] / "database" / "migrations" / "007_widen_job_location.sql"
+        sql = migration.read_text(encoding="utf-8").lower()
+        self.assertIn("alter table job_data modify column location varchar(512) null", sql)
+        self.assertNotIn("drop ", sql)
+        self.assertNotIn("delete ", sql)
+        self.assertNotIn("create table job_data", sql)
+
+        cursor = Mock()
+        cursor.fetchall.return_value = [(path.name,) for path in migration.parent.glob("00[1-6]_*.sql")]
+        connection = Mock()
+        connection.cursor.return_value = cursor
+        with patch.object(migrate, "get_connection", return_value=connection):
+            applied = migrate.migrate(through=7)
+
+        self.assertEqual(applied, [migration.name])
+        statements = [call.args[0].lower() for call in cursor.execute.call_args_list]
+        self.assertEqual(sum("modify column location varchar(512) null" in statement for statement in statements), 1)
+        self.assertFalse(any("delete from job_data" in statement or "drop table job_data" in statement for statement in statements))
+
     def test_company_logo_migration_is_additive_and_nullable(self):
         migration = Path(__file__).parents[1] / "database" / "migrations" / "004_add_company_logo_url.sql"
         sql = migration.read_text(encoding="utf-8").lower()

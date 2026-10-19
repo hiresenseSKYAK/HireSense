@@ -26,6 +26,9 @@ and fails loudly on SQL errors. It never drops job data or prints credentials.
 9. Run `006_job_ingestion.sql` before deploying the ingestion code. This only
    adds nullable metadata, indexes, health/alias tables and a status default.
    Existing inactive rows become `closed`; no job rows or IDs are removed.
+10. Run `007_widen_job_location.sql` before deploying the bounded location
+    write path. It widens the unindexed nullable `location` field to
+    `VARCHAR(512)` without changing rows or job IDs.
 
 For an already-migrated database, run `python -m database.migrate` from
 `backend` before starting the new crawler or deploying the API. Take a backup

@@ -172,6 +172,30 @@ class JobUpsertTests(unittest.TestCase):
         self.assertEqual(result.action, "updated")
         self.assertEqual(self.state["rows"][0]["company_logo_url"], "https://cdn.example.com/logo.png")
 
+    def test_long_multi_location_persists_without_losing_distinct_places(self):
+        locations = "; ".join(["Dallas, TX", "Plano, TX"] * 60)
+        result = self.upsert(job(location=locations))
+
+        self.assertEqual(result.action, "inserted")
+        self.assertEqual(self.state["rows"][0]["location"], "Dallas, TX; Plano, TX")
+
+    def test_oversized_distinct_locations_are_bounded_and_utf8_safe(self):
+        locations = "; ".join(f"Dallas, TX – Office {index}" for index in range(100))
+        result = self.upsert(job(location=locations))
+
+        self.assertEqual(result.action, "inserted")
+        stored = self.state["rows"][0]["location"]
+        self.assertLessEqual(len(stored), queries.LOCATION_MAX_LENGTH)
+        self.assertTrue(stored.startswith("Dallas, TX – Office 0"))
+        self.assertTrue(stored.endswith("…"))
+        stored.encode("utf-8")
+
+    def test_unicode_location_and_invalid_surrogate_are_utf8_safe(self):
+        normalized = queries._normalize_location_for_db("Dallas, TX – São Paulo; Dallas, TX – São Paulo; Plano, TX\ud800")
+
+        self.assertEqual(normalized, "Dallas, TX – São Paulo; Plano, TX?")
+        normalized.encode("utf-8")
+
     def test_upsert_rejects_out_of_policy_and_description_conflict(self):
         outside = self.upsert(job(location="San Jose, CA"))
         conflict = self.upsert(job(
