@@ -39,7 +39,7 @@ extractive summaries and deterministic skill matching.
 
 ## Production job pipeline
 
-The live path is: scheduled GitHub Action → LinkedIn/Handshake public pages →
+The live path is: scheduled GitHub Action → LinkedIn/Handshake public pages and configured direct ATS feeds →
 validation and normalization → identity upsert → Aiven MySQL → FastAPI → Vite
 frontend → the real application page → HireSense Autofill. The API never seeds
 or substitutes mock listings. An empty database returns an empty list; a database
@@ -78,7 +78,7 @@ The workflow `.github/workflows/crawl-jobs.yml` runs every six hours and can be
 started manually. Add repository secrets named `DB_HOST`, `DB_PORT`, `DB_NAME`,
 `DB_USER`, and `DB_PASSWORD`. It installs `requirements-crawler.txt`, applies
 migrations, disables heavyweight enrichment, prevents overlapping runs, and
-uses production ceilings of 150 LinkedIn and 100 Handshake candidates.
+uses production ceilings of 150 LinkedIn, 100 Handshake, and 100 direct ATS candidates.
 
 Jobs refresh in place using source IDs first and normalized application URLs
 second, with a conservative metadata fallback only if both are unavailable.
