@@ -293,7 +293,9 @@ def answer_interview_question(
         raise HTTPException(409, 'Another answer is being processed. Retry this answer.')
     db.commit()
 
-    operation_engine = engine if use_provider else InterviewEngine()
+    allow_repair = (provider_call_count + provider_calls_needed + 1 <= MAX_PROVIDER_CALLS_PER_SESSION
+                    and recent_provider_calls + provider_calls_needed + 1 <= MAX_PROVIDER_CALLS_PER_USER_WINDOW)
+    operation_engine = InterviewEngine(engine.provider, allow_repair=allow_repair) if use_provider else InterviewEngine()
     try:
         feedback = operation_engine.feedback(context, question, body.answer, history)
         # Follow-ups consume a selected turn and leave at least one planned turn.
@@ -313,6 +315,12 @@ def answer_interview_question(
         final = None
         if complete:
             final = operation_engine.final(context, history + [dict(question_prompt=question['prompt'], answer=body.answer, score=feedback['score'], feedback=feedback)])
+
+        if operation_engine.repair_attempts:
+            db.query(InterviewSession).filter(InterviewSession.id == session_id).update({
+                'provider_call_count': InterviewSession.provider_call_count + operation_engine.repair_attempts,
+            }, synchronize_session=False)
+            db.commit()
 
         db.expire_all()
         current = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()

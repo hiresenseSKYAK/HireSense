@@ -17,6 +17,8 @@ from services.interview_context import safe_resume_context, safe_text
 from services.interview_provider import OpenAICompletionClient, build_openai_sdk_client, provider_reason_code
 from services.interview_settings import InterviewAISettings
 from services.job_match import match_resume_to_job
+from services.job_intelligence import apply_bounded_rerank, candidate_context, rank_recommendations
+from services.job_listing import _to_list_item
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +74,10 @@ class JobPreparationResult(CareerModel):
     professional_summary: str = Field(default='', max_length=900)
     recruiter_screen_questions: list[Text] = Field(default_factory=list, max_length=5)
     skill_gaps: list[SkillGap] = Field(default_factory=list, max_length=6)
+
+
+class JobRerankResult(CareerModel):
+    ordered_ids: list[int] = Field(min_length=3, max_length=12)
 
 
 class _PrivateCache:
@@ -296,6 +302,42 @@ class CareerAIService:
             reason = 'evidence_validation'
         logger.info('career_ai operation=job_preparation provider=openai outcome=fallback reason=%s', reason or 'semantic_validation')
         return dict(fallback, source='fallback', cached=False)
+
+    def recommendations(self, user_id: int, jobs: list[dict], raw_resume: dict,
+                        coaching_signals: list[str] | None = None) -> dict:
+        context = candidate_context(raw_resume, coaching_signals)
+        ranked = rank_recommendations(jobs, context)
+        fingerprint = {
+            'candidate': context,
+            'jobs': [(item['id'], item['_rank'], item.get('title'), item.get('company'),
+                      item.get('location'), item.get('tags'), item.get('datePosted'),
+                      item.get('firstSeenAt'), item.get('applicationLink'),
+                      safe_text(item.get('fullDescription') or item.get('description'), 240)) for item in ranked],
+        }
+        key = _fingerprint(user_id, 'recommendations', fingerprint)
+        if cached := _cache.get(key):
+            return dict(cached, cached=True)
+        source = 'deterministic'
+        if self.client is not None and len(ranked) >= 3 and request_budget.allow(user_id):
+            compact = [{'id': item['id'], 'title': safe_text(item.get('title'), 120),
+                        'skills': [safe_text(skill, 100) for skill in (item.get('tags') or [])[:12]],
+                        'description': safe_text(item.get('fullDescription') or item.get('description'), 240),
+                        'rank_band': int(item['_rank'] // 10)}
+                       for item in ranked]
+            result, reason = self._complete(
+                'RERANK only within the supplied deterministic rank bands for semantic role fit. '
+                'Return every job ID exactly once. Never promote a different band or infer qualifications.',
+                JobRerankResult, {'candidate': context, 'jobs': compact},
+            )
+            if result and len(result['ordered_ids']) == len(ranked) and set(result['ordered_ids']) == {item['id'] for item in ranked}:
+                ranked = apply_bounded_rerank(ranked, result['ordered_ids'])
+                source = 'semantic_bounded'
+            else:
+                logger.info('career_ai operation=job_rerank outcome=deterministic reason=%s', reason or 'invalid_order')
+        items = [_to_list_item({key: value for key, value in item.items() if key != '_rank'}) for item in ranked[:6]]
+        output = {'items': items, 'ranking_source': source, 'cached': False}
+        _cache.put(key, output)
+        return output
 
 
 def build_career_ai_service(settings: InterviewAISettings, sdk_client=None) -> CareerAIService:

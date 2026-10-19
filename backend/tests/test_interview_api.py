@@ -162,6 +162,21 @@ class InterviewApiTests(unittest.TestCase):
         self.assertEqual(self.client.post('/ai/jobs/999/preparation', json=payload,
                                           headers={'Authorization': 'Bearer user1'}).status_code, 404)
 
+    def test_recommendations_require_auth_and_use_live_catalog(self):
+        payload = {'resume_data': {'skills': ['Python'], 'email': 'private@example.com',
+                                   'project_entries': [{'title': 'Parser', 'bullets': ['Built a Python parser.']}]}}
+        self.assertEqual(self.client.post('/ai/jobs/recommendations', json=payload).status_code, 401)
+        live_jobs = [{'id': 7, 'title': 'Backend Intern', 'company': 'Acme', 'location': 'Denton, TX',
+                      'tags': ['Python', 'AWS'], 'experienceLevel': 'Internship',
+                      'applicationLink': 'https://example.com/apply'}]
+        with patch('api.jobs.get_jobs_data', return_value=live_jobs):
+            result = self.client.post('/ai/jobs/recommendations', json=payload,
+                                      headers={'Authorization': 'Bearer user1'})
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.json()['items'][0]['id'], 7)
+        self.assertIn('Python', result.json()['items'][0]['whyThisFits'])
+        self.assertNotIn('private@example.com', str(result.json()))
+
     def test_expired_session_and_empty_resume(self):
         q = self.start().json()
         with self.sessions() as db:
@@ -339,6 +354,27 @@ class InterviewApiTests(unittest.TestCase):
             session = db.get(InterviewSession, q['session_id'])
             self.assertIsNone(session.processing_question_index)
             self.assertEqual(session.current_question_index, 1)
+
+    def test_repair_call_counts_toward_session_budget(self):
+        from services.interview_engine import InterviewEngine
+        class RepairProvider:
+            provider_name = 'synthetic'
+            model = 'fixture'
+
+            def evaluate(self, *_args):
+                return {'score': 40, 'strengths': [], 'improvements': [],
+                        'dimensions': [{'label': label, 'score': 10} for label in ('Relevance', 'Structure', 'Specificity', 'Impact')],
+                        'evidence': ['Python parser']}
+
+            def repair_evaluation(self, *_args):
+                return dict(self.evaluate(), summary='A concrete parser example.')
+
+        q = self.start().json()
+        self.app.dependency_overrides[get_interview_engine] = lambda: InterviewEngine(RepairProvider())
+        result = self.answer(q, answer='I built a Python parser for my team.').json()
+        self.assertEqual(result['feedback']['source'], 'ai')
+        with self.sessions() as db:
+            self.assertEqual(db.get(InterviewSession, q['session_id']).provider_call_count, 2)
 
     def test_stale_provider_result_is_not_persisted(self):
         from services.interview_engine import InterviewEngine

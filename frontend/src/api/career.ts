@@ -1,6 +1,7 @@
 import { getAuthSession } from './auth'
 import { interviewResumeContext } from './interview'
 import type { ParsedResumeData } from './resume'
+import type { Job } from '../types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
 
@@ -31,6 +32,12 @@ export type JobPreparationResult = {
   degraded_reason?: string
 }
 
+export type JobRecommendationsResult = {
+  items: Job[]
+  ranking_source: 'deterministic' | 'semantic_bounded'
+  cached: boolean
+}
+
 async function request<T>(path: string, resume: ParsedResumeData): Promise<T> {
   const token = getAuthSession()?.token
   if (!token) throw new Error('Sign in to use personalized coaching.')
@@ -57,3 +64,4 @@ async function request<T>(path: string, resume: ParsedResumeData): Promise<T> {
 
 export const getResumeCoach = (resume: ParsedResumeData) => request<ResumeCoachResult>('/ai/resume-coach', resume)
 export const getJobPreparation = (jobId: number, resume: ParsedResumeData) => request<JobPreparationResult>(`/ai/jobs/${jobId}/preparation`, resume)
+export const getJobRecommendations = (resume: ParsedResumeData) => request<JobRecommendationsResult>('/ai/jobs/recommendations', resume)

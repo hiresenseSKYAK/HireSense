@@ -10,7 +10,9 @@ from api.interview import _job_snapshot, _resolve_user_id
 from api.schemas import InterviewResumeContext
 from database.connection import get_db
 from database.models import Job
+from database.models import InterviewResponse, InterviewSession
 from services.career_ai import CareerAIService
+from services.job_intelligence import coaching_signals_from_feedback
 from services.job_location import assess_job_geography
 
 router = APIRouter(prefix='/ai', tags=['career-coaching'])
@@ -61,3 +63,30 @@ def job_preparation(
     }
     db.rollback()
     return service.job_preparation(user_id, authoritative, _bounded_resume(body))
+
+
+@router.post('/jobs/recommendations')
+def job_recommendations(
+    body: CareerCoachRequest,
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+    service: CareerAIService = Depends(_service),
+):
+    user_id = _resolve_user_id(db, authorization)
+    feedback_rows = db.query(InterviewResponse.feedback_json).join(
+        InterviewSession, InterviewResponse.session_id == InterviewSession.id,
+    ).filter(
+        InterviewSession.user_id == user_id, InterviewSession.status == 'completed',
+    ).order_by(InterviewResponse.created_at.desc()).limit(30).all()
+    feedback = []
+    for row in feedback_rows:
+        try:
+            parsed = json.loads(row[0])
+            if isinstance(parsed, dict):
+                feedback.append(parsed)
+        except (TypeError, ValueError):
+            continue
+    signals = coaching_signals_from_feedback(feedback)
+    db.rollback()
+    from api.jobs import get_jobs_data
+    return service.recommendations(user_id, get_jobs_data(), _bounded_resume(body), signals)

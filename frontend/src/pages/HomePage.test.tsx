@@ -4,11 +4,14 @@ import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchJobs, fetchMarketInsights } from '../api/jobs'
+import { getJobRecommendations } from '../api/career'
+import { getResumeAnalysis } from '../utils/resumeStorage'
 import type { Job } from '../types'
 import HomePage from './HomePage'
 
 vi.mock('../api/jobs', () => ({ fetchJobs: vi.fn(), fetchMarketInsights: vi.fn(), JOB_PAGE_SIZE: 20 }))
-vi.mock('../utils/resumeStorage', () => ({ getResumeAnalysis: () => null }))
+vi.mock('../api/career', () => ({ getJobRecommendations: vi.fn() }))
+vi.mock('../utils/resumeStorage', () => ({ getResumeAnalysis: vi.fn() }))
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
@@ -32,6 +35,7 @@ function pageOf(items: Job[], extra: { total?: number; page?: number } = {}) {
 let root: Root | undefined
 
 beforeEach(() => {
+  vi.mocked(getResumeAnalysis).mockReturnValue(null)
   vi.mocked(fetchJobs).mockImplementation(async (params) => {
     if (params?.query === 'no-such-role') return pageOf([])
     if (params?.page === 2) return pageOf([jobs[1]], { total: 25, page: 2 })
@@ -39,6 +43,7 @@ beforeEach(() => {
     return pageOf(items, { total: params?.pageSize === 20 && params.sort === 'company' ? items.length : 25 })
   })
   vi.mocked(fetchMarketInsights).mockResolvedValue(insights)
+  vi.mocked(getJobRecommendations).mockResolvedValue({ items: [], ranking_source: 'deterministic', cached: false })
 })
 
 afterEach(() => {
@@ -46,6 +51,7 @@ afterEach(() => {
   root = undefined
   document.body.replaceChildren()
   vi.clearAllMocks()
+  localStorage.clear()
 })
 
 async function renderPage() {
@@ -106,5 +112,25 @@ describe('Home job discovery', () => {
     expect(document.querySelectorAll('article')).toHaveLength(1)
     expect(document.body.textContent).toContain('Software Engineer Intern')
     expect(document.body.textContent).toContain('Showing 21–25 of 25')
+  })
+
+  it('shows grounded recommendations and lets the user turn resume ranking off', async () => {
+    vi.mocked(getResumeAnalysis).mockReturnValue({ parsed_data: { skills: ['Python'] } } as ReturnType<typeof getResumeAnalysis>)
+    localStorage.setItem('hiresense_auth_session', JSON.stringify({ token: 'test', user: { id: 41 } }))
+    vi.mocked(getJobRecommendations).mockResolvedValue({
+      items: [{ ...jobs[0], priority: 'Strong fit', whyThisFits: 'Python appears in your resume and this posting.', topGap: 'AWS' }],
+      ranking_source: 'deterministic', cached: false,
+    })
+    await renderPage()
+    await settle()
+    expect(document.body.textContent).toContain('Recommended for you')
+    expect(document.body.textContent).toContain('Python appears in your resume')
+    expect(vi.mocked(fetchJobs).mock.calls.some(([params]) => params?.skills?.includes('Python'))).toBe(true)
+    const toggle = document.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+    act(() => toggle.click())
+    await settle()
+    expect(document.body.textContent).not.toContain('Recommended for you')
+    const calls = vi.mocked(fetchJobs).mock.calls
+    expect(calls[calls.length - 1]?.[0]?.skills).toEqual([])
   })
 })

@@ -1,9 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { Link } from 'react-router-dom'
 import JobCard from '../components/JobCard'
 import MarketSidebar from '../components/MarketSidebar'
 import FilterBar, { buildEmptyFilters, type FilterState } from '../components/FilterBar'
 import { IconSearch } from '../components/Icons'
 import { fetchJobs, fetchMarketInsights, JOB_PAGE_SIZE, type MarketInsightsResponse } from '../api/jobs'
+import { getJobRecommendations, type JobRecommendationsResult } from '../api/career'
+import { getAuthSession } from '../api/auth'
+import { formatPostedDate, sourcePostedAt } from '../utils/jobFreshness'
 import { getResumeAnalysis } from '../utils/resumeStorage'
 import type { Job } from '../types'
 import styles from './HomePage.module.css'
@@ -77,6 +81,17 @@ export default function HomePage() {
   const [error, setError] = useState('')
   const [loadKey, setLoadKey] = useState(0)
   const [sortBy, setSortBy] = useState<SortOption>(savedResume ? 'best-match' : 'recently-discovered')
+  const [useResume, setUseResume] = useState(Boolean(savedResume))
+  const [recommendations, setRecommendations] = useState<JobRecommendationsResult | null>(null)
+  const [recommendationLoading, setRecommendationLoading] = useState(false)
+  const visitKey = `hiresense_job_feed_seen_ids_${getAuthSession()?.user.id ?? 'guest'}`
+  const previouslySeenIds = useRef<number[] | null>(null)
+  if (previouslySeenIds.current === null) {
+    try {
+      const saved = JSON.parse(localStorage.getItem(visitKey) || '[]')
+      previouslySeenIds.current = Array.isArray(saved) ? saved.filter((id): id is number => typeof id === 'number') : []
+    } catch { previouslySeenIds.current = [] }
+  }
 
   const pageRef = useRef<HTMLDivElement>(null)
   const controlsRef = useRef<HTMLDivElement>(null)
@@ -139,7 +154,7 @@ export default function HomePage() {
           salaries: selected(filters, 'salary'),
           types: selected(filters, 'type'),
           dates: selected(filters, 'date'),
-          skills: resumeSkillsRef.current,
+          skills: useResume ? resumeSkillsRef.current : [],
           signal: controller.signal,
         })
         if (controller.signal.aborted) return
@@ -162,7 +177,7 @@ export default function HomePage() {
 
     void loadJobs()
     return () => controller.abort()
-  }, [debouncedQuery, query, activeFilters, sortBy, page, loadKey, skillKey, filters])
+  }, [debouncedQuery, query, activeFilters, sortBy, page, loadKey, skillKey, filters, useResume])
 
   useEffect(() => {
     if (!pendingScroll.current || isJobsLoading) return
@@ -170,7 +185,26 @@ export default function HomePage() {
     document.getElementById('job-results')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
   }, [jobs, isJobsLoading])
 
+  useEffect(() => {
+    if (!useResume || !savedResume || !getAuthSession()?.token) {
+      setRecommendations(null)
+      return
+    }
+    let active = true
+    setRecommendationLoading(true)
+    void getJobRecommendations(savedResume.parsed_data).then((result) => {
+      if (!active) return
+      setRecommendations(result)
+      try { localStorage.setItem(visitKey, JSON.stringify(result.items.map((job) => job.id))) } catch { /* Optional visit marker. */ }
+    }).catch(() => { if (active) setRecommendations(null) })
+      .finally(() => { if (active) setRecommendationLoading(false) })
+    return () => { active = false }
+  }, [useResume, skillKey, loadKey])
+
   const showSkeleton = isJobsLoading && jobs.length === 0 && !error
+  const newMatchCount = previouslySeenIds.current?.length
+    ? recommendations?.items.filter((job) => !previouslySeenIds.current?.includes(job.id)).length ?? 0
+    : 0
 
   function goToPage(next: number) {
     pendingScroll.current = true
@@ -222,6 +256,24 @@ export default function HomePage() {
         </div>
 
         <section className={styles.jobsSection} id="job-results" aria-busy={isJobsLoading}>
+          {savedResume && <label className={styles.resumeToggle}>
+            <input type="checkbox" checked={useResume} onChange={(event) => {
+              const enabled = event.target.checked
+              setUseResume(enabled)
+              setSortBy(enabled ? 'best-match' : 'recently-discovered')
+              setPage(1)
+            }} />
+            <span>Use my resume</span><small>Prioritize roles using your saved skills; filters still apply.</small>
+          </label>}
+          {useResume && recommendations && recommendations.items.length > 0 && <section className={styles.recommended} aria-labelledby="recommended-title">
+            <div className={styles.recommendedHeading}><div><span className={styles.recommendedEyebrow}>Your next opportunities</span><h2 id="recommended-title">Recommended for you</h2></div>{newMatchCount > 0 && <span className={styles.newMatches}>{newMatchCount} new since your last visit</span>}</div>
+            <p>Ranked from your resume and current role details. These are preparation priorities, not hiring odds.</p>
+            <div className={styles.recommendedList}>{recommendations.items.slice(0, 4).map((job) => <Link key={job.id} to={`/jobs/${job.id}`} className={styles.recommendedItem}>
+              <div><span className={styles.priority}>{job.priority}</span><strong>{job.title}</strong><small>{job.company} · {job.location}{formatPostedDate(sourcePostedAt(job)) ? ` · Posted ${formatPostedDate(sourcePostedAt(job))}` : ''}</small></div>
+              <div className={styles.recommendedReason}><span>{job.whyThisFits}</span>{job.topGap && <small>Prepare: {job.topGap}</small>}{job.preparationNote && <small>{job.preparationNote}</small>}</div>
+            </Link>)}</div>
+          </section>}
+          {useResume && recommendationLoading && <p className={styles.recommendationLoading} role="status">Finding relevant roles from your resume…</p>}
           <div className={styles.jobsSectionHeader}>
             <div>
               <h1 className={styles.jobsTitle}>{savedResume && sortBy === 'best-match' ? 'Top Matches' : 'Live Opportunities'}</h1>

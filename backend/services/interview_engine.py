@@ -123,6 +123,106 @@ def evidence_is_grounded(evidence: str, answer: str) -> bool:
     return bool(needle) and needle in _normalized_evidence(answer)
 
 
+def _unsupported_answer_claim(text: str, answer: str, allowed_numbers: set[str] | None = None) -> bool:
+    """Catch invented numeric/technology claims without pretending to prove semantics."""
+    from data.skills_catalog import SKILL_ALLOWLIST
+    numbers = lambda value: set(re.findall(r'\b\d+(?:\.\d+)?%?\b', value))
+    if not numbers(text) <= numbers(answer) | (allowed_numbers or set()):
+        return True
+    for skill in SKILL_ALLOWLIST:
+        if len(skill) < 4 and skill not in {'AWS', 'GCP', 'SQL'}:
+            continue
+        pattern = rf'(?<!\w){re.escape(skill)}(?!\w)'
+        if re.search(pattern, text, re.I) and not re.search(pattern, answer, re.I):
+            # A gap suggestion is not a claim that the candidate used the skill.
+            if re.search(r'\b(missing|lacks?|didn.t|not mentioned|consider|should|could|prepare|review)\b', text, re.I):
+                continue
+            return True
+    return False
+
+
+def normalize_evaluation(raw: dict, answer: str) -> tuple[dict | None, str, str]:
+    """Keep valid core coaching while dropping ungrounded optional material."""
+    if not isinstance(raw, dict) or not isinstance(raw.get('dimensions'), list):
+        return None, 'invalid_dimensions', 'invalid'
+    data = {key: raw[key] for key in Evaluation.model_fields if key in raw}
+    dimensions = data['dimensions']
+    labels = ('Relevance', 'Structure', 'Specificity', 'Impact')
+    if len(dimensions) != 4 or not all(isinstance(item, dict) for item in dimensions):
+        return None, 'invalid_dimensions', 'invalid'
+    fixed_dimensions = []
+    for item in dimensions:
+        label = next((name for name in labels if str(item.get('label', '')).strip().casefold() == name.casefold()), None)
+        score = item.get('score')
+        if label is None or isinstance(score, bool) or not isinstance(score, int) or not 0 <= score <= 25:
+            return None, 'invalid_dimensions', 'invalid'
+        fixed_dimensions.append({'label': label, 'score': score, 'max_score': 25})
+    if {item['label'] for item in fixed_dimensions} != set(labels):
+        return None, 'invalid_dimensions', 'invalid'
+    data['dimensions'] = fixed_dimensions
+    derived_score = sum(item['score'] for item in fixed_dimensions)
+    changes: set[str] = set()
+    if data.get('score') != derived_score:
+        data['score'] = derived_score
+        changes.add('score_normalized')
+    evidence = data.get('evidence')
+    if not isinstance(evidence, list) or not evidence:
+        return None, 'missing_evidence', 'invalid'
+    grounded = [item.strip()[:1000] for item in evidence if isinstance(item, str) and evidence_is_grounded(item, answer)][:5]
+    if not grounded:
+        return None, 'ungrounded_evidence', 'invalid'
+    if len(grounded) != len(evidence):
+        changes.add('evidence_dropped')
+    data['evidence'] = grounded
+    for field in ('strengths', 'improvements'):
+        bullets = data.get(field)
+        if bullets is None:
+            bullets = []
+            changes.add('optional_bullet_defaulted')
+        if not isinstance(bullets, list):
+            return None, 'invalid_bullets', 'invalid'
+        kept = [item.strip()[:1000] for item in bullets if isinstance(item, str) and item.strip()
+                and not _unsupported_answer_claim(item, answer)][:5]
+        if len(kept) != len(bullets):
+            changes.add('optional_bullet_dropped')
+        data[field] = kept
+    summary = data.get('summary')
+    if not isinstance(summary, str) or not summary.strip():
+        return None, 'invalid_summary', 'invalid'
+    if _unsupported_answer_claim(summary, answer, {str(derived_score), '100'}):
+        return None, 'ungrounded_summary', 'invalid'
+    if len(summary) > 1000:
+        data['summary'] = summary[:1000].rstrip()
+        changes.add('summary_trimmed')
+    for field in ('technical_depth', 'communication', 'role_relevance', 'suggested_approach', 'example_stronger_framing'):
+        value = data.get(field, '')
+        if not isinstance(value, str) or _unsupported_answer_claim(value, answer):
+            data[field] = ''
+            changes.add('optional_text_dropped')
+        elif len(value) > 1000:
+            data[field] = value[:1000].rstrip()
+            changes.add('optional_text_trimmed')
+    follow_up = data.get('follow_up')
+    if follow_up is not None and (not isinstance(follow_up, str) or not 10 <= len(follow_up) <= 600
+                                  or not followup_is_grounded(follow_up, answer)
+                                  or _unsupported_answer_claim(follow_up, answer)):
+        data['follow_up'] = None
+        changes.add('follow_up_dropped')
+    try:
+        result = Evaluation.model_validate(data).model_dump()
+    except ValidationError:
+        return None, 'schema_validation', 'invalid'
+    if len(json.dumps(result).encode('utf-8')) > 6000:
+        return None, 'storage_budget', 'invalid'
+    if any('dropped' in change or 'defaulted' in change for change in changes):
+        outcome = 'partial'
+    elif changes:
+        outcome = 'normalized'
+    else:
+        outcome = 'initial'
+    return result, ','.join(sorted(changes)) or 'valid', outcome
+
+
 def build_interview_plan(context: dict) -> list[dict]:
     """Create concise coverage metadata, not hidden model reasoning."""
     count = context['question_count']
@@ -218,8 +318,10 @@ def fallback_evaluation(question, answer):
 
 
 class InterviewEngine:
-    def __init__(self, provider: InterviewProvider | None = None):
+    def __init__(self, provider: InterviewProvider | None = None, *, allow_repair: bool = True):
         self.provider = provider
+        self.allow_repair = allow_repair
+        self.repair_attempts = 0
         self._last_reason: str | None = None
 
     def _diagnostic(self, operation: str, outcome: str, reason: str | None = None):
@@ -242,12 +344,10 @@ class InterviewEngine:
                 if len(raw.encode('utf-8')) > 24000:
                     raise ValueError('Provider response exceeds input limit.')
                 raw = json.loads(raw)
-            if schema is Evaluation and isinstance(raw, dict):
-                optional_probe = raw.get('follow_up')
-                if isinstance(optional_probe, str) and not 10 <= len(optional_probe) <= 600:
-                    raw = dict(raw, follow_up=None)
-            result = schema.model_validate(raw).model_dump()
-            limit = 24000 if schema is QuestionSet else 6000
+            result = schema.model_validate(raw).model_dump() if schema is not None else raw
+            if not isinstance(result, dict) or not result:
+                raise ValueError('Provider returned no usable object.')
+            limit = 24000 if schema is QuestionSet or schema is None else 6000
             if len(json.dumps(result).encode('utf-8')) > limit:
                 raise ValueError('Provider output exceeds the storage budget.')
             self._last_reason = None
@@ -341,33 +441,29 @@ class InterviewEngine:
                 for i, q in enumerate(questions)]
 
     def feedback(self, context, question, answer, history):
-        result = self._call('evaluate', Evaluation, context, question, answer, history)
+        raw = self._call('evaluate', None, context, question, answer, history)
+        result, reason, outcome = normalize_evaluation(raw, answer) if raw else (None, self._last_reason or 'provider_failure', 'invalid')
         if result:
-            labels = [dimension['label'] for dimension in result['dimensions']]
-            dimension_total = sum(dimension['score'] for dimension in result['dimensions'])
-            if len(set(labels)) != 4:
-                self._last_reason = 'semantic_validation'
-                result = None
-            elif abs(dimension_total - result['score']) <= 4:
-                # The rubric dimensions are the auditable score authority. Small model
-                # rounding drift is normalized instead of discarding otherwise useful coaching.
-                result['score'] = dimension_total
-            else:
-                self._last_reason = 'semantic_validation'
-                result = None
-        # Evidence remains grounded, while harmless formatting drift is tolerated.
-        if result and (not result['evidence'] or any(not evidence_is_grounded(e, answer) for e in result['evidence'])):
-            self._last_reason = 'evidence_validation'
-            result = None
-        if result and result.get('follow_up') and (
-                len(result['follow_up']) < 10 or len(result['follow_up']) > 600
-                or not followup_is_grounded(result['follow_up'], answer)):
-            result['follow_up'] = None
-        if result:
-            self._diagnostic('evaluate', 'accepted')
+            self._diagnostic('evaluate', f'evaluation_{outcome}_accepted', reason)
             return dict(result, benchmark=_benchmark(result['score']), source='ai')
+        self._last_reason = reason
+        # Only semantic/schema defects in an otherwise grounded provider response can
+        # warrant another billed request. Transport failures, refusals, and wholly
+        # invented evidence never enter this path.
+        repair = getattr(type(self.provider), 'repair_evaluation', None) if self.provider is not None else None
+        repairable = isinstance(raw, dict) and reason not in {'invalid_dimensions', 'missing_evidence', 'ungrounded_evidence'}
+        if self.allow_repair and callable(repair) and repairable:
+            self.repair_attempts += 1
+            self._diagnostic('evaluate', 'evaluation_repair_attempted', reason)
+            repaired = self._call('repair_evaluation', None, context, question, answer, history, raw)
+            candidate, repair_reason, _ = normalize_evaluation(repaired, answer) if repaired else (None, self._last_reason or 'repair_provider_failure', 'invalid')
+            if candidate:
+                self._diagnostic('evaluate', 'evaluation_repair_accepted', repair_reason)
+                return dict(candidate, benchmark=_benchmark(candidate['score']), source='ai')
+            self._last_reason = repair_reason
+            self._diagnostic('evaluate', 'evaluation_repair_failed', repair_reason)
         if self.provider is not None and self._last_reason:
-            self._diagnostic('evaluate', 'fallback', self._last_reason)
+            self._diagnostic('evaluate', 'evaluation_fallback', self._last_reason)
         result = fallback_evaluation(question, answer)
         weakest = min(result['dimensions'], key=lambda d: d['score'])['label']
         followups = {

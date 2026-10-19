@@ -34,7 +34,7 @@ OPENAI_MAX_RETRIES=1
 
 Only `OPENAI_API_KEY` is required to enable OpenAI. `OPENAI_INTERVIEW_MODEL` can select a stronger interview model; `OPENAI_LIGHT_MODEL` routes resume and job preparation to a cheaper model. Both inherit `OPENAI_MODEL` when unset. Never use a `VITE_*` variable for the key.
 
-On Render, open the backend service, choose **Environment**, add `OPENAI_API_KEY`, and optionally override `OPENAI_MODEL`. The database and `CORS_ORIGINS` variables remain required as before.
+On Render, open the backend service, choose **Environment**, add `OPENAI_API_KEY`, and optionally override `OPENAI_MODEL`, `OPENAI_INTERVIEW_MODEL`, and `OPENAI_LIGHT_MODEL`. The database and `CORS_ORIGINS` variables remain required as before. Keep model names server-side; do not put the key in a `VITE_*` variable.
 
 ## Provider operations
 
@@ -66,13 +66,13 @@ Each user may start at most 10 interviews per rolling hour, and AI provider work
 
 ## Failure behavior
 
-Missing key, authentication failure, timeout, connection failure, rate limit, provider 5xx, refusal, incomplete output, malformed/empty/oversized output, or schema/semantic failure falls back for that operation. Raw provider errors are not returned to the browser. The UI labels accepted provider output as **AI coaching active** and fallback output as **Standard coaching mode**.
+Missing key, authentication failure, timeout, connection failure, rate limit, provider 5xx, refusal, incomplete output, malformed/empty/oversized output, or unrecoverable schema/semantic failure falls back for that operation. Raw provider errors are not returned to the browser. The UI labels accepted provider output as **AI coaching active** and fallback output as **Standard coaching mode**.
 
-Provider responses are logged as `response_received` at the transport boundary and `accepted` only after server validation. Fallback records a fixed reason code such as `schema_validation`, `semantic_validation`, `evidence_validation`, `duplicate_questions`, `refusal`, `incomplete`, `rate_limit`, `timeout`, or `network`. Logs exclude candidate content. Harmless score rounding is normalized against the four rubric dimensions; evidence accepts formatting changes but must still match the answer after normalization. An invalid optional follow-up is discarded while valid feedback remains.
+Provider responses are logged as `response_received` at the transport boundary. Evaluation then logs `evaluation_initial_accepted`, `evaluation_normalized_accepted`, `evaluation_partial_accepted`, `evaluation_repair_attempted`, `evaluation_repair_accepted`, `evaluation_repair_failed`, or `evaluation_fallback`, each with a fixed reason code. Logs exclude candidate content. The server uses the four valid rubric dimensions as score authority, removes isolated non-excerpt evidence and unsupported optional claims, and drops an invalid follow-up while keeping valid core coaching. Entirely ungrounded evidence and impossible dimensions still fall back. A close structured result can receive at most one strict-schema repair call; transport errors and refusals cannot. Repaired output remains `source=ai`. Repair calls count toward interview provider limits.
 
 ## Career coaching
 
-The authenticated `/ai/resume-coach` and `/ai/jobs/{job_id}/preparation` endpoints reuse the same OpenAI SDK transport and structured completion client. Resume Coach runs after deterministic parsing. Job preparation uses the server's authoritative job snapshot and provides fit explanation, truthful resume tailoring, application talking points, recruiter-screen preparation, and a short prioritized skill-gap plan. The browser renders deterministic analysis first and loads these enhancements only when requested.
+The authenticated `/ai/resume-coach`, `/ai/jobs/{job_id}/preparation`, and `/ai/jobs/recommendations` endpoints reuse the same OpenAI SDK transport and structured completion client. Resume Coach runs after deterministic parsing. Job preparation uses the server's authoritative job snapshot and provides fit explanation, truthful resume tailoring, application talking points, recruiter-screen preparation, and a short prioritized skill-gap plan. Recommendations first rank real active jobs deterministically from bounded resume context and posting signals; the light model may reorder only inside ten-point rank bands. Its invalid/unavailable output leaves deterministic order intact. Repeated owned interview coaching gaps can add a preparation note, never a match-score penalty.
 
 Career outputs are cached in a bounded in-process cache keyed by user ID and a fingerprint of sanitized inputs. Identical requests in one worker reuse the result; each worker has its own cache. Career calls are capped at 20 per user per hour per worker. When the provider is unavailable or validation fails, resume and job preparation return deterministic guidance. No subjective answer is filled or submitted by these endpoints.
 
@@ -89,14 +89,16 @@ Migration `005_harden_interview_sessions.sql` adds processing/cost fields and in
 
 ## Developer-only live smoke test
 
-This command makes one structured question-generation request and one evaluation request using synthetic data. It is not part of pytest and must not be run without an intentional API key:
+This command first reports a provider-free three-case synthetic evaluation batch (direct acceptance, repaired acceptance, genuine fallback), then makes one structured question-generation request and one evaluation request using synthetic data when an API key is configured. It is not part of pytest and paid calls must be intentional:
 
 ```sh
 cd backend
 python -m scripts.smoke_interview_openai
 ```
 
-It reports only success/failure and the configured model, never credentials or generated content. After deployment, verify a real owned session through `/interview/start` and `/interview/{id}/answer`; check that both question and feedback sources are `ai`, and inspect sanitized Render logs for `outcome=accepted`. This repository does not verify live production without that deployment and session test.
+It reports only success/failure and the configured model, never credentials or generated content. After deployment, verify a real owned session through `/interview/start` and `/interview/{id}/answer`; check that both question and feedback sources are `ai`, and inspect sanitized Render logs for `evaluation_initial_accepted`, `evaluation_normalized_accepted`, `evaluation_partial_accepted`, or `evaluation_repair_accepted`. This repository does not verify live production without that deployment and session test.
+
+For a billable five-case comparison of `gpt-4o-mini`, `OPENAI_INTERVIEW_MODEL`, and `OPENAI_LIGHT_MODEL`, run `python -m scripts.benchmark_models` with a key and distinct configured model names. It reports schema acceptance, conservative grounding checks, latency, and token usage; it does not declare a winner automatically. No live model-quality result can be claimed without that run.
 
 ## Validation
 

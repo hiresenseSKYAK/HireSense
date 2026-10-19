@@ -120,15 +120,28 @@ def unique_cities(jobs: list[dict]) -> list[str]:
 
 
 def _matches_query(job: dict, query: str) -> bool:
-    needle = (query or "").strip().casefold()
+    needle = (query or "").strip().casefold()[:120]
     if not needle:
         return True
     tags = job.get("tags") or []
-    return (
-        needle in str(job.get("title") or "").casefold()
-        or needle in str(job.get("company") or "").casefold()
-        or any(needle in str(tag).casefold() for tag in tags)
-    )
+    title = str(job.get("title") or "").casefold()
+    company = str(job.get("company") or "").casefold()
+    searchable = ' '.join((title, company, str(job.get('location') or '').casefold(),
+                           ' '.join(str(tag).casefold() for tag in tags),
+                           str(job.get('description') or '')[:480].casefold()))
+    if needle in searchable:
+        return True
+    terms = re.findall(r'[a-z0-9+#]+', needle)
+    if not terms:
+        return False
+    early_career = 'new grad' in needle or 'entry level' in needle or 'no experience' in needle
+    if early_career and job.get('experienceLevel') not in ('Entry level', 'Internship'):
+        return False
+    stop = {'jobs', 'job', 'roles', 'role', 'in', 'near', 'for', 'where', 'i', 'my', 'me', 'a', 'the',
+            'actually', 'qualify', 'need', 'dont', 'don', 't', 'years', 'year', 'of', 'experience',
+            'new', 'grad', 'entry', 'level', 'like', 'with'}
+    significant = [term for term in terms if term not in stop and not term.isdigit()]
+    return bool(significant) and all(term in searchable for term in significant)
 
 
 def _matches_choice(value, selected: list[str] | None) -> bool:

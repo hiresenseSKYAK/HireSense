@@ -66,7 +66,7 @@ describe('immersive interview experience', () => {
     await click('Submit answer')
     expect(container.textContent).toContain('Analyzing your answer')
     await act(async () => resolve({ session_id: 9, question_index: 1, is_complete: false, feedback, next_question: { ...question, question_id: 'follow', question_index: 2, is_follow_up: true, prompt: 'What changed?' }, final_result: null }))
-    expect(container.textContent).toContain('What landed')
+    expect(container.textContent).toContain('What worked')
     expect(container.textContent).toContain('20/25')
     await click('Continue to next question')
     expect(container.textContent).toContain('Follow-up · building on your answer')

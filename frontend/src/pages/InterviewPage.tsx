@@ -45,6 +45,13 @@ function speechRecognitionCtor(): SpeechRecognitionCtor | null {
   return browser.SpeechRecognition || browser.webkitSpeechRecognition || null
 }
 
+function MicIcon() {
+  return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="9" y="3" width="6" height="11" rx="3" />
+    <path d="M6 11a6 6 0 0 0 12 0M12 17v4M8 21h8" />
+  </svg>
+}
+
 function Dimensions({ items }: { items?: InterviewScoreDimension[] }) {
   if (!items?.length) return null
   return <div className={styles.dimensions} aria-label="Score dimensions">
@@ -59,10 +66,10 @@ function FeedbackDetails({ feedback }: { feedback: InterviewFeedback }) {
   return <>
     <Dimensions items={feedback.dimensions} />
     <div className={styles.twoColumn}>
-      <section className={styles.editorialBlock}><h3>What landed</h3>
+      <section className={styles.editorialBlock}><h3>What worked</h3>
         {feedback.strengths.length ? <ul>{feedback.strengths.map(item => <li key={item}>{item}</li>)}</ul> : <p>No particular strength was identified in this answer.</p>}
       </section>
-      <section className={styles.editorialBlock}><h3>What to strengthen</h3>
+      <section className={styles.editorialBlock}><h3>What an interviewer would push on</h3>
         {feedback.improvements.length ? <ul>{feedback.improvements.map(item => <li key={item}>{item}</li>)}</ul> : <p>No specific improvement was identified in this answer.</p>}
       </section>
     </div>
@@ -321,10 +328,10 @@ function InterviewExperience() {
     <div className={styles.stage}>
       {loading && <div role="status" className={styles.loadingState}>Loading your interview…</div>}
       {error && <div role="alert" className={styles.error}>{error}<div className={styles.actions}>{!question && <button className="btn-outline" onClick={() => setRetry(value => value + 1)}>Retry session</button>}{authNeeded && <Link className="btn-outline" to="/login">Sign in again</Link>}<Link className="btn-outline" to="/interviews">Interview history</Link></div></div>}
-      {evaluating && <div className={styles.evaluating} role="status" aria-live="polite"><span className={styles.kicker}>Reviewing your response</span><h1>Analyzing your answer…</h1><p>Looking for relevant evidence, clarity, and role-specific depth.</p><div className={styles.pulseLine} /></div>}
+      {evaluating && <div className={styles.evaluating} role="status" aria-live="polite"><span className={styles.kicker}>Reviewing your response</span><h1>Analyzing your answer…</h1><p>Reviewing relevance, specificity, and technical depth before preparing coaching.</p><div className={styles.pulseLine} aria-hidden="true" /></div>}
       {!evaluating && question && <div className={styles.questionStage}><span className={styles.kicker}>{question.is_follow_up ? 'Follow-up · building on your answer' : question.focus_area}</span><h1 tabIndex={-1} ref={stageHeading}>{question.prompt}</h1><p className={styles.questionMeta}>{readable(question.mode)} interview · {question.source === 'fallback' ? 'Guided practice' : 'Personalized question'}</p>
         {!!question.tips.length && <details className={styles.details}><summary>Need help structuring your answer?</summary><ul>{question.tips.map(tip => <li key={tip}>{tip}</li>)}</ul></details>}
-        <div className={styles.answerArea}><div className={styles.answerLabel}><label htmlFor="interview-answer">Your answer</label>{speechRecognitionCtor() && <button type="button" className={styles.voiceButton} aria-pressed={listening} onClick={toggleListening}>{listening ? 'Stop dictation' : 'Dictate answer'}</button>}</div><textarea id="interview-answer" maxLength={5000} value={answer} onChange={event => { if (listening) stopListening(); setAnswer(event.target.value) }} onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); void submit() } }} placeholder="Take a moment to think, then respond in your own words…" /><div className={styles.answerFooter}><span>{answer.trim() ? `${answer.trim().split(/\s+/).length} words` : 'A concrete example works best.'}</span><button className="btn-primary" disabled={!answer.trim()} onClick={() => void submit()}>Submit answer <span aria-hidden="true">↗</span></button></div><small>Tip: Ctrl/Cmd + Enter to submit</small></div>
+        <div className={styles.answerArea}><div className={styles.answerLabel}><label htmlFor="interview-answer">Your answer</label>{speechRecognitionCtor() && <button type="button" className={styles.voiceButton} aria-pressed={listening} onClick={toggleListening}><MicIcon />{listening ? 'Stop dictation' : 'Dictate answer'}</button>}</div><textarea id="interview-answer" maxLength={5000} value={answer} onChange={event => { if (listening) stopListening(); setAnswer(event.target.value) }} onKeyDown={event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); void submit() } }} placeholder="Take a moment to think, then respond in your own words…" /><div className={styles.answerFooter}><span>{answer.trim() ? `${answer.trim().split(/\s+/).length} words` : 'Tip: Anchor your answer in one specific project or decision.'}</span><button className="btn-primary" disabled={!answer.trim()} onClick={() => void submit()}>Submit answer <span aria-hidden="true">↗</span></button></div><small>Tip: Ctrl/Cmd + Enter to submit</small></div>
       </div>}
       {!evaluating && feedback && <div className={styles.feedbackStage}><span className={styles.kicker}>Answer review · {coachingSource(feedback.source)}</span><h1 tabIndex={-1} ref={stageHeading}>{feedback.benchmark || 'Your feedback'}</h1><div className={styles.feedbackIntro}><strong>{feedback.score}<span>/100</span></strong><p>{feedback.summary}</p></div><p className={styles.finePrint}>Coaching feedback, not a hiring prediction.</p>{submittedAnswer && <details className={styles.details}><summary>Review your answer</summary><p className={styles.answerCopy}>{submittedAnswer}</p></details>}<FeedbackDetails feedback={feedback} /><div className={styles.actions}>{nextQuestion ? <button className="btn-primary" onClick={() => { setQuestion(nextQuestion); setNextQuestion(null); setFeedback(null); setSubmittedAnswer('') }}>Continue to next question →</button> : report ? <button className="btn-primary" onClick={() => setReportReady(true)}>View full debrief →</button> : <span role="status">Preparing your debrief…</span>}</div></div>}
     </div>

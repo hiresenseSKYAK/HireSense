@@ -60,7 +60,9 @@ class EngineTests(unittest.TestCase):
         provider.evaluate.return_value = dict(valid, evidence=['invented result'])
         self.assertEqual(engine.feedback(context, question, 'I used Python.', [])['source'], 'fallback')
         provider.evaluate.return_value = dict(valid, score=99)
-        self.assertEqual(engine.feedback(context, question, 'I used Python.', [])['source'], 'fallback')
+        normalized = engine.feedback(context, question, 'I used Python.', [])
+        self.assertEqual(normalized['source'], 'ai')
+        self.assertEqual(normalized['score'], 40)
 
     def test_evidence_formatting_and_small_score_drift_are_repaired(self):
         provider = Mock()

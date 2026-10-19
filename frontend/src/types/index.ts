@@ -27,6 +27,10 @@ export interface Job {
     missingSkills: string[]
     recommendation: string
   }
+  priority?: 'Strong fit' | 'Worth exploring' | 'Stretch role'
+  whyThisFits?: string
+  topGap?: string | null
+  preparationNote?: string | null
 }
 
 export interface JobDescription {

@@ -260,6 +260,19 @@ class StructuredInterviewProvider:
             "current_progress": {"completed_turns": len(history), "total_turns": context["question_count"]},
         })
 
+    def repair_evaluation(self, context, question, answer, history, invalid):
+        from services.interview_engine import Evaluation
+        operation = (
+            "REPAIR the same evaluation to satisfy the required schema. Do not introduce new facts. "
+            "Use only evidence from the submitted answer. Ensure score consistency with the four rubric dimensions. "
+            "Remove unsupported evidence and optional claims. Return null for an invalid optional follow-up."
+        )
+        return self._complete(operation, Evaluation, {
+            "question": question, "answer": safe_text(answer, 5000),
+            "previous_evaluation": invalid,
+            "role": context.get('job', {}).get('job_title', ''),
+        })
+
     def debrief(self, context, responses):
         from services.interview_engine import Debrief
         operation = (
