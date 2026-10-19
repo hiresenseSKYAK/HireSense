@@ -14,6 +14,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from api.interview import get_interview_engine, router
+from api.career_ai import router as career_ai_router
 from database.connection import Base, get_db
 from database.models import InterviewResponse, InterviewSession, Job, User, UserSession
 
@@ -31,6 +32,11 @@ class InterviewApiTests(unittest.TestCase):
             db.commit()
         app = FastAPI()
         app.include_router(router)
+        app.include_router(career_ai_router)
+        from services.career_ai import CareerAIService
+        from services.interview_settings import InterviewAISettings
+        app.state.career_ai_service = CareerAIService(None, InterviewAISettings(
+            api_key='', model='gpt-4o-mini', timeout_seconds=10, max_output_tokens=900, max_retries=0))
         self.app = app
         def database():
             with self.sessions() as db:
@@ -105,6 +111,36 @@ class InterviewApiTests(unittest.TestCase):
             latest = db.query(InterviewResponse).filter(InterviewResponse.session_id == session.id).order_by(InterviewResponse.question_index.desc()).first()
             self.assertEqual(json.loads(latest.feedback_json)['_response']['final_result'], data['final_result'])
             self.assertNotIn('final_result', json.loads(session.resume_snapshot)['_interview'])
+
+    def test_history_lists_only_owned_completed_sessions(self):
+        q = self.start(question_count=3, difficulty='challenging', focus=['technical_depth']).json()
+        while True:
+            result = self.answer(q).json()
+            if result['is_complete']:
+                break
+            q = result['next_question']
+        owned = self.client.get('/interview/history', headers={'Authorization': 'Bearer user1'})
+        other = self.client.get('/interview/history', headers={'Authorization': 'Bearer user2'})
+        self.assertEqual(owned.status_code, 200)
+        self.assertEqual(len(owned.json()), 1)
+        self.assertEqual(owned.json()[0]['session_id'], q['session_id'])
+        self.assertEqual(owned.json()[0]['difficulty'], 'challenging')
+        self.assertEqual(other.json(), [])
+
+    def test_career_coaching_is_authenticated_and_uses_authoritative_job(self):
+        payload = {'resume_data': {'skills': ['Python'], 'email': 'private@example.com',
+                                   'project_entries': [{'title': 'Parser', 'bullets': ['Built a Python parser.']}]}}
+        self.assertEqual(self.client.post('/ai/resume-coach', json=payload).status_code, 401)
+        coach = self.client.post('/ai/resume-coach', json=payload, headers={'Authorization': 'Bearer user1'})
+        self.assertEqual(coach.status_code, 200)
+        self.assertEqual(coach.json()['source'], 'fallback')
+        self.assertNotIn('private@example.com', str(coach.json()))
+        prep = self.client.post('/ai/jobs/1/preparation', json=payload,
+                                headers={'Authorization': 'Bearer user1'})
+        self.assertEqual(prep.status_code, 200)
+        self.assertEqual(prep.json()['missing_requirements'], ['SQL'])
+        self.assertEqual(self.client.post('/ai/jobs/999/preparation', json=payload,
+                                          headers={'Authorization': 'Bearer user1'}).status_code, 404)
 
     def test_expired_session_and_empty_resume(self):
         q = self.start().json()

@@ -7,7 +7,9 @@ import random
 import time
 from typing import Protocol, Type
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
+
+from services.interview_context import safe_text
 
 from services.interview_settings import InterviewAISettings
 
@@ -48,13 +50,51 @@ includes validation/outcomes. Return only the requested structured response."""
 class ProviderResponseError(RuntimeError):
     """Provider returned no usable structured response."""
 
+    reason_code = "malformed_output"
+
 
 class ProviderRefusalError(ProviderResponseError):
     """Provider refused the structured request."""
 
+    reason_code = "refusal"
+
 
 class ProviderIncompleteError(ProviderResponseError):
     """Provider response did not complete."""
+
+    reason_code = "incomplete"
+
+
+class ProviderEmptyOutputError(ProviderResponseError):
+    """Provider completed but returned no structured payload."""
+
+    reason_code = "empty_output"
+
+
+def provider_reason_code(error: Exception) -> str:
+    """Map provider/SDK failures to a small, non-sensitive operational vocabulary."""
+    explicit = getattr(error, "reason_code", None)
+    if explicit:
+        return str(explicit)
+    if isinstance(error, TimeoutError):
+        return "timeout"
+    if isinstance(error, ValidationError):
+        return "schema_validation"
+    try:
+        from openai import APIConnectionError, APITimeoutError, AuthenticationError, RateLimitError
+        if isinstance(error, AuthenticationError):
+            return "authentication"
+        if isinstance(error, RateLimitError):
+            return "rate_limit"
+        if isinstance(error, APITimeoutError):
+            return "timeout"
+        if isinstance(error, APIConnectionError):
+            return "network"
+    except ImportError:
+        pass
+    if isinstance(error, (json.JSONDecodeError, ValueError, TypeError)):
+        return "malformed_output"
+    return "unknown_provider_error"
 
 
 class StructuredCompletionClient(Protocol):
@@ -119,13 +159,13 @@ class OpenAICompletionClient:
                     raise ProviderIncompleteError("OpenAI response was incomplete")
                 parsed = getattr(response, "output_parsed", None)
                 if parsed is None:
-                    raise ProviderResponseError("OpenAI returned no structured output")
+                    raise ProviderEmptyOutputError("OpenAI returned no structured output")
                 result = parsed.model_dump() if isinstance(parsed, BaseModel) else parsed
                 if not isinstance(result, dict) or not result:
-                    raise ProviderResponseError("OpenAI returned empty structured output")
+                    raise ProviderEmptyOutputError("OpenAI returned empty structured output")
                 usage = getattr(response, "usage", None)
                 logger.info(
-                    "interview_provider operation=%s provider=openai model=%s outcome=success duration_ms=%d "
+                    "interview_provider operation=%s provider=openai model=%s outcome=response_received duration_ms=%d "
                     "request_id=%s input_tokens=%s output_tokens=%s total_tokens=%s",
                     operation,
                     self.settings.model,
@@ -142,9 +182,10 @@ class OpenAICompletionClient:
                 last_error = error
                 if attempt >= self.settings.max_retries or not self._retryable(error):
                     logger.warning(
-                        "interview_provider operation=%s provider=openai model=%s outcome=error duration_ms=%d "
-                        "request_id=%s error=%s",
-                        operation, self.settings.model, round((self._clock() - started) * 1000),
+                        "interview_provider operation=%s provider=openai model=%s outcome=provider_error reason=%s "
+                        "duration_ms=%d request_id=%s exception=%s",
+                        operation, self.settings.model, provider_reason_code(error),
+                        round((self._clock() - started) * 1000),
                         getattr(error, "request_id", None) or "unavailable", type(error).__name__,
                     )
                     raise
@@ -186,8 +227,10 @@ class StructuredInterviewProvider:
         operation = (
             "GENERATE exactly the requested number of distinct questions. Use the job title, company, role type, "
             "level, work style, skills, responsibilities, requirements, description, and relevant resume skills, "
-            "experience, projects, education, leadership, and accomplishments. Honor mode and total-turn count. "
-            "Previous questions are supplied in context; do not repeat or paraphrase them. Do not invent evidence."
+            "experience, projects, education, leadership, and accomplishments. Follow the concise interview_plan "
+            "coverage targets, selected difficulty, focus areas, mode, and total-turn count. Challenging means probe "
+            "assumptions and tradeoffs, not trivia. Previous questions are supplied in context; do not repeat or "
+            "paraphrase them. Do not invent evidence or imply a resume fact that is not supplied."
         )
         return self._complete(operation, QuestionSet, {
             "context": context, "previous_questions": [],
@@ -199,10 +242,21 @@ class StructuredInterviewProvider:
         operation = (
             "EVALUATE the current answer semantically using the question type and coaching rubric. Ground every "
             "claim in the current answer. Use history only to avoid repetition and understand patterns. Recommend "
-            "one answer-grounded, role-relevant follow-up only when it would materially improve the coaching value."
+            "one answer-grounded, role-relevant follow-up only when it would materially improve the coaching value. "
+            "The summary is a one-sentence quick verdict; strengths and improvements explain what worked and what "
+            "was missing; suggested_approach gives an exact better-answer strategy. An optional stronger framing may "
+            "reorganize only facts already in the answer and must never add experience, tools, or metrics."
         )
+        safe_history = [
+            {
+                'question_prompt': safe_text(item.get('question_prompt'), 500),
+                'answer': safe_text(item.get('answer'), 1500),
+                'score': item.get('score'),
+            } for item in history[-8:]
+        ]
         return self._complete(operation, Evaluation, {
-            "context": context, "question": question, "answer": answer, "history": history,
+            "context": context, "question": question, "answer": safe_text(answer, 5000),
+            "history": safe_history,
             "current_progress": {"completed_turns": len(history), "total_turns": context["question_count"]},
         })
 
@@ -210,20 +264,46 @@ class StructuredInterviewProvider:
         from services.interview_engine import Debrief
         operation = (
             "DEBRIEF the full interview. Synthesize demonstrated strengths, improvement areas, technical and "
-            "communication signals, patterns across answers, missing specificity, practice recommendations, and "
-            "next steps. Do not invent evidence or recalculate scores."
+            "behavioral and communication signals, patterns across answers, missing specificity, practice recommendations, and "
+            "next steps. Include job readiness areas, exposed skill gaps, one recommended next session, and a short "
+            "personalized action plan. Do not invent evidence or recalculate scores."
         )
-        return self._complete(operation, Debrief, {"context": context, "responses": responses})
+        safe_responses = [
+            {
+                'question_prompt': safe_text(item.get('question_prompt'), 500),
+                'answer': safe_text(item.get('answer'), 1500),
+                'score': item.get('score'),
+                'feedback': {
+                    'strengths': (item.get('feedback') or {}).get('strengths', [])[:3],
+                    'improvements': (item.get('feedback') or {}).get('improvements', [])[:3],
+                },
+            } for item in responses[-8:]
+        ]
+        return self._complete(operation, Debrief, {"context": context, "responses": safe_responses})
 
 
-def build_openai_interview_provider(settings: InterviewAISettings):
+def build_openai_sdk_client(settings: InterviewAISettings):
+    """Initialize the one application-wide SDK transport when configured."""
+    if not settings.enabled:
+        return None
+    try:
+        from openai import OpenAI
+        return OpenAI(api_key=settings.api_key, timeout=settings.timeout_seconds, max_retries=0)
+    except Exception as error:
+        logger.warning('interview_provider provider=openai outcome=disabled reason=%s exception=%s',
+                       provider_reason_code(error), type(error).__name__)
+        return None
+
+
+def build_openai_interview_provider(settings: InterviewAISettings, sdk_client=None):
     """Return None when unconfigured; initialization failures never stop the API."""
     if not settings.enabled:
         logger.info("interview_provider provider=openai outcome=disabled reason=missing_key")
         return None
     try:
-        from openai import OpenAI
-        sdk_client = OpenAI(api_key=settings.api_key, timeout=settings.timeout_seconds, max_retries=0)
+        sdk_client = sdk_client or build_openai_sdk_client(settings)
+        if sdk_client is None:
+            return None
         return StructuredInterviewProvider(
             OpenAICompletionClient(sdk_client, settings), settings.timeout_seconds, settings.model
         )

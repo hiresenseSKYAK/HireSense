@@ -2,12 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ParsedResumeData } from '../api/resume'
 import {
   startInterview,
+  getInterviewHistory,
   getInterviewSession,
   interviewRecoveryKey,
   InterviewApiError,
   submitInterviewAnswer,
   type FinalInterviewResult,
   type InterviewFeedback,
+  type InterviewDifficulty,
+  type InterviewFocus,
+  type InterviewHistoryItem,
   type InterviewMode,
   type InterviewQuestion,
   type InterviewScoreDimension,
@@ -84,7 +88,11 @@ export default function AIInterviewPanel({
   resumeData,
 }: Props) {
   const [mode, setMode] = useState<InterviewMode>('mixed')
+  const [difficulty, setDifficulty] = useState<InterviewDifficulty>('realistic')
+  const [focus, setFocus] = useState<InterviewFocus[]>([])
   const [questionCount, setQuestionCount] = useState<3 | 5 | 8>(5)
+  const [history, setHistory] = useState<InterviewHistoryItem[] | null>(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
   const recoveryKey = useMemo(() => interviewRecoveryKey(jobId, resumeData), [jobId, resumeData])
   const [recoverableSessionId, setRecoverableSessionId] = useState<number | null>(null)
   const [isRecovering, setIsRecovering] = useState(false)
@@ -189,7 +197,7 @@ export default function AIInterviewPanel({
       stopListening()
       setIsLoading(true)
 
-      const firstQuestion = await startInterview(jobId, resumeData, { mode, question_count: questionCount })
+      const firstQuestion = await startInterview(jobId, resumeData, { mode, difficulty, question_count: questionCount, focus })
       if (operation !== operationRef.current) return
       try { if (recoveryKey) sessionStorage.setItem(recoveryKey, String(firstQuestion.session_id)) } catch { /* Recovery is optional when storage is unavailable. */ }
       setRecoverableSessionId(null)
@@ -215,6 +223,24 @@ export default function AIInterviewPanel({
         setIsLoading(false)
       }
     }
+  }
+
+  const handleHistory = async () => {
+    setHistoryLoading(true)
+    setError('')
+    try {
+      setHistory(await getInterviewHistory())
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to load interview history.')
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  const toggleFocus = (value: InterviewFocus) => {
+    setFocus(current => current.includes(value)
+      ? current.filter(item => item !== value)
+      : current.length < 3 ? [...current, value] : current)
   }
 
   const handleSubmit = async () => {
@@ -410,14 +436,53 @@ export default function AIInterviewPanel({
                 <option value={3}>3</option><option value={5}>5</option><option value={8}>8</option>
               </select>
             </label>
+            <label>Difficulty
+              <select value={difficulty} disabled={isLoading || isRecovering} onChange={(e) => setDifficulty(e.target.value as InterviewDifficulty)}>
+                <option value="warm_up">Warm-up</option>
+                <option value="realistic">Realistic</option>
+                <option value="challenging">Challenging</option>
+              </select>
+            </label>
           </div>
+          <fieldset className={styles.focusFieldset}>
+            <legend>Optional focus <span>Choose up to 3</span></legend>
+            <div className={styles.focusOptions}>
+              {([
+                ['technical_depth', 'Technical depth'], ['behavioral_storytelling', 'Behavioral storytelling'],
+                ['resume_projects', 'Resume projects'], ['system_design_reasoning', 'System/design reasoning'],
+                ['communication', 'Communication'], ['weak_skill_areas', 'Weak skill areas'],
+                ['job_requirements', 'Job requirements'],
+              ] as [InterviewFocus, string][]).map(([value, label]) => (
+                <button key={value} type="button" className={focus.includes(value) ? styles.focusActive : styles.focusButton}
+                  aria-pressed={focus.includes(value)} disabled={!focus.includes(value) && focus.length >= 3}
+                  onClick={() => toggleFocus(value)}>{label}</button>
+              ))}
+            </div>
+          </fieldset>
           <p className={styles.sub}>Follow-ups count toward your selected total. The final turn remains a planned question.</p>
+          <p className={styles.privacyNote}>AI coaching uses relevant job and resume information to generate personalized guidance. Contact details are excluded.</p>
           <div className={styles.actionRow}>
             {recoverableSessionId && <button className="btn-outline" disabled={isRecovering} onClick={() => void handleRecover(recoverableSessionId)}>Retry Recovery</button>}
             <button className="btn-primary" onClick={() => void handleStart()} disabled={isLoading || isRecovering}>
               {isLoading ? 'Generating...' : 'Start Interview'}
             </button>
+            <button className="btn-outline" onClick={() => void handleHistory()} disabled={historyLoading}>
+              {historyLoading ? 'Loading history…' : 'Interview History'}
+            </button>
           </div>
+
+          {history && <div className={styles.historyList}>
+            {history.filter(item => item.job_id === jobId).length === 0
+              ? <p className={styles.sub}>Completed interviews for this role will appear here.</p>
+              : history.filter(item => item.job_id === jobId).map(item => (
+              <button type="button" key={item.session_id} className={styles.historyItem} onClick={() => void handleRecover(item.session_id)}>
+                <span><strong>{item.job_title}</strong> · {item.company}</span>
+                <span>{new Date(item.completed_at).toLocaleDateString()} · {item.overall_band} · {item.mode.replace('_', ' ')}</span>
+                {item.major_strengths.length > 0 && <span>Strength: {item.major_strengths[0]}</span>}
+                {item.improvement_areas.length > 0 && <span>Improve: {item.improvement_areas[0]}</span>}
+              </button>
+            ))}
+          </div>}
 
           {error && <div role="alert" className={styles.errorText}>{error}</div>}
         </div>
@@ -425,6 +490,7 @@ export default function AIInterviewPanel({
         <div className={styles.resultsCard}>
           <div className={styles.resultsLabel}>Final Interview Results</div>
           <div className={`${styles.finalScore} ${scoreTone(finalResult.final_score)}`}>{finalResult.final_score}/100</div>
+          {finalResult.overall_band && <div className={styles.benchmark}>{finalResult.overall_band}</div>}
           <div className={styles.resultsSummary}>{finalResult.overall_summary}</div>
           <p className={styles.sub}>{finalResult.source === 'ai' ? 'AI coaching active' : 'Standard coaching mode'} • Scores are coaching signals, not hiring probabilities.</p>
           {finalResult.strongest_responses?.length ? <div><strong>Strongest response evidence</strong><ul>{finalResult.strongest_responses.map((item, i) => <li key={i}>{item.question}<blockquote>{item.answer_excerpt}</blockquote></li>)}</ul></div> : null}
@@ -432,7 +498,12 @@ export default function AIInterviewPanel({
           {finalResult.specificity_needs?.length ? <div><strong>Add specificity</strong><ul>{finalResult.specificity_needs.map((item, i) => <li key={i}>{item}</li>)}</ul></div> : null}
           {finalResult.patterns_across_answers?.length ? <div><strong>Patterns across answers</strong><ul>{finalResult.patterns_across_answers.map((item, i) => <li key={i}>{item}</li>)}</ul></div> : null}
           {finalResult.practice_recommendations?.length ? <div><strong>Practice recommendations</strong><ul>{finalResult.practice_recommendations.map((item, i) => <li key={i}>{item}</li>)}</ul></div> : null}
+          {finalResult.job_readiness_areas?.length ? <div><strong>Job-specific readiness</strong><ul>{finalResult.job_readiness_areas.map((item, i) => <li key={i}>{item}</li>)}</ul></div> : null}
+          {finalResult.skill_gaps_exposed?.length ? <div><strong>Skill gaps exposed</strong><ul>{finalResult.skill_gaps_exposed.map((item, i) => <li key={i}>{item}</li>)}</ul></div> : null}
+          {finalResult.recommended_next_session && <p><strong>Recommended next session:</strong> {finalResult.recommended_next_session}</p>}
+          {finalResult.personalized_action_plan?.length ? <div><strong>Personalized action plan</strong><ol>{finalResult.personalized_action_plan.map((item, i) => <li key={i}>{item}</li>)}</ol></div> : null}
           {finalResult.technical_signals && <p>{finalResult.technical_signals}</p>}
+          {finalResult.behavioral_signals && <p>{finalResult.behavioral_signals}</p>}
           {finalResult.communication_signals && <p>{finalResult.communication_signals}</p>}
           {finalResult.resume_evidence?.length ? <div><strong>Resume context</strong><ul>{finalResult.resume_evidence.map((item, i) => <li key={i}>{item}</li>)}</ul></div> : null}
           {finalResult.strongest_questions?.length ? <div><strong>Strongest answers</strong><ul>{finalResult.strongest_questions.map((item, i) => <li key={i}>{item}</li>)}</ul></div> : null}
@@ -510,6 +581,7 @@ export default function AIInterviewPanel({
               {feedback.communication && <p>{feedback.communication}</p>}
               {feedback.role_relevance && <p>{feedback.role_relevance}</p>}
               {feedback.suggested_approach && <p><strong>Suggested approach:</strong> {feedback.suggested_approach}</p>}
+              {feedback.example_stronger_framing && <p><strong>Example stronger framing:</strong> {feedback.example_stronger_framing}</p>}
               {feedback.evidence?.length ? <ul>{feedback.evidence.map((item, i) => <li key={i}>{item}</li>)}</ul> : null}
               <DimensionList dimensions={feedback.dimensions} />
 

@@ -112,6 +112,21 @@ class OpenAIProviderTests(unittest.TestCase):
         self.assertNotIn("synthetic", joined)
         self.assertNotIn("test-key", joined)
 
+    def test_real_shaped_evaluation_reaches_ai_source_after_adapter_and_validation(self):
+        sdk = FakeSDK([response(evaluation())])
+        provider = StructuredInterviewProvider(OpenAICompletionClient(sdk, settings(max_retries=0)), model='gpt-4o-mini')
+        context = interview_context(
+            {'job_title': 'Engineer', 'skills': ['Python']},
+            {'skills': ['Python'], 'project_entries': []}, 'technical', 3,
+        )
+        result = InterviewEngine(provider).feedback(
+            context, {'question_type': 'technical'},
+            'I built a Python API and tested failure cases.', [],
+        )
+        self.assertEqual(result['source'], 'ai')
+        self.assertEqual(result['score'], 60)
+        self.assertFalse(sdk.responses.calls[0]['store'])
+
     def test_structured_provider_supports_generation_evaluation_and_debrief(self):
         client = Mock()
         client.complete.side_effect = [question_set().model_dump(), evaluation().model_dump(), debrief().model_dump()]

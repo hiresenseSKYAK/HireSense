@@ -12,6 +12,7 @@ import {
   saveResumeAnalysis,
 } from '../utils/resumeStorage'
 import styles from './ResumePage.module.css'
+import ResumeCoachPanel from '../components/ResumeCoachPanel'
 
 function StructuredEntrySection({
   title,
@@ -379,6 +380,8 @@ export default function ResumePage() {
                   <div className={styles.snapshotLabel}>Major Warnings</div>
                 </div>
               </div>
+
+              <ResumeCoachPanel resume={parsed} />
 
               <section className={styles.sectionCard}>
                 <div className={styles.analysisSectionTitle}>Contact Information</div>

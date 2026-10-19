@@ -17,25 +17,33 @@ def main() -> int:
     if provider is None:
         print("OpenAI provider could not be initialized.")
         return 1
-    questions = InterviewEngine(provider).questions(
-        {
-            "job_title": "Software Engineering Intern",
-            "company": "Example Company",
-            "location": "Dallas, TX",
-            "job_type": "Internship",
-            "experience_level": "Internship",
-            "work_style": "Hybrid",
-            "skills": ["Python", "SQL"],
-            "job_description": "Build and test small Python APIs backed by SQL.",
-        },
-        {"skills": ["Python"], "project_entries": [{"title": "Course API", "bullets": ["Built tested API endpoints."]}]},
+    engine = InterviewEngine(provider)
+    job = {
+        "job_title": "Software Engineering Intern",
+        "company": "Example Company",
+        "location": "Dallas, TX",
+        "job_type": "Internship",
+        "experience_level": "Internship",
+        "work_style": "Hybrid",
+        "skills": ["Python", "SQL"],
+        "job_description": "Build and test small Python APIs backed by SQL.",
+    }
+    resume = {"skills": ["Python"], "project_entries": [{"title": "Course API", "bullets": ["Built tested API endpoints."]}]}
+    questions = engine.questions(
+        job, resume,
         "mixed",
         3,
     )
     if not questions or questions[0]["source"] != "ai":
         print("OpenAI request did not produce a validated structured question set; fallback was used.")
         return 1
-    print(f"OpenAI structured-output smoke test succeeded with model {settings.model!r}.")
+    from services.interview_engine import interview_context
+    answer = "I built a Python API, chose SQL for structured data, and tested failure cases before delivery."
+    feedback = engine.feedback(interview_context(job, resume, "mixed", 3), questions[0], answer, [])
+    if feedback.get("source") != "ai":
+        print("OpenAI evaluation reached the provider but failed validated acceptance; fallback was used.")
+        return 1
+    print(f"OpenAI question and evaluation acceptance smoke test succeeded with model {settings.model!r}.")
     return 0
 
 

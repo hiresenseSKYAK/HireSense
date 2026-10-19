@@ -96,7 +96,12 @@ class InterviewStartRequest(BaseModel):
     job_id: int = Field(gt=0, strict=True)
     resume_data: InterviewResumeContext
     mode: Literal["behavioral", "technical", "mixed", "role_specific"] = "mixed"
+    difficulty: Literal["warm_up", "realistic", "challenging"] = "realistic"
     question_count: Literal[3, 5, 8] = 5
+    focus: List[Literal[
+        "technical_depth", "behavioral_storytelling", "resume_projects",
+        "system_design_reasoning", "communication", "weak_skill_areas", "job_requirements",
+    ]] = Field(default_factory=list, max_length=3)
 
     @field_validator("question_count", mode="before")
     @classmethod
@@ -140,6 +145,7 @@ class InterviewFeedbackOut(BaseModel):
     role_relevance: str = ""
     evidence: List[str] = Field(default_factory=list)
     suggested_approach: str = ""
+    example_stronger_framing: str = ""
     follow_up: Optional[str] = None
 
 
@@ -151,12 +157,14 @@ class InterviewResponseReference(BaseModel):
 
 class FinalInterviewResultOut(BaseModel):
     final_score: int = Field(ge=0, le=100)
+    overall_band: str = ""
     overall_summary: str
     top_strengths: List[str] = Field(default_factory=list)
     next_steps: List[str] = Field(default_factory=list)
     dimensions: List[InterviewScoreDimension] = Field(default_factory=list)
     source: Literal["ai", "fallback"] = "fallback"
     technical_signals: str = ""
+    behavioral_signals: str = ""
     communication_signals: str = ""
     resume_evidence: List[str] = Field(default_factory=list)
     strongest_questions: List[str] = Field(default_factory=list)
@@ -166,6 +174,10 @@ class FinalInterviewResultOut(BaseModel):
     specificity_needs: List[str] = Field(default_factory=list)
     patterns_across_answers: List[str] = Field(default_factory=list)
     practice_recommendations: List[str] = Field(default_factory=list)
+    job_readiness_areas: List[str] = Field(default_factory=list)
+    skill_gaps_exposed: List[str] = Field(default_factory=list)
+    recommended_next_session: str = ""
+    personalized_action_plan: List[str] = Field(default_factory=list)
 
 
 class InterviewAnswerRequest(BaseModel):
@@ -198,3 +210,17 @@ class InterviewSessionOut(BaseModel):
     total_questions: int
     current_question: Optional[InterviewQuestionOut] = None
     last_response: Optional[InterviewAnswerResponse] = None
+
+
+class InterviewHistoryItem(BaseModel):
+    session_id: int
+    job_id: int
+    job_title: str
+    company: str
+    completed_at: datetime
+    mode: Literal["behavioral", "technical", "mixed", "role_specific"]
+    difficulty: Literal["warm_up", "realistic", "challenging"] = "realistic"
+    overall_band: str
+    major_strengths: List[str] = Field(default_factory=list)
+    improvement_areas: List[str] = Field(default_factory=list)
+    source: Literal["ai", "fallback"] = "fallback"

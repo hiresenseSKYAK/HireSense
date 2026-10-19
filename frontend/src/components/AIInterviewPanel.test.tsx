@@ -3,9 +3,9 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AIInterviewPanel from './AIInterviewPanel'
-import { getInterviewSession, interviewRecoveryKey, InterviewApiError, startInterview, submitInterviewAnswer } from '../api/interview'
+import { getInterviewHistory, getInterviewSession, interviewRecoveryKey, InterviewApiError, startInterview, submitInterviewAnswer } from '../api/interview'
 
-vi.mock('../api/interview', async () => ({ ...(await vi.importActual('../api/interview')), startInterview: vi.fn(), submitInterviewAnswer: vi.fn(), getInterviewSession: vi.fn() }))
+vi.mock('../api/interview', async () => ({ ...(await vi.importActual('../api/interview')), startInterview: vi.fn(), submitInterviewAnswer: vi.fn(), getInterviewSession: vi.fn(), getInterviewHistory: vi.fn() }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const resume = { name: null, email: null, phone: null, skills: ['Python'], education: [], experience: [], projects: [], leadership: [], experience_entries: [], project_entries: [], leadership_entries: [] }
 const q = { session_id: 1, question_id: 'q1', question_index: 1, total_questions: 3, prompt: 'Describe your Python project.', focus_area: 'Technical', tips: [], source: 'fallback' as const, question_type: 'mixed' as const, is_follow_up: false, parent_question_id: null, mode: 'mixed' as const }
@@ -44,7 +44,7 @@ describe('AIInterviewPanel', () => {
     await render()
     expect(container.textContent).toContain('Total questions')
     await click('Start Interview')
-    expect(startInterview).toHaveBeenCalledWith(1, resume, { mode: 'mixed', question_count: 5 })
+    expect(startInterview).toHaveBeenCalledWith(1, resume, { mode: 'mixed', difficulty: 'realistic', question_count: 5, focus: [] })
     expect(container.textContent).toContain('Guided practice question')
     vi.mocked(submitInterviewAnswer).mockResolvedValueOnce({ session_id: 1, question_index: 1, is_complete: false, feedback, next_question: { ...q, question_id: 'q1-followup', prompt: 'What changed afterward?', is_follow_up: true }, final_result: null })
     await typeAnswer('I built a parser.')
@@ -94,7 +94,7 @@ describe('AIInterviewPanel', () => {
         selects[1].dispatchEvent(new Event('change', { bubbles: true }))
       })
       await click('Start Interview')
-      expect(startInterview).toHaveBeenLastCalledWith(1, resume, { mode, question_count: count })
+      expect(startInterview).toHaveBeenLastCalledWith(1, resume, { mode, difficulty: 'realistic', question_count: count, focus: [] })
       await click('Restart')
     }
   })
@@ -109,6 +109,42 @@ describe('AIInterviewPanel', () => {
     expect(button.disabled).toBe(true)
     expect(container.textContent).toContain('Preparing questions')
     await act(async () => resolve(q))
+  })
+
+  it('passes difficulty and selected focus into the private interview plan', async () => {
+    await render()
+    const selects = container.querySelectorAll('select')
+    await act(async () => {
+      selects[2].value = 'challenging'
+      selects[2].dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    await click('Technical depth')
+    await click('Resume projects')
+    await click('Start Interview')
+    expect(startInterview).toHaveBeenCalledWith(1, resume, {
+      mode: 'mixed', difficulty: 'challenging', question_count: 5,
+      focus: ['technical_depth', 'resume_projects'],
+    })
+  })
+
+  it('opens an owned completed report from interview history', async () => {
+    vi.mocked(getInterviewHistory).mockResolvedValueOnce([{
+      session_id: 7, job_id: 1, job_title: 'Engineer', company: 'Acme',
+      completed_at: '2026-10-18T12:00:00', mode: 'mixed', difficulty: 'realistic',
+      overall_band: 'Strong', major_strengths: ['Clear ownership'], improvement_areas: [], source: 'ai',
+    }])
+    vi.mocked(getInterviewSession).mockResolvedValueOnce({
+      session_id: 7, job_id: 1, status: 'completed', mode: 'mixed', total_questions: 3,
+      current_question: null,
+      last_response: { session_id: 7, question_index: 3, is_complete: true, feedback,
+        next_question: null, final_result: { final_score: 75, overall_summary: 'Good examples.',
+          top_strengths: ['Clear ownership'], next_steps: [], source: 'ai' } },
+    })
+    await render()
+    await click('Interview History')
+    expect(container.textContent).toContain('Strong')
+    await act(async () => container.querySelector('button[class*="historyItem"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+    expect(container.textContent).toContain('Good examples.')
   })
 
   it('supports start error and retry', async () => {

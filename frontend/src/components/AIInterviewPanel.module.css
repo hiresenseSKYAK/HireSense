@@ -342,3 +342,16 @@
 .optionsRow { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0; }
 .optionsRow label { display: grid; gap: 6px; font-size: 14px; }
 .optionsRow select { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border, #ddd); color: inherit; background: var(--surface, white); }
+
+.focusFieldset { border: 0; padding: 0; margin: 0; }
+.focusFieldset legend { color: var(--text-primary); font-size: 0.84rem; font-weight: 700; margin-bottom: 8px; }
+.focusFieldset legend span { color: var(--text-muted); font-weight: 400; margin-left: 6px; }
+.focusOptions { display: flex; flex-wrap: wrap; gap: 8px; }
+.focusButton,
+.focusActive { border: 1px solid var(--border); border-radius: 999px; padding: 7px 10px; background: var(--surface); color: var(--text-secondary); cursor: pointer; font: inherit; font-size: 0.78rem; }
+.focusActive { border-color: var(--accent); background: rgba(var(--caramel-rgb), 0.16); color: var(--accent-text); font-weight: 700; }
+.focusButton:disabled { cursor: not-allowed; opacity: 0.45; }
+.privacyNote { margin: 0; color: var(--text-muted); font-size: 0.78rem; line-height: 1.5; }
+.historyList { display: grid; gap: 8px; }
+.historyItem { display: grid; gap: 4px; width: 100%; text-align: left; padding: 11px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text-secondary); cursor: pointer; }
+.historyItem span:first-child { color: var(--text-primary); }

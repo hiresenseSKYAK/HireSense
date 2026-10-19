@@ -5,12 +5,14 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from api.schemas import InterviewAnswerRequest, InterviewAnswerResponse, InterviewQuestionOut, InterviewStartRequest, InterviewSessionOut
+from api.schemas import (InterviewAnswerRequest, InterviewAnswerResponse, InterviewHistoryItem,
+                         InterviewQuestionOut, InterviewStartRequest, InterviewSessionOut)
 from database.connection import get_db
 from database.models import InterviewResponse, InterviewSession, Job, UserSession
-from services.interview_engine import InterviewEngine, interview_context, questions_overlap
+from services.interview_engine import InterviewEngine, _benchmark, interview_context, questions_overlap
 from services.interview_context import safe_resume_context, safe_text
 from services.interview_service import _description_text, _extract_job_skills
 from services.job_location import assess_job_geography
@@ -20,6 +22,7 @@ SESSION_LIFETIME = timedelta(hours=24)
 START_WINDOW = timedelta(hours=1)
 MAX_STARTS_PER_WINDOW = 10
 MAX_PROVIDER_CALLS_PER_SESSION = 10
+MAX_PROVIDER_CALLS_PER_USER_WINDOW = 24
 CLAIM_LIFETIME = timedelta(minutes=2)
 logger = logging.getLogger(__name__)
 
@@ -74,7 +77,7 @@ def _authorize(session, user_id):
     metadata = json.loads(session.resume_snapshot).get('_interview', {})
     if metadata.get('version') != 2:
         raise HTTPException(410, 'Start a new interview to use the updated session flow.')
-    if session.created_at + SESSION_LIFETIME <= datetime.utcnow():
+    if session.status == 'in_progress' and session.created_at + SESSION_LIFETIME <= datetime.utcnow():
         raise HTTPException(410, 'This interview expired. Start a new interview.')
 
 
@@ -100,6 +103,10 @@ def start_interview(
     ).count()
     if recent_starts >= MAX_STARTS_PER_WINDOW:
         raise HTTPException(429, 'Interview start limit reached. Try again later.')
+    recent_provider_calls = db.query(func.coalesce(func.sum(InterviewSession.provider_call_count), 0)).filter(
+        InterviewSession.user_id == user_id,
+        InterviewSession.created_at > datetime.utcnow() - START_WINDOW,
+    ).scalar() or 0
     job = db.query(Job).filter(Job.id == body.job_id, Job.active.is_(True),
                                Job.experience_level.in_(['Internship', 'Entry level'])).first()
     if not job or not assess_job_geography(job.location, job.work_style, job.job_description).accepted:
@@ -116,20 +123,57 @@ def start_interview(
     job_data = _job_snapshot(job)
     # Release the read transaction before the optional network call.
     db.rollback()
-    questions = engine.questions(job_data, resume, body.mode, body.question_count)
+    use_provider = engine.provider is not None and recent_provider_calls < MAX_PROVIDER_CALLS_PER_USER_WINDOW
+    if engine.provider is not None and not use_provider:
+        logger.info('interview_provider operation=questions provider=openai outcome=fallback reason=rate_limit')
+    operation_engine = engine if use_provider else InterviewEngine()
+    questions = operation_engine.questions(job_data, resume, body.mode, body.question_count,
+                                           body.difficulty, body.focus)
     # Store versioned session metadata in existing JSON, avoiding a production migration.
-    resume['_interview'] = {'version': 2, 'mode': body.mode, 'base_count': body.question_count,
+    resume['_interview'] = {'version': 2, 'mode': body.mode, 'difficulty': body.difficulty,
+                            'focus': body.focus, 'base_count': body.question_count,
                             'count_semantics': 'total_turns'}
     session = InterviewSession(
         user_id=user_id, job_id=job_id, status='in_progress', current_question_index=0,
         total_questions=len(questions), job_snapshot=json.dumps(job_data),
         resume_snapshot=json.dumps(resume), question_set=json.dumps(questions),
-        provider_call_count=1 if engine.provider is not None else 0,
+        provider_call_count=1 if use_provider else 0,
     )
     db.add(session)
     db.commit()
     db.refresh(session)
     return _question_out(session, questions[0], 0)
+
+
+@router.get('/history', response_model=list[InterviewHistoryItem])
+def interview_history(
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    """Return only the signed-in user's recent completed coaching sessions."""
+    user_id = _resolve_user_id(db, authorization)
+    sessions = db.query(InterviewSession).filter(
+        InterviewSession.user_id == user_id, InterviewSession.status == 'completed',
+    ).order_by(InterviewSession.updated_at.desc()).limit(20).all()
+    history = []
+    for session in sessions:
+        latest = db.query(InterviewResponse).filter(
+            InterviewResponse.session_id == session.id,
+        ).order_by(InterviewResponse.question_index.desc()).first()
+        cached = json.loads(latest.feedback_json).get('_response') if latest else None
+        final = (cached or {}).get('final_result') or {}
+        job = json.loads(session.job_snapshot)
+        metadata = json.loads(session.resume_snapshot).get('_interview', {})
+        history.append(InterviewHistoryItem(
+            session_id=session.id, job_id=session.job_id, job_title=job.get('job_title') or 'Role',
+            company=job.get('company') or 'Company', completed_at=session.updated_at,
+            mode=metadata.get('mode', 'mixed'), difficulty=metadata.get('difficulty', 'realistic'),
+            overall_band=_benchmark(session.final_score or 0),
+            major_strengths=(final.get('top_strengths') or [])[:3],
+            improvement_areas=(final.get('next_steps') or [])[:3],
+            source=final.get('source', 'fallback'),
+        ))
+    return history
 
 
 @router.post('/{session_id}/answer', response_model=InterviewAnswerResponse)
@@ -174,7 +218,8 @@ def answer_interview_question(
     resume = json.loads(resume_snapshot)
     metadata = resume.get('_interview', {})
     context = interview_context(json.loads(job_snapshot), resume,
-                                metadata.get('mode', 'mixed'), metadata.get('base_count', len(questions)))
+                                metadata.get('mode', 'mixed'), metadata.get('base_count', len(questions)),
+                                metadata.get('difficulty', 'realistic'), metadata.get('focus', []))
     saved = db.query(InterviewResponse).filter(
         InterviewResponse.session_id == session.id,
     ).order_by(InterviewResponse.question_index).all()
@@ -182,7 +227,15 @@ def answer_interview_question(
                     feedback={k: v for k, v in json.loads(r.feedback_json).items() if k != '_response'}) for r in saved]
     question = questions[index]
     provider_calls_needed = 1 + (1 if index + 1 == len(questions) else 0)
-    use_provider = engine.provider is not None and provider_call_count + provider_calls_needed <= MAX_PROVIDER_CALLS_PER_SESSION
+    recent_provider_calls = db.query(func.coalesce(func.sum(InterviewSession.provider_call_count), 0)).filter(
+        InterviewSession.user_id == user_id,
+        InterviewSession.created_at > datetime.utcnow() - START_WINDOW,
+    ).scalar() or 0
+    use_provider = (engine.provider is not None
+                    and provider_call_count + provider_calls_needed <= MAX_PROVIDER_CALLS_PER_SESSION
+                    and recent_provider_calls + provider_calls_needed <= MAX_PROVIDER_CALLS_PER_USER_WINDOW)
+    if engine.provider is not None and not use_provider:
+        logger.info('interview_provider operation=evaluate provider=openai outcome=fallback reason=rate_limit')
 
     # Claim and commit before any provider work. The conditional claim prevents
     # duplicate/concurrent turn processing without holding a database lock remotely.
@@ -225,6 +278,7 @@ def answer_interview_question(
         if (not current or current.current_question_index != index or current.status != 'in_progress'
                 or current.processing_question_index != index or current.processing_answer_hash != answer_hash):
             db.rollback()
+            logger.info('interview_provider operation=evaluate provider=openai outcome=fallback reason=stale_operation')
             raise HTTPException(409, 'This answer is no longer current. Retry to load the saved result.')
         session = current
         session.question_set = json.dumps(questions)

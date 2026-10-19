@@ -3,10 +3,11 @@ import json
 import logging
 import re
 import time
+import unicodedata
 from difflib import SequenceMatcher
 from typing import Annotated, Literal, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from services.interview_context import safe_resume_context, safe_text
 
@@ -53,13 +54,8 @@ class Evaluation(ModelOutput):
     role_relevance: str = Field(default='', max_length=1000)
     evidence: list[BriefText] = Field(min_length=1, max_length=5)
     suggested_approach: str = Field(default='', max_length=1000)
-    follow_up: str | None = Field(default=None, min_length=10, max_length=600)
-
-    @model_validator(mode='after')
-    def consistent_scores(self):
-        if len({d.label for d in self.dimensions}) != 4 or sum(d.score for d in self.dimensions) != self.score:
-            raise ValueError('Dimensions must be unique and sum to the score.')
-        return self
+    example_stronger_framing: str = Field(default='', max_length=1000)
+    follow_up: str | None = None
 
 
 class Debrief(ModelOutput):
@@ -67,9 +63,14 @@ class Debrief(ModelOutput):
     top_strengths: list[BriefText] = Field(max_length=5)
     next_steps: list[BriefText] = Field(max_length=5)
     technical_signals: str = Field(default='', max_length=1000)
+    behavioral_signals: str = Field(default='', max_length=1000)
     communication_signals: str = Field(default='', max_length=1000)
     patterns_across_answers: list[BriefText] = Field(default_factory=list, max_length=5)
     practice_recommendations: list[BriefText] = Field(default_factory=list, max_length=5)
+    job_readiness_areas: list[BriefText] = Field(default_factory=list, max_length=5)
+    skill_gaps_exposed: list[BriefText] = Field(default_factory=list, max_length=5)
+    recommended_next_session: str = Field(default='', max_length=500)
+    personalized_action_plan: list[BriefText] = Field(default_factory=list, max_length=5)
     # Evidence is supplied by the server, never invented by the model.
 
 
@@ -98,22 +99,81 @@ def followup_is_grounded(follow_up: str, answer: str) -> bool:
                     if len(term) >= 3 and term not in ignored}
     followup_terms = {term for term in re.findall(r'[a-z0-9+#.]+', follow_up.casefold())
                       if len(term) >= 3 and term not in ignored}
-    return bool(answer_terms & followup_terms)
+    if answer_terms & followup_terms:
+        return True
+    triggers = (
+        (r'\b\d+(?:\.\d+)?\s*(?:%|percent|x)?\b', r'\b(metric|measure|quantif|number|result|change)\w*\b'),
+        (r'\b(we|team|group)\b', r'\b(you|your|personally|ownership|part|role)\b'),
+        (r'\b(chose|selected|decided|used|built|implemented)\b', r'\b(why|trade.?off|alternative|reason)\w*\b'),
+        (r'\b(test|validat|deploy|monitor|production)\w*\b', r'\b(test|validat|failure|measure|monitor|production)\w*\b'),
+    )
+    return any(re.search(signal, answer, re.I) and re.search(probe, follow_up, re.I)
+               for signal, probe in triggers)
 
 
-def interview_context(job: dict, resume: dict, mode: str, count: int) -> dict:
+def _normalized_evidence(value: str) -> str:
+    value = unicodedata.normalize('NFKC', value).casefold()
+    value = value.translate(str.maketrans({'“': '"', '”': '"', '’': "'", '‘': "'", '—': '-', '–': '-'}))
+    return ' '.join(re.findall(r'[\w+#]+', value, flags=re.UNICODE))
+
+
+def evidence_is_grounded(evidence: str, answer: str) -> bool:
+    """Accept faithful excerpts despite harmless quote, punctuation, case, or spacing drift."""
+    needle = _normalized_evidence(evidence)
+    return bool(needle) and needle in _normalized_evidence(answer)
+
+
+def build_interview_plan(context: dict) -> list[dict]:
+    """Create concise coverage metadata, not hidden model reasoning."""
+    count = context['question_count']
+    mode = context['mode']
+    selected_focus = context.get('focus', [])
+    primary = context['skills'].get('primary') or 'role fundamentals'
+    gap = context['skills'].get('gap') or 'growth area'
+    projects = context['resume'].get('project_entries', [])
+    project = projects[0]['title'] if projects else 'resume evidence'
+    technical = [
+        ('project_ownership', project), ('technical_depth', primary), ('skill_gap', gap),
+        ('debugging_tradeoffs', primary), ('testing_reliability', primary), ('system_design', primary),
+        ('production_incident', primary), ('implementation_review', primary),
+    ]
+    behavioral = [
+        ('ownership', project), ('storytelling', project), ('teamwork', 'collaboration'),
+        ('adaptability', gap), ('outcomes_reflection', project), ('communication', 'role responsibilities'),
+        ('conflict_resolution', 'collaboration'), ('learning', gap),
+    ]
+    if mode == 'technical':
+        pool = technical
+    elif mode == 'behavioral':
+        pool = behavioral
+    elif mode == 'role_specific':
+        pool = [('role_responsibility', primary), *technical, *behavioral]
+    else:
+        pool = [technical[0], technical[1], behavioral[0], technical[2], technical[3], behavioral[2],
+                behavioral[4], technical[4]]
+    if selected_focus:
+        pool = [('selected_focus', ', '.join(selected_focus[:3])), *pool]
+    return [{'position': index + 1, 'target': target, 'anchor': safe_text(anchor, 120)}
+            for index, (target, anchor) in enumerate(pool[:count])]
+
+
+def interview_context(job: dict, resume: dict, mode: str, count: int,
+                      difficulty: str = 'realistic', focus: list[str] | None = None) -> dict:
     resume = safe_resume_context(resume)
-    focus = _build_focus_skills(job, resume)
-    focus = {key: [safe_text(v, 100) for v in value[:50]] if isinstance(value, list) else safe_text(value, 100)
-             for key, value in focus.items()}
+    skill_focus = _build_focus_skills(job, resume)
+    skill_focus = {key: [safe_text(v, 100) for v in value[:50]] if isinstance(value, list) else safe_text(value, 100)
+                   for key, value in skill_focus.items()}
     description = safe_text(_description_text(job), 12000)
-    return {
+    context = {
         'job': {key: safe_text(job.get(key), 500) for key in (
             'job_title', 'company', 'location', 'job_type', 'experience_level', 'work_style')},
-        'description': description,
-        'skills': focus, 'resume': resume, 'mode': mode, 'question_count': count,
+        'description': description, 'skills': skill_focus, 'resume': resume, 'mode': mode,
+        'difficulty': difficulty, 'focus': [safe_text(item, 80) for item in (focus or [])[:3]],
+        'question_count': count,
         'count_semantics': 'total_turns',
     }
+    context['interview_plan'] = build_interview_plan(context)
+    return context
 
 
 def fallback_evaluation(question, answer):
@@ -160,9 +220,20 @@ def fallback_evaluation(question, answer):
 class InterviewEngine:
     def __init__(self, provider: InterviewProvider | None = None):
         self.provider = provider
+        self._last_reason: str | None = None
+
+    def _diagnostic(self, operation: str, outcome: str, reason: str | None = None):
+        logger.info(
+            'interview_provider operation=%s provider=%s model=%s outcome=%s%s',
+            operation, getattr(self.provider, 'provider_name', 'openai' if self.provider else 'none'),
+            getattr(self.provider, 'model', 'unknown'), outcome,
+            f' reason={reason}' if reason else '',
+        )
 
     def _call(self, method, schema, *args):
         if self.provider is None:
+            self._last_reason = 'provider_unconfigured'
+            self._diagnostic(method, 'fallback', self._last_reason)
             return None
         started = time.monotonic()
         try:
@@ -171,35 +242,55 @@ class InterviewEngine:
                 if len(raw.encode('utf-8')) > 24000:
                     raise ValueError('Provider response exceeds input limit.')
                 raw = json.loads(raw)
+            if schema is Evaluation and isinstance(raw, dict):
+                optional_probe = raw.get('follow_up')
+                if isinstance(optional_probe, str) and not 10 <= len(optional_probe) <= 600:
+                    raw = dict(raw, follow_up=None)
             result = schema.model_validate(raw).model_dump()
             limit = 24000 if schema is QuestionSet else 6000
             if len(json.dumps(result).encode('utf-8')) > limit:
                 raise ValueError('Provider output exceeds the storage budget.')
+            self._last_reason = None
             return result
         except Exception as error:
+            from services.interview_provider import provider_reason_code
+            if isinstance(error, ValidationError):
+                reason = 'schema_validation'
+            else:
+                reason = provider_reason_code(error)
+            self._last_reason = reason
             # Never log provider errors verbatim: they can contain answers or credentials.
             logger.warning(
-                'interview_provider operation=%s provider=%s model=%s outcome=fallback duration_ms=%d error=%s',
+                'interview_provider operation=%s provider=%s model=%s outcome=fallback reason=%s '
+                'duration_ms=%d exception=%s',
                 method, getattr(self.provider, 'provider_name', 'configured'),
-                getattr(self.provider, 'model', 'unknown'), round((time.monotonic() - started) * 1000),
+                getattr(self.provider, 'model', 'unknown'), reason,
+                round((time.monotonic() - started) * 1000),
                 type(error).__name__,
             )
             return None
 
-    def questions(self, job, resume, mode='mixed', count=5):
-        context = interview_context(job, resume, mode, count)
+    def questions(self, job, resume, mode='mixed', count=5, difficulty='realistic', focus=None):
+        context = interview_context(job, resume, mode, count, difficulty, focus)
         generated = self._call('generate', QuestionSet, context)
         source = 'ai'
         if generated and len(generated['questions']) == count:
             questions = generated['questions']
             if any(questions_overlap(q['prompt'], previous['prompt'])
                    for i, q in enumerate(questions) for previous in questions[:i]):
+                self._last_reason = 'duplicate_questions'
                 generated = None
             if mode != 'mixed' and any(q['question_type'] != mode for q in questions):
-                generated = None
+                # The selected mode is server-authoritative; repairing this label is safe.
+                for question in questions:
+                    question['question_type'] = mode
         else:
+            if generated is not None:
+                self._last_reason = 'semantic_validation'
             generated = None
         if generated is None:
+            if self.provider is not None and self._last_reason:
+                self._diagnostic('questions', 'fallback', self._last_reason)
             source = 'fallback'
             questions = generate_interview_questions(job, resume)
             focus = context['skills']['primary']
@@ -240,6 +331,8 @@ class InterviewEngine:
                 for q in questions:
                     q['prompt'] += f" Connect your answer to the {context['job']['job_title']} responsibilities."
             questions = questions[:count]
+        else:
+            self._diagnostic('questions', 'accepted')
         if mode == 'mixed' and source == 'fallback':
             for i, q in enumerate(questions):
                 q['question_type'] = 'technical' if i in (1, 2, 7) else 'behavioral' if i == 5 else 'role_specific'
@@ -249,13 +342,32 @@ class InterviewEngine:
 
     def feedback(self, context, question, answer, history):
         result = self._call('evaluate', Evaluation, context, question, answer, history)
-        # Evidence must be a literal excerpt of the candidate's answer.
-        if result and (not result['evidence'] or any(not e.strip() or e not in answer for e in result['evidence'])):
+        if result:
+            labels = [dimension['label'] for dimension in result['dimensions']]
+            dimension_total = sum(dimension['score'] for dimension in result['dimensions'])
+            if len(set(labels)) != 4:
+                self._last_reason = 'semantic_validation'
+                result = None
+            elif abs(dimension_total - result['score']) <= 4:
+                # The rubric dimensions are the auditable score authority. Small model
+                # rounding drift is normalized instead of discarding otherwise useful coaching.
+                result['score'] = dimension_total
+            else:
+                self._last_reason = 'semantic_validation'
+                result = None
+        # Evidence remains grounded, while harmless formatting drift is tolerated.
+        if result and (not result['evidence'] or any(not evidence_is_grounded(e, answer) for e in result['evidence'])):
+            self._last_reason = 'evidence_validation'
             result = None
-        if result and result.get('follow_up') and not followup_is_grounded(result['follow_up'], answer):
+        if result and result.get('follow_up') and (
+                len(result['follow_up']) < 10 or len(result['follow_up']) > 600
+                or not followup_is_grounded(result['follow_up'], answer)):
             result['follow_up'] = None
         if result:
+            self._diagnostic('evaluate', 'accepted')
             return dict(result, benchmark=_benchmark(result['score']), source='ai')
+        if self.provider is not None and self._last_reason:
+            self._diagnostic('evaluate', 'fallback', self._last_reason)
         result = fallback_evaluation(question, answer)
         weakest = min(result['dimensions'], key=lambda d: d['score'])['label']
         followups = {
@@ -279,13 +391,25 @@ class InterviewEngine:
 
     def final(self, context, responses):
         result = build_final_result(responses)
+        result['overall_band'] = _benchmark(result['final_score'])
         generated = self._call('debrief', Debrief, context, responses)
+        if generated:
+            transcript_numbers = set(re.findall(r'\b\d+(?:\.\d+)?%?\b',
+                                                ' '.join(r.get('answer', '') for r in responses)))
+            generated_numbers = set(re.findall(r'\b\d+(?:\.\d+)?%?\b', json.dumps(generated)))
+            if not generated_numbers <= transcript_numbers:
+                self._last_reason = 'evidence_validation'
+                generated = None
+        if generated:
+            self._diagnostic('debrief', 'accepted')
+        elif self.provider is not None and self._last_reason:
+            self._diagnostic('debrief', 'fallback', self._last_reason)
         result.update(generated or {})
         result.update(source='ai' if generated else 'fallback',
                       resume_evidence=[e['title'] for e in context['resume']['project_entries'] + context['resume']['experience_entries']
                                        if e['title'] and any(e['title'].casefold() in r.get('answer', '').casefold() for r in responses)][:5],
                       strongest_questions=[r['question_prompt'][:500] for r in sorted(responses, key=lambda r: r['score'], reverse=True)[:2]],
-                      practice_questions=[r['question_prompt'][:500] for r in sorted(responses, key=lambda r: r['score'])[:2]])
+                       practice_questions=[r['question_prompt'][:500] for r in sorted(responses, key=lambda r: r['score'])[:3]])
         def response_reference(r):
             return {'question': r['question_prompt'][:500], 'answer_excerpt': r.get('answer', '')[:500], 'score': r['score']}
         ordered = sorted(responses, key=lambda r: r['score'])
@@ -295,6 +419,7 @@ class InterviewEngine:
                           improvement for r in responses for improvement in r.get('feedback', {}).get('improvements', [])))[:5])
         if not generated:
             result.update(technical_signals='Review technical correctness separately; these scores measure answer signals.',
+                           behavioral_signals='Review ownership, actions, outcomes, and reflection in each example.',
                           communication_signals=result['overall_summary'], patterns_across_answers=[],
                           practice_recommendations=result.get('next_steps', []))
         # Keep cached final answer + debrief within existing MySQL TEXT storage.
@@ -304,6 +429,8 @@ class InterviewEngine:
                 item['answer_excerpt'] = item['answer_excerpt'][:200]
                 item['question'] = item['question'][:200]
         for key in ('resume_evidence', 'strongest_questions', 'practice_questions', 'specificity_needs',
-                    'patterns_across_answers', 'practice_recommendations'):
+                    'patterns_across_answers', 'practice_recommendations', 'job_readiness_areas',
+                    'skill_gaps_exposed', 'personalized_action_plan'):
+            result.setdefault(key, [])
             result[key] = [item[:200] for item in result[key]]
         return result

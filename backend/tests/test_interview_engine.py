@@ -62,6 +62,36 @@ class EngineTests(unittest.TestCase):
         provider.evaluate.return_value = dict(valid, score=99)
         self.assertEqual(engine.feedback(context, question, 'I used Python.', [])['source'], 'fallback')
 
+    def test_evidence_formatting_and_small_score_drift_are_repaired(self):
+        provider = Mock()
+        provider.evaluate.return_value = {
+            'score': 61, 'summary': 'Clear implementation detail.', 'strengths': ['Specific choice.'],
+            'improvements': ['Add the measured result.'],
+            'dimensions': [{'label': label, 'score': 15} for label in ('Relevance', 'Structure', 'Specificity', 'Impact')],
+            'evidence': ['i built a “Python API”'],
+            'follow_up': 'What metric changed after that implementation?',
+        }
+        context = interview_context(JOB, RESUME, 'technical', 3)
+        result = InterviewEngine(provider).feedback(
+            context, {'question_type': 'technical'}, 'I built a "Python API" — then tested it.', [],
+        )
+        self.assertEqual(result['source'], 'ai')
+        self.assertEqual(result['score'], 60)
+        # The optional probe is dropped without discarding otherwise valid coaching.
+        self.assertIsNone(result['follow_up'])
+
+    def test_reason_code_logging_does_not_include_private_provider_message(self):
+        provider = Mock(provider_name='openai', model='gpt-4o-mini')
+        provider.evaluate.side_effect = TimeoutError('private answer content')
+        with self.assertLogs('services.interview_engine', level='WARNING') as logs:
+            result = InterviewEngine(provider).feedback(
+                interview_context(JOB, RESUME, 'mixed', 3), {}, 'I built a Python API.', [],
+            )
+        joined = ' '.join(logs.output)
+        self.assertEqual(result['source'], 'fallback')
+        self.assertIn('reason=timeout', joined)
+        self.assertNotIn('private answer content', joined)
+
     def test_final_has_grounded_questions_and_server_average(self):
         engine = InterviewEngine()
         q = engine.questions(JOB, RESUME)[0]

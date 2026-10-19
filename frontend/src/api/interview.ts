@@ -4,7 +4,9 @@ import { getAuthSession } from './auth'
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
 
 export type InterviewMode = 'behavioral' | 'technical' | 'mixed' | 'role_specific'
-export type InterviewOptions = { mode: InterviewMode; question_count: 3 | 5 | 8 }
+export type InterviewDifficulty = 'warm_up' | 'realistic' | 'challenging'
+export type InterviewFocus = 'technical_depth' | 'behavioral_storytelling' | 'resume_projects' | 'system_design_reasoning' | 'communication' | 'weak_skill_areas' | 'job_requirements'
+export type InterviewOptions = { mode: InterviewMode; difficulty?: InterviewDifficulty; question_count: 3 | 5 | 8; focus?: InterviewFocus[] }
 
 export type InterviewQuestion = {
   session_id: number
@@ -40,17 +42,20 @@ export type InterviewFeedback = {
   role_relevance?: string
   evidence?: string[]
   suggested_approach?: string
+  example_stronger_framing?: string
   follow_up?: string | null
 }
 
 export type FinalInterviewResult = {
   final_score: number
+  overall_band?: string
   overall_summary: string
   top_strengths: string[]
   next_steps: string[]
   dimensions?: InterviewScoreDimension[]
   source: 'ai' | 'fallback'
   technical_signals?: string
+  behavioral_signals?: string
   communication_signals?: string
   resume_evidence?: string[]
   strongest_questions?: string[]
@@ -60,6 +65,16 @@ export type FinalInterviewResult = {
   specificity_needs?: string[]
   patterns_across_answers?: string[]
   practice_recommendations?: string[]
+  job_readiness_areas?: string[]
+  skill_gaps_exposed?: string[]
+  recommended_next_session?: string
+  personalized_action_plan?: string[]
+}
+
+export type InterviewHistoryItem = {
+  session_id: number; job_id: number; job_title: string; company: string; completed_at: string; mode: InterviewMode
+  difficulty: InterviewDifficulty; overall_band: string; major_strengths: string[]
+  improvement_areas: string[]; source: 'ai' | 'fallback'
 }
 
 export type InterviewAnswerResult = {
@@ -122,13 +137,13 @@ function feedback(value: unknown): value is InterviewFeedback {
   return object(value) && score(value.score) && typeof value.benchmark === 'string' && typeof value.summary === 'string' &&
     strings(value.strengths) && strings(value.improvements) && dimensions(value.dimensions) &&
     (value.source === 'ai' || value.source === 'fallback') &&
-    optionalText(value, ['technical_depth', 'communication', 'role_relevance', 'suggested_approach']) &&
+    optionalText(value, ['technical_depth', 'communication', 'role_relevance', 'suggested_approach', 'example_stronger_framing']) &&
     (value.follow_up === undefined || value.follow_up === null || typeof value.follow_up === 'string') && optionalLists(value, ['evidence'])
 }
 function final(value: unknown): value is FinalInterviewResult {
   return object(value) && score(value.final_score) && typeof value.overall_summary === 'string' && strings(value.top_strengths) &&
-    strings(value.next_steps) && dimensions(value.dimensions) && (value.source === 'ai' || value.source === 'fallback') && optionalText(value, ['technical_signals', 'communication_signals']) &&
-    optionalLists(value, ['resume_evidence', 'strongest_questions', 'practice_questions', 'specificity_needs', 'patterns_across_answers', 'practice_recommendations']) &&
+    strings(value.next_steps) && dimensions(value.dimensions) && (value.source === 'ai' || value.source === 'fallback') && optionalText(value, ['overall_band', 'technical_signals', 'behavioral_signals', 'communication_signals', 'recommended_next_session']) &&
+    optionalLists(value, ['resume_evidence', 'strongest_questions', 'practice_questions', 'specificity_needs', 'patterns_across_answers', 'practice_recommendations', 'job_readiness_areas', 'skill_gaps_exposed', 'personalized_action_plan']) &&
     references(value.strongest_responses) && references(value.weakest_responses)
 }
 function answerResult(value: unknown): value is InterviewAnswerResult {
@@ -179,6 +194,13 @@ export async function submitInterviewAnswer(sessionId: number, answer: string, q
 }
 export async function getInterviewSession(sessionId: number): Promise<InterviewSessionState> {
   return interviewRequest(`/interview/${sessionId}`, undefined, sessionState)
+}
+export async function getInterviewHistory(): Promise<InterviewHistoryItem[]> {
+  return interviewRequest('/interview/history', undefined, (value): value is InterviewHistoryItem[] => Array.isArray(value) && value.every(item =>
+    object(item) && Number.isInteger(item.session_id) && Number.isInteger(item.job_id) && typeof item.job_title === 'string' && typeof item.company === 'string' &&
+    typeof item.completed_at === 'string' && ['mixed', 'technical', 'behavioral', 'role_specific'].includes(String(item.mode)) &&
+    ['warm_up', 'realistic', 'challenging'].includes(String(item.difficulty)) && typeof item.overall_band === 'string' &&
+    strings(item.major_strengths) && strings(item.improvement_areas) && (item.source === 'ai' || item.source === 'fallback')))
 }
 
 export function interviewRecoveryKey(jobId: number, resume: ParsedResumeData | null): string | null {

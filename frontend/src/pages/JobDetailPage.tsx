@@ -7,6 +7,7 @@ import { matchResumeToJob } from '../utils/jobMatcher'
 import { formatSalary } from '../utils/formatSalary'
 import { formatDiscoveryAge, formatPostedDate, sourcePostedAt } from '../utils/jobFreshness'
 import AIInterviewPanel from '../components/AIInterviewPanel'
+import JobPreparationPanel from '../components/JobPreparationPanel'
 import styles from './JobDetailPage.module.css'
 
 export default function JobDetailPage() {
@@ -146,7 +147,7 @@ export default function JobDetailPage() {
           </section>
 
           <section className={styles.matchCard}>
-            <div className={styles.matchLabel}>Your Match Score</div>
+            <div className={styles.matchLabel}>Resume skill alignment</div>
 
             {!savedResume || !matchResult ? (
               <>
@@ -176,6 +177,7 @@ export default function JobDetailPage() {
                   </div>
                   <div className={styles.matchSummary}>{matchResult.recommendation}</div>
                 </div>
+                <p className={styles.matchEmpty}>Based on listed skills in your resume and this posting; this is not a hiring prediction.</p>
 
                 <div className={styles.matchSections}>
                 <div className={styles.matchSection}>
@@ -220,6 +222,7 @@ export default function JobDetailPage() {
               </a>
             )}
           </section>
+          <JobPreparationPanel jobId={job.id} resume={savedResume?.parsed_data ?? null} />
         </main>
 
         <aside className={styles.sidebar}>
