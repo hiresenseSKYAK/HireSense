@@ -22,6 +22,15 @@ and fails loudly on SQL errors. It never drops job data or prints credentials.
 5. Run `002_add_job_identity_indexes.sql`.
 6. Run `003_add_job_lifecycle.sql`.
 7. Run `004_add_company_logo_url.sql`.
+8. Run `005_harden_interview_sessions.sql` if not already applied.
+9. Run `006_job_ingestion.sql` before deploying the ingestion code. This only
+   adds nullable metadata, indexes, health/alias tables and a status default.
+   Existing inactive rows become `closed`; no job rows or IDs are removed.
+
+For an already-migrated database, run `python -m database.migrate` from
+`backend` before starting the new crawler or deploying the API. Take a backup
+first. The migration runner records completed versions; never rerun an
+individual ALTER statement manually after it has already succeeded.
 
 If the preview reports a collision, it performs no writes. Review those row IDs
 before applying the backfill or creating the indexes. Existing rows and the

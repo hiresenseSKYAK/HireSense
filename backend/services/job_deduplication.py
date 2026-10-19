@@ -60,6 +60,11 @@ def duplicate_reason(candidate: dict, keeper: dict) -> str | None:
     keeper_description = _normalized(
         keeper.get("job_description") or keeper.get("fullDescription")
     )
+    if (min(len(candidate_description), len(keeper_description)) >= 160
+            and _normalized(candidate.get("location")) == _normalized(keeper.get("location"))):
+        shorter, longer = sorted((candidate_description, keeper_description), key=len)
+        if shorter in longer and len(shorter) / max(len(longer), 1) >= 0.25:
+            return f"same-location cross-source description excerpt of active row {keeper.get('id')}"
     if min(len(candidate_description), len(keeper_description)) < 500:
         return None
     similarity = SequenceMatcher(
@@ -81,10 +86,12 @@ def _posting_preference(row: dict) -> tuple[int, int, int]:
         "greenhouse": 5,
         "lever": 5,
         "ashby": 5,
-        "linkedin": 3,
-        "handshake": 2,
+        "usajobs": 4,
+        "adzuna": 3,
+        "linkedin": 2,
+        "handshake": 1,
     }.get(_normalized(row.get("source")), 1)
-    return specific_url, source_priority, int(row.get("id") or 0)
+    return source_priority, specific_url, int(row.get("id") or 0)
 
 
 def partition_unique_postings(rows: list[dict]) -> tuple[list[dict], list[dict]]:

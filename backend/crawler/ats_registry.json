@@ -1,0 +1,9 @@
+[
+  {"company":"Cloudflare","provider":"greenhouse","board_identifier":"cloudflare","enabled":true},
+  {"company":"Samsara","provider":"greenhouse","board_identifier":"samsara","enabled":true},
+  {"company":"Anduril Industries","provider":"greenhouse","board_identifier":"andurilindustries","enabled":true},
+  {"company":"Zoox","provider":"lever","board_identifier":"zoox","enabled":true},
+  {"company":"Shield AI","provider":"lever","board_identifier":"shieldai","enabled":true},
+  {"company":"Ramp","provider":"ashby","board_identifier":"Ramp","enabled":true},
+  {"company":"Vanta","provider":"ashby","board_identifier":"Vanta","enabled":true}
+]

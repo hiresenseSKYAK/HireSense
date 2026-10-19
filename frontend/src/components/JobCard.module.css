@@ -99,6 +99,8 @@
 }
 
 .sourceBadge {
+  min-width: 116px;
+  min-height: 23px;
   display: inline-flex;
   align-items: center;
   padding: 6px 10px;

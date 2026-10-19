@@ -96,7 +96,7 @@ describe('Home job discovery', () => {
     await settle()
     expect(document.querySelectorAll('article')).toHaveLength(2)
 
-    const select = document.querySelector<HTMLSelectElement>('select')!
+    const select = Array.from(document.querySelectorAll<HTMLSelectElement>('select')).find((item) => item.querySelector('option[value="company"]'))!
     setValue(select, 'company')
     await settle()
     expect(document.querySelector('article')?.textContent).toContain('Alpha')

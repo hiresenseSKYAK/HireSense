@@ -317,7 +317,15 @@ def _sort_jobs(jobs: list[dict], sort: str) -> list[dict]:
             return 0
 
     if sort == "best-match":
-        return sorted(jobs, key=lambda job: (-int(job.get("match") or 0), -_timestamp(job.get("firstSeenAt")), -job_id(job)))
+        def blended(job: dict) -> float:
+            age = (datetime.now().timestamp() - _timestamp(job.get("datePosted") or job.get("firstSeenAt"))) / 86400
+            freshness = 12 if 0 <= age <= 1 else 8 if age <= 7 else -6 if age > 90 else 0
+            local = 8 if str(job.get("location") or "").split(",")[0].strip().lower() in {
+                "dallas", "plano", "irving", "richardson", "frisco", "addison", "lewisville",
+                "carrollton", "denton", "fort worth"} else 0
+            direct = 4 if job.get("source") in {"greenhouse", "lever", "ashby"} else 0
+            return int(job.get("match") or 0) + freshness + local + direct
+        return sorted(jobs, key=lambda job: (-blended(job), -_timestamp(job.get("firstSeenAt")), -job_id(job)))
     if sort == "newest-posted":
         return sorted(jobs, key=lambda job: (-_timestamp(job.get("datePosted") or job.get("posted")), -job_id(job)))
     if sort == "company":

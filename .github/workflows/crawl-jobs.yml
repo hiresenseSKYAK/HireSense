@@ -3,73 +3,81 @@ name: Refresh production jobs
 on:
   workflow_dispatch:
   schedule:
-    - cron: "23 */6 * * *"
+    # UTC cadence; keep these entries as the scheduling source of truth.
+    - cron: "*/15 * * * *" # direct employer ATS
+    - cron: "7 * * * *"    # credentialed official APIs
+    - cron: "11 */6 * * *" # legacy public discovery; keep conservative cadence
+    - cron: "17 4 * * *"   # verification and stale cleanup
 
 concurrency:
-  group: production-job-refresh
+  group: production-jobs-${{ github.event.schedule || 'manual' }}
   cancel-in-progress: false
 
 jobs:
   crawl:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-
     defaults:
       run:
         working-directory: backend
-
     env:
       DB_HOST: ${{ secrets.DB_HOST }}
       DB_PORT: ${{ secrets.DB_PORT }}
       DB_NAME: ${{ secrets.DB_NAME }}
       DB_USER: ${{ secrets.DB_USER }}
       DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+      ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+      USAJOBS_EMAIL: ${{ secrets.USAJOBS_EMAIL }}
+      USAJOBS_API_KEY: ${{ secrets.USAJOBS_API_KEY }}
       SUMMARIZE_JOB_DESCRIPTIONS: "false"
       EXTRACT_JOB_SKILLS: "false"
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: backend/requirements-crawler.txt
-
-      - name: Install lightweight crawler dependencies
-        run: python -m pip install -r requirements-crawler.txt
-
-      - name: Apply additive migrations
-        run: python -m database.migrate
-
-      - name: Crawl LinkedIn
-        id: crawl_linkedin
+      - run: python -m pip install -r requirements-crawler.txt
+      - run: python -m database.migrate
+      - name: Direct ATS boards
+        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/15 * * * *'
+        id: ats
         continue-on-error: true
-        run: python -m crawler.crawl --source linkedin --limit 150
-
-      - name: Crawl Handshake
-        id: crawl_handshake
+        run: python -m crawler.crawl --source ats --limit 300 --skip-cleanup
+      - name: LinkedIn discovery
+        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '11 */6 * * *'
+        id: linkedin
+        continue-on-error: true
+        run: python -m crawler.crawl --source linkedin --limit 150 --skip-cleanup
+      - name: Handshake discovery
+        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '11 */6 * * *'
+        id: handshake
         continue-on-error: true
         run: python -m crawler.crawl --source handshake --limit 100 --skip-cleanup
-
-      - name: Crawl direct company ATS feeds
-        id: crawl_ats
+      - name: Adzuna official API
+        if: (github.event_name == 'workflow_dispatch' || github.event.schedule == '7 * * * *') && env.ADZUNA_APP_ID != '' && env.ADZUNA_APP_KEY != ''
+        id: adzuna
         continue-on-error: true
-        run: python -m crawler.crawl --source ats --limit 100 --skip-cleanup
-
-      - name: Reclassify active jobs against current feed policy
-        if: always()
-        run: python -m scripts.report_job_geography --apply --confirm DEACTIVATE
-
-      - name: Report source failures
+        run: python -m crawler.crawl --source adzuna --limit 50 --skip-cleanup
+      - name: USAJOBS official API
+        if: (github.event_name == 'workflow_dispatch' || github.event.schedule == '7 * * * *') && env.USAJOBS_EMAIL != '' && env.USAJOBS_API_KEY != ''
+        id: usajobs
+        continue-on-error: true
+        run: python -m crawler.crawl --source usajobs --limit 50 --skip-cleanup
+      - name: Verify old application links
+        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '17 4 * * *'
+        run: python -m services.updater
+      - name: Mark stale direct-feed jobs
+        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '17 4 * * *'
+        run: python -m scripts.cleanup_stale_jobs --apply
+      - name: Report provider failures
         if: always()
         run: |
-          echo "LinkedIn: ${{ steps.crawl_linkedin.outcome }}"
-          echo "Handshake: ${{ steps.crawl_handshake.outcome }}"
-          echo "Direct ATS: ${{ steps.crawl_ats.outcome }}"
-
-          if [ "${{ steps.crawl_linkedin.outcome }}" = "failure" ] || \
-             [ "${{ steps.crawl_handshake.outcome }}" = "failure" ] || \
-             [ "${{ steps.crawl_ats.outcome }}" = "failure" ]; then
-            exit 1
-          fi
+          echo "ATS: ${{ steps.ats.outcome }}"
+          echo "LinkedIn: ${{ steps.linkedin.outcome }}"
+          echo "Handshake: ${{ steps.handshake.outcome }}"
+          echo "Adzuna: ${{ steps.adzuna.outcome }}"
+          echo "USAJOBS: ${{ steps.usajobs.outcome }}"
+          if [ "${{ steps.ats.outcome }}" = failure ] || [ "${{ steps.linkedin.outcome }}" = failure ] || [ "${{ steps.handshake.outcome }}" = failure ] || [ "${{ steps.adzuna.outcome }}" = failure ] || [ "${{ steps.usajobs.outcome }}" = failure ]; then exit 1; fi

@@ -122,7 +122,7 @@ export default function JobDetailPage() {
                 </div>
                   <div className={styles.freshnessRow}>
                     {formatDiscoveryAge(job.firstSeenAt) && <span>{formatDiscoveryAge(job.firstSeenAt)}</span>}
-                    {job.source && <span>Source: {job.source}</span>}
+                    {job.source === 'adzuna' ? <a href="https://www.adzuna.com/" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', minWidth: 116, minHeight: 23 }}>Adzuna</a> : job.source && <span>Source: {job.directEmployerListing ? 'Direct employer listing' : job.source}</span>}
                   </div>
                 </div>
               </div>
@@ -142,7 +142,7 @@ export default function JobDetailPage() {
                 <div className={styles.detailValue}>{job.type}</div>
               </div>
               <div className={styles.detailCard}>
-                <div className={styles.detailLabel}>Posted</div>
+                <div className={styles.detailLabel}>{job.source === 'adzuna' ? 'Adzuna ad date' : 'Posted'}</div>
                 <div className={styles.detailValue}>{formatPostedDate(sourcePostedAt(job)) || 'Not provided by source'}</div>
               </div>
             </div>

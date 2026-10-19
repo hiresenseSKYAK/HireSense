@@ -37,6 +37,7 @@ export type JobListParams = {
   pageSize?: number
   query?: string
   sort?: string
+  geo?: 'dfw' | 'remote' | 'texas' | 'nationwide'
   cities?: string[]
   styles?: string[]
   experience?: string[]
@@ -59,6 +60,7 @@ export async function fetchJobs(params: JobListParams = {}): Promise<JobsPage> {
   search.set('page_size', String(params.pageSize ?? JOB_PAGE_SIZE))
   if (params.query?.trim()) search.set('q', params.query.trim())
   if (params.sort) search.set('sort', params.sort)
+  if (params.geo) search.set('geo', params.geo)
   appendAll(search, 'city', params.cities)
   appendAll(search, 'style', params.styles)
   appendAll(search, 'experience', params.experience)

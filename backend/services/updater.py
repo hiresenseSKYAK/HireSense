@@ -86,6 +86,7 @@ def classify_application_link(url, session=None):
 def update_database():
     jobs = get_jobs_to_check()
     deactivated = 0
+    possibly_closed = 0
     active = 0
     inconclusive = 0
     failed = 0
@@ -102,9 +103,12 @@ def update_database():
 
         if expired is True:
             if update_job_check_status(job_id, active=False):
-                deactivated += 1
+                if job.get("status") == "possibly_closed":
+                    deactivated += 1
+                else:
+                    possibly_closed += 1
                 print(
-                    f"[updater] deactivated id={job_id} host={host} ({reason})",
+                    f"[updater] closure evidence id={job_id} host={host} ({reason})",
                     flush=True,
                 )
             else:
@@ -128,14 +132,21 @@ def update_database():
             time.sleep(REQUEST_DELAY_SEC)
 
     print(
-        f"[updater] done: checked={len(jobs)} deactivated={deactivated} "
+        f"[updater] done: checked={len(jobs)} deactivated={deactivated} possibly_closed={possibly_closed} "
         f"active={active} inconclusive={inconclusive} failed={failed}",
         flush=True,
     )
     return {
         "checked": len(jobs),
         "deactivated": deactivated,
+        "possibly_closed": possibly_closed,
         "active": active,
         "inconclusive": inconclusive,
         "failed": failed,
     }
+
+
+if __name__ == "__main__":
+    result = update_database()
+    if result["failed"]:
+        raise SystemExit(1)

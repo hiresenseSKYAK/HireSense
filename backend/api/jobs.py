@@ -28,12 +28,12 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 logger = logging.getLogger(__name__)
 
 
-def get_jobs_data():
+def get_jobs_data(geo: str = "dfw"):
     if fetch_all_jobs_from_db is None:
         logger.error("Jobs database query module is unavailable")
         raise HTTPException(status_code=503, detail="Job service temporarily unavailable")
     try:
-        return fetch_all_jobs_from_db()
+        return fetch_all_jobs_from_db(scope=geo)
     except Exception:
         logger.exception("Failed to read jobs from the database")
         raise HTTPException(status_code=503, detail="Job service temporarily unavailable")
@@ -101,9 +101,13 @@ def get_jobs(
     date: Annotated[list[str] | None, Query()] = None,
     skill: Annotated[list[str] | None, Query()] = None,
     sort: str = "recently-discovered",
+    geo: Annotated[str, Query(pattern="^(dfw|remote|texas|nationwide)$")] = "dfw",
 ):
+    catalog = get_jobs_data("nationwide" if geo == "remote" else geo)
+    if geo == "remote":
+        catalog = [job for job in catalog if job.get("hybrid") == "Remote"]
     return assemble_job_page(
-        get_jobs_data(),
+        catalog,
         page=page,
         page_size=page_size,
         q=q,

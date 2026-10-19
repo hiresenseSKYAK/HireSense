@@ -20,6 +20,15 @@ class MigrationTests(unittest.TestCase):
         self.assertNotIn("drop ", sql)
         self.assertNotIn("delete ", sql)
 
+    def test_job_ingestion_migration_preserves_records_and_adds_indexes(self):
+        migration = Path(__file__).parents[1] / "database" / "migrations" / "006_job_ingestion.sql"
+        sql = migration.read_text(encoding="utf-8").lower()
+        for token in ("source_updated_at", "last_verified_at", "job_source_health",
+                      "job_source_alias", "ix_job_data_active_seen", "ix_job_data_canonical_url"):
+            self.assertIn(token, sql)
+        self.assertNotIn("drop table", sql)
+        self.assertNotIn("delete from", sql)
+
 
 if __name__ == "__main__":
     unittest.main()

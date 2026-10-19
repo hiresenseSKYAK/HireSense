@@ -18,7 +18,7 @@ class SourceConfigurationTests(unittest.TestCase):
 
     def test_all_sources_are_included(self):
         configured = source_urls("all")
-        self.assertEqual(len(configured), len(LINKEDIN_URLS) + len(HANDSHAKE_URLS) + len(DIRECT_ATS_SOURCES))
+        self.assertEqual(len(configured), len(LINKEDIN_URLS) + len(HANDSHAKE_URLS) + len(DIRECT_ATS_SOURCES) + 2)
 
     def test_direct_sources_are_public_https_and_bounded(self):
         self.assertGreaterEqual(len(DIRECT_ATS_SOURCES), 3)

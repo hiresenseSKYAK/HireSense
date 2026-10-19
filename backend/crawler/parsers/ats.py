@@ -48,10 +48,25 @@ def _iso_date(value: object) -> str | None:
     return match.group(1) if match else None
 
 
+def _iso_timestamp(value: object) -> str | None:
+    text = str(value or "").strip()
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).astimezone(timezone.utc).replace(tzinfo=None).isoformat(sep=" ")
+    except (ValueError, OverflowError):
+        return None
+
+
 def _millisecond_date(value: object) -> str | None:
     try:
         timestamp = int(value) / 1000
         return datetime.fromtimestamp(timestamp, tz=timezone.utc).date().isoformat()
+    except (TypeError, ValueError, OSError, OverflowError):
+        return None
+
+
+def _millisecond_timestamp(value: object) -> str | None:
+    try:
+        return datetime.fromtimestamp(int(value) / 1000, tz=timezone.utc).replace(tzinfo=None).isoformat(sep=" ")
     except (TypeError, ValueError, OSError, OverflowError):
         return None
 
@@ -72,18 +87,21 @@ def _midpoint(values: list[object]) -> int | None:
 
 def _pick_location(candidates: list[str], work_style: str, description: str) -> tuple[str, str] | None:
     seen: set[str] = set()
+    choices: list[tuple[int, str, str]] = []
     for candidate in candidates:
         location = " ".join(str(candidate or "").split())
         if not location or location.lower() in seen:
             continue
         seen.add(location.lower())
-        decision = assess_job_geography(location, work_style, description)
+        decision = assess_job_geography(location, work_style, description, scope="nationwide")
         if decision.accepted:
-            return (
-                "Remote — United States" if decision.category == "Remote" else location,
-                "Remote" if decision.category == "Remote" else work_style,
-            )
-    return None
+            priority = {"DFW": 4, "Remote": 3, "Texas": 2, "Relocation": 1}.get(decision.category, 0)
+            choices.append((priority, "Remote — United States" if decision.category == "Remote" else location,
+                            "Remote" if decision.category == "Remote" else work_style))
+    if not choices:
+        return None
+    _, location, style = max(choices, key=lambda choice: choice[0])
+    return location, style
 
 
 def _metadata_values(job: dict, name: str) -> list[str]:
@@ -118,6 +136,7 @@ def _normalize_greenhouse_job(job: dict, company: str) -> dict | None:
         description=description,
         selected_location=selected,
         date_posted=_iso_date(job.get("first_published")),
+        source_updated_at=_iso_timestamp(job.get("updated_at")),
         application_link=job.get("absolute_url"),
         job_type=None,
         source_level=None,
@@ -157,6 +176,7 @@ def _normalize_lever_job(job: dict, company: str) -> dict | None:
         description=description,
         selected_location=selected,
         date_posted=_millisecond_date(job.get("createdAt")),
+        source_updated_at=_millisecond_timestamp(job.get("updatedAt")),
         application_link=job.get("applyUrl") or job.get("hostedUrl"),
         job_type=categories.get("commitment"),
         source_level=job.get("level"),
@@ -223,6 +243,7 @@ def _normalize_ashby_job(job: dict, company: str) -> dict | None:
         description=description,
         selected_location=selected,
         date_posted=_iso_date(job.get("publishedAt")),
+        source_updated_at=_iso_timestamp(job.get("updatedAt")),
         application_link=job.get("applyUrl") or job.get("jobUrl"),
         job_type=job.get("employmentType"),
         source_level=None,
@@ -236,6 +257,7 @@ def _finish_job(
     description: str, selected_location: tuple[str, str] | None,
     date_posted: str | None, application_link: object, job_type: object,
     source_level: object, salary: int | None, company_logo_url: object,
+    source_updated_at: str | None = None,
 ) -> dict | None:
     if not title or not company or not selected_location:
         return None
@@ -258,12 +280,15 @@ def _finish_job(
         "location": location,
         "salary": salary,
         "date_posted": date_posted,
+        "source_updated_at": source_updated_at,
         "application_link": apply_url,
+        "source_url": apply_url,
         "job_description": description,
         "skills": [],
         "job_type": job_type,
         "experience_level": experience.level,
         "work_style": work_style,
+        "allow_relocation": True,
     }
 
 
@@ -313,6 +338,8 @@ def parse_direct_ats(
             payload = response.json()
         except (requests.RequestException, ValueError) as exc:
             stats["errors"] += 1
+            if getattr(getattr(exc, "response", None), "status_code", None) == 429:
+                stats["rate_limited"] = 1
             print(f"[{provider}] public feed failed for {company}: {type(exc).__name__}", flush=True)
             return []
 

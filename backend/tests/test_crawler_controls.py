@@ -11,6 +11,7 @@ os.environ.setdefault("DB_PASSWORD", "testpassword")
 
 from crawler import crawl  # noqa: E402
 from crawler.sources import SourceSpec  # noqa: E402
+from crawler.providers import FetchResult  # noqa: E402
 from database.queries import JobWriteResult  # noqa: E402
 
 
@@ -29,8 +30,7 @@ class CrawlerControlTests(unittest.TestCase):
         with (
             patch.object(crawl, "_log_db_target"),
             patch.object(crawl, "update_database") as cleanup,
-            patch.object(crawl, "parse_job_linkedin", return_value=found) as linkedin,
-            patch.object(crawl, "parse_job_handshake") as handshake,
+            patch.object(crawl.providers, "fetch", return_value=FetchResult(found, discovered=2)) as fetch,
             patch.object(crawl, "simplify_jobs"),
             patch.object(crawl, "extract_skills_for_jobs"),
             patch.object(crawl, "upsert_job", return_value=JobWriteResult("would_insert", reason="source_job_id")) as upsert,
@@ -40,10 +40,9 @@ class CrawlerControlTests(unittest.TestCase):
             crawl.run(dry_run=True, source="linkedin", limit=2)
 
         cleanup.assert_not_called()
-        handshake.assert_not_called()
-        linkedin.assert_called_once()
-        self.assertEqual(linkedin.call_args.kwargs["max_jobs"], 2)
-        self.assertLessEqual(linkedin.call_args.kwargs["time_limit_sec"], 3 * 60)
+        fetch.assert_called_once()
+        self.assertEqual(fetch.call_args.kwargs["max_jobs"], 2)
+        self.assertLessEqual(fetch.call_args.kwargs["time_limit_sec"], 3 * 60)
         self.assertEqual(upsert.call_count, 2)
         self.assertTrue(all(call.kwargs["dry_run"] for call in upsert.call_args_list))
         summaries.assert_not_called()
@@ -57,8 +56,7 @@ class CrawlerControlTests(unittest.TestCase):
         }]
         with (
             patch.object(crawl, "source_specs", return_value=[SourceSpec("handshake", "h"), SourceSpec("linkedin", "l")]),
-            patch.object(crawl, "parse_job_handshake", side_effect=RuntimeError("source unavailable")),
-            patch.object(crawl, "parse_job_linkedin", return_value=found),
+            patch.object(crawl.providers, "fetch", side_effect=[RuntimeError("source unavailable"), FetchResult(found, discovered=1)]),
         ):
             jobs, stats = crawl.collect_jobs(source="all", limit=2)
 
@@ -78,8 +76,7 @@ class CrawlerControlTests(unittest.TestCase):
         }]
         with (
             patch.object(crawl, "source_specs", return_value=[SourceSpec("handshake", "h"), SourceSpec("linkedin", "l")]),
-            patch.object(crawl, "parse_job_handshake", return_value=handshake),
-            patch.object(crawl, "parse_job_linkedin", return_value=linkedin),
+            patch.object(crawl.providers, "fetch", side_effect=[FetchResult(handshake, discovered=1), FetchResult(linkedin, discovered=1)]),
         ):
             jobs, stats = crawl.collect_jobs(source="all", limit=3)
 

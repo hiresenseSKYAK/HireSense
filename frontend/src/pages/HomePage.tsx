@@ -7,12 +7,13 @@ import { IconSearch } from '../components/Icons'
 import { fetchJobs, fetchMarketInsights, JOB_PAGE_SIZE, type MarketInsightsResponse } from '../api/jobs'
 import { getJobRecommendations, type JobRecommendationsResult } from '../api/career'
 import { getAuthSession } from '../api/auth'
-import { formatPostedDate, sourcePostedAt } from '../utils/jobFreshness'
+import { formatPostedDate, isNewSinceVisit, sourcePostedAt } from '../utils/jobFreshness'
 import { getResumeAnalysis } from '../utils/resumeStorage'
 import type { Job } from '../types'
 import styles from './HomePage.module.css'
 
 type SortOption = 'best-match' | 'newest-posted' | 'recently-discovered' | 'company' | 'location'
+type GeoScope = 'dfw' | 'remote' | 'texas' | 'nationwide'
 
 function selected(filters: FilterState, id: string) {
   return [...(filters[id] ?? [])]
@@ -82,15 +83,20 @@ export default function HomePage() {
   const [loadKey, setLoadKey] = useState(0)
   const [sortBy, setSortBy] = useState<SortOption>(savedResume ? 'best-match' : 'recently-discovered')
   const [useResume, setUseResume] = useState(Boolean(savedResume))
+  const geoKey = `hiresense_geo_scope_${getAuthSession()?.user.id ?? 'guest'}`
+  const [geoScope, setGeoScope] = useState<GeoScope>(() => {
+    try {
+      const saved = localStorage.getItem(geoKey)
+      return saved === 'remote' || saved === 'texas' || saved === 'nationwide' ? saved : 'dfw'
+    } catch { return 'dfw' }
+  })
   const [recommendations, setRecommendations] = useState<JobRecommendationsResult | null>(null)
   const [recommendationLoading, setRecommendationLoading] = useState(false)
-  const visitKey = `hiresense_job_feed_seen_ids_${getAuthSession()?.user.id ?? 'guest'}`
-  const previouslySeenIds = useRef<number[] | null>(null)
-  if (previouslySeenIds.current === null) {
-    try {
-      const saved = JSON.parse(localStorage.getItem(visitKey) || '[]')
-      previouslySeenIds.current = Array.isArray(saved) ? saved.filter((id): id is number => typeof id === 'number') : []
-    } catch { previouslySeenIds.current = [] }
+  const visitKey = `hiresense_job_feed_last_visit_${getAuthSession()?.user.id ?? 'guest'}`
+  const previousVisitAt = useRef<string | null | undefined>(undefined)
+  if (previousVisitAt.current === undefined) {
+    try { previousVisitAt.current = localStorage.getItem(visitKey) }
+    catch { previousVisitAt.current = null }
   }
 
   const pageRef = useRef<HTMLDivElement>(null)
@@ -148,6 +154,7 @@ export default function HomePage() {
           pageSize: JOB_PAGE_SIZE,
           query: debouncedQuery,
           sort: sortBy,
+          geo: geoScope,
           cities: selected(filters, 'city'),
           styles: selected(filters, 'style'),
           experience: selected(filters, 'experience'),
@@ -162,6 +169,7 @@ export default function HomePage() {
         setTotal(result.total)
         setPageSize(result.pageSize)
         setCities(result.cities)
+        try { localStorage.setItem(visitKey, new Date().toISOString()) } catch { /* Optional visit marker. */ }
         if (result.page !== page) setPage(result.page)
       } catch (err) {
         if (controller.signal.aborted || (err instanceof Error && err.name === 'AbortError')) return
@@ -177,7 +185,7 @@ export default function HomePage() {
 
     void loadJobs()
     return () => controller.abort()
-  }, [debouncedQuery, query, activeFilters, sortBy, page, loadKey, skillKey, filters, useResume])
+  }, [debouncedQuery, query, activeFilters, sortBy, geoScope, page, loadKey, skillKey, filters, useResume])
 
   useEffect(() => {
     if (!pendingScroll.current || isJobsLoading) return
@@ -195,16 +203,14 @@ export default function HomePage() {
     void getJobRecommendations(savedResume.parsed_data).then((result) => {
       if (!active) return
       setRecommendations(result)
-      try { localStorage.setItem(visitKey, JSON.stringify(result.items.map((job) => job.id))) } catch { /* Optional visit marker. */ }
     }).catch(() => { if (active) setRecommendations(null) })
       .finally(() => { if (active) setRecommendationLoading(false) })
     return () => { active = false }
   }, [useResume, skillKey, loadKey])
 
   const showSkeleton = isJobsLoading && jobs.length === 0 && !error
-  const newMatchCount = previouslySeenIds.current?.length
-    ? recommendations?.items.filter((job) => !previouslySeenIds.current?.includes(job.id)).length ?? 0
-    : 0
+  const newMatchCount = recommendations?.items.filter((job) => isNewSinceVisit(job.firstSeenAt, previousVisitAt.current)).length ?? 0
+  const newOnPage = jobs.filter((job) => isNewSinceVisit(job.firstSeenAt, previousVisitAt.current)).slice(0, 3)
 
   function goToPage(next: number) {
     pendingScroll.current = true
@@ -268,12 +274,19 @@ export default function HomePage() {
           {useResume && recommendations && recommendations.items.length > 0 && <section className={styles.recommended} aria-labelledby="recommended-title">
             <div className={styles.recommendedHeading}><div><span className={styles.recommendedEyebrow}>Your next opportunities</span><h2 id="recommended-title">Recommended for you</h2></div>{newMatchCount > 0 && <span className={styles.newMatches}>{newMatchCount} new since your last visit</span>}</div>
             <p>Ranked from your resume and current role details. These are preparation priorities, not hiring odds.</p>
-            <div className={styles.recommendedList}>{recommendations.items.slice(0, 4).map((job) => <Link key={job.id} to={`/jobs/${job.id}`} className={styles.recommendedItem}>
-              <div><span className={styles.priority}>{job.priority}</span><strong>{job.title}</strong><small>{job.company} · {job.location}{formatPostedDate(sourcePostedAt(job)) ? ` · Posted ${formatPostedDate(sourcePostedAt(job))}` : ''}</small></div>
+            <div className={styles.recommendedList}>{recommendations.items.slice(0, 4).map((job) => <div key={job.id} className={styles.recommendedItem}>
+              <div><span className={styles.priority}>{job.priority}</span><Link to={`/jobs/${job.id}`}><strong>{job.title}</strong></Link><small>{job.company} · {job.location}{formatPostedDate(sourcePostedAt(job)) ? ` · ${job.source === 'adzuna' ? 'Adzuna ad date' : 'Posted'} ${formatPostedDate(sourcePostedAt(job))}` : ''}</small>{job.source === 'adzuna' && <a href="https://www.adzuna.com/" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', minWidth: 116, minHeight: 23 }}>Adzuna</a>}</div>
               <div className={styles.recommendedReason}><span>{job.whyThisFits}</span>{job.topGap && <small>Prepare: {job.topGap}</small>}{job.preparationNote && <small>{job.preparationNote}</small>}</div>
-            </Link>)}</div>
+            </div>)}</div>
           </section>}
           {useResume && recommendationLoading && <p className={styles.recommendationLoading} role="status">Finding relevant roles from your resume…</p>}
+          {newOnPage.length > 0 && <section className={styles.recommended} aria-labelledby="new-for-you-title">
+            <div className={styles.recommendedHeading}><div><span className={styles.recommendedEyebrow}>Discovered since your previous visit</span><h2 id="new-for-you-title">New for you</h2></div></div>
+            <div className={styles.recommendedList}>{newOnPage.map((job) => <div key={job.id} className={styles.recommendedItem}>
+              <div><Link to={`/jobs/${job.id}`}><strong>{job.title}</strong></Link><small>{job.company} · {job.location}</small>{job.source === 'adzuna' && <a href="https://www.adzuna.com/" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', minWidth: 116, minHeight: 23 }}>Adzuna</a>}</div>
+              <small>New to HireSense</small>
+            </div>)}</div>
+          </section>}
           <div className={styles.jobsSectionHeader}>
             <div>
               <h1 className={styles.jobsTitle}>{savedResume && sortBy === 'best-match' ? 'Top Matches' : 'Live Opportunities'}</h1>
@@ -283,6 +296,21 @@ export default function HomePage() {
                   : 'Sorted by when HireSense discovered each role. Upload a resume to add skill matching.'}
               </p>
             </div>
+            <div className={styles.listControls}>
+            <label className={styles.sortControl}>
+              <span>Location scope</span>
+              <select value={geoScope} onChange={(event) => {
+                const next = event.target.value as GeoScope
+                setGeoScope(next)
+                setPage(1)
+                try { localStorage.setItem(geoKey, next) } catch { /* Optional preference. */ }
+              }}>
+                <option value="dfw">Dallas / DFW + US remote</option>
+                <option value="remote">Remote only</option>
+                <option value="texas">Texas + US remote</option>
+                <option value="nationwide">Nationwide</option>
+              </select>
+            </label>
             <label className={styles.sortControl}>
               <span>Sort by</span>
               <select
@@ -299,6 +327,7 @@ export default function HomePage() {
                 <option value="location">Location</option>
               </select>
             </label>
+            </div>
           </div>
 
           <div className={styles.jobsList}>

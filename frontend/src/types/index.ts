@@ -10,6 +10,8 @@ export interface Job {
   datePosted?: string | null
   firstSeenAt?: string | null
   source?: string | null
+  directEmployerListing?: boolean
+  lastVerifiedAt?: string | null
   badge: string | null
   match: number
   logo: string

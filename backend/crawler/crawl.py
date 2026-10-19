@@ -8,9 +8,8 @@ import time
 try:
     from ai.job_description import backfill_missing_summaries, simplify_jobs
     from ai.skill_extraction import backfill_job_skills, extract_skills_for_jobs
-    from crawler.parsers.handshake import parse_job_handshake
-    from crawler.parsers.linkedin import parse_job_linkedin
-    from crawler.parsers.ats import parse_direct_ats
+    from crawler import providers
+    from crawler.health import record_sync, source_key, is_rate_limited
     from crawler.sources import (
         DEFAULT_SOURCE_LIMITS, DEFAULT_SOURCE_TIME_LIMITS_SEC,
         PER_SEARCH_ACCEPT_LIMIT, PER_SEARCH_TIME_LIMIT_SEC, source_specs,
@@ -25,9 +24,8 @@ except ImportError:
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
     from ai.job_description import backfill_missing_summaries, simplify_jobs
     from ai.skill_extraction import backfill_job_skills, extract_skills_for_jobs
-    from crawler.parsers.handshake import parse_job_handshake
-    from crawler.parsers.linkedin import parse_job_linkedin
-    from crawler.parsers.ats import parse_direct_ats
+    from crawler import providers
+    from crawler.health import record_sync, source_key, is_rate_limited
     from crawler.sources import (
         DEFAULT_SOURCE_LIMITS, DEFAULT_SOURCE_TIME_LIMITS_SEC,
         PER_SEARCH_ACCEPT_LIMIT, PER_SEARCH_TIME_LIMIT_SEC, source_specs,
@@ -51,7 +49,7 @@ def _log_db_target():
 
 
 def collect_jobs(
-    *, source: str, limit: int, time_limit_sec: int | None = None
+    *, source: str, limit: int, time_limit_sec: int | None = None, persist_health: bool = False
 ) -> tuple[list[dict], dict[str, int]]:
     """Collect bounded candidates across searches and deduplicate before DB work."""
     jobs: list[dict] = []
@@ -65,6 +63,13 @@ def collect_jobs(
         source_name, url = spec.provider, spec.url
         if len(jobs) >= limit:
             break
+        if persist_health and source_name in {"adzuna", "usajobs", "greenhouse", "lever", "ashby"}:
+            try:
+                if is_rate_limited(spec):
+                    print(f"[crawl] {source_name} cooling down after rate limit", flush=True)
+                    continue
+            except Exception:
+                pass  # Telemetry cannot take down ingestion.
         remaining_seconds = deadline - time.monotonic()
         if remaining_seconds <= 0:
             print(
@@ -77,41 +82,44 @@ def collect_jobs(
         per_search_time_limit = max(
             1, min(PER_SEARCH_TIME_LIMIT_SEC, int(remaining_seconds))
         )
-        print(
-            f"[crawl] fetching {source_name} search {index}/{len(specs)} "
-            f"(accept up to {per_search_limit}): {url}",
-            flush=True,
-        )
-        parser_stats: dict[str, int] = {}
+        print(f"[crawl] fetching {source_name} source {index}/{len(specs)} "
+              f"(accept up to {per_search_limit})", flush=True)
         started = time.monotonic()
         try:
-            if source_name == "linkedin":
-                found = parse_job_linkedin(
-                    url, max_jobs=per_search_limit,
-                    time_limit_sec=per_search_time_limit, stats=parser_stats,
-                )
-            elif source_name == "handshake":
-                found = parse_job_handshake(
-                    url, max_jobs=per_search_limit,
-                    time_limit_sec=per_search_time_limit, stats=parser_stats,
-                )
-            else:
-                found = parse_direct_ats(
-                    url, provider=source_name, company=spec.company or source_name,
-                    max_jobs=per_search_limit, time_limit_sec=per_search_time_limit,
-                    stats=parser_stats,
-                )
+            result = providers.fetch(spec, max_jobs=per_search_limit,
+                                     time_limit_sec=per_search_time_limit)
         except Exception as exc:
             totals["source_errors"] += 1
-            print(f"[crawl] {source_name} search failed: {exc}", flush=True)
+            code = getattr(exc, "code", type(exc).__name__)
+            print(f"[crawl] {source_name} source failed code={code}", flush=True)
+            if persist_health:
+                try:
+                    record_sync(spec, success=False, jobs_received=0,
+                                duration_ms=int((time.monotonic() - started) * 1000),
+                                error_code=code, rate_limited=getattr(exc, "rate_limited", False))
+                except Exception:
+                    totals["source_errors"] += 1
             continue
 
-        totals["discovered"] += parser_stats.get("discovered", len(found))
+        found = result.jobs
+        if persist_health and result.error_code != "credentials_missing":
+            try:
+                record_sync(spec, success=not result.errors, jobs_received=len(found),
+                            duration_ms=int((time.monotonic() - started) * 1000),
+                            error_code=result.error_code or ("fetch_error" if result.errors else None),
+                            rate_limited=result.rate_limited,
+                            complete_snapshot=(source_name in {"greenhouse", "lever", "ashby"}
+                                               and result.discovered < per_search_limit and not result.errors))
+            except Exception:
+                totals["source_errors"] += 1
+
+        totals["discovered"] += result.discovered
         totals["accepted"] += len(found)
-        totals["rejected"] += parser_stats.get("skipped", 0)
-        totals["source_errors"] += parser_stats.get("errors", 0)
+        totals["rejected"] += result.skipped
+        totals["source_errors"] += result.errors
         added = 0
         for job in found:
+            job["source_feed_key"] = source_key(spec)
             identity = build_job_identity(job)
             keys = set()
             if identity:
@@ -127,9 +135,9 @@ def collect_jobs(
             if len(jobs) >= limit:
                 break
         print(
-            f"[crawl] search result discovered={parser_stats.get('discovered', len(found))} "
-            f"accepted={len(found)} unique_added={added} rejected={parser_stats.get('skipped', 0)} "
-            f"errors={parser_stats.get('errors', 0)} duration_seconds={time.monotonic() - started:.1f}",
+            f"[crawl] source result discovered={result.discovered} "
+            f"accepted={len(found)} unique_added={added} rejected={result.skipped} "
+            f"errors={result.errors} duration_seconds={time.monotonic() - started:.1f}",
             flush=True,
         )
     return jobs, totals
@@ -157,7 +165,8 @@ def run(*, dry_run=False, source="all", limit=None, skip_cleanup=False):
             print(f"[crawl] lifecycle checks failed; ingestion continues: {exc}", flush=True)
 
     jobs, totals = collect_jobs(
-        source=source, limit=effective_limit, time_limit_sec=effective_time_limit
+        source=source, limit=effective_limit, time_limit_sec=effective_time_limit,
+        persist_health=not dry_run,
     )
     totals["source_errors"] += cleanup_errors
     print(f"[crawl] unique candidates before database work: {len(jobs)}", flush=True)
@@ -179,7 +188,7 @@ def run(*, dry_run=False, source="all", limit=None, skip_cleanup=False):
 
     counts = {key: 0 for key in (
         "inserted", "updated", "unchanged", "skipped", "conflict", "error",
-        "would_insert", "would_update",
+        "would_insert", "would_update", "duplicates_merged",
     )}
     for index, job in enumerate(jobs, start=1):
         try:
@@ -193,6 +202,8 @@ def run(*, dry_run=False, source="all", limit=None, skip_cleanup=False):
             )
             continue
         counts[result.action] = counts.get(result.action, 0) + 1
+        if result.reason == "lower-confidence duplicate":
+            counts["duplicates_merged"] += 1
         print(
             f"[crawl] job {index}/{len(jobs)} {result.action}: "
             f"{(job.get('job_title') or 'Unknown Title')[:70]!r} identity={result.reason}",
@@ -208,7 +219,7 @@ def run(*, dry_run=False, source="all", limit=None, skip_cleanup=False):
         f"accepted={totals['accepted']} rejected={totals['rejected']} "
         f"inserted={counts['inserted']} updated={counts['updated']} "
         f"idempotent={counts['unchanged']} invalid={counts['skipped']} "
-        f"duplicates={totals['duplicates']} conflicts={counts['conflict']} "
+        f"duplicates={totals['duplicates']} duplicates_merged={counts['duplicates_merged']} conflicts={counts['conflict']} "
         f"database_errors={counts['error']} deactivated={cleanup_result.get('deactivated', 0)} "
         f"source_errors={totals['source_errors']} duration_seconds={time.monotonic() - run_started:.1f}",
         flush=True,
@@ -219,7 +230,7 @@ def run(*, dry_run=False, source="all", limit=None, skip_cleanup=False):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="Crawl and compare without writes.")
-    parser.add_argument("--source", choices=("all", "linkedin", "handshake", "ats"), default="all")
+    parser.add_argument("--source", choices=("all", "linkedin", "handshake", "ats", "adzuna", "usajobs"), default="all")
     parser.add_argument("--limit", type=int, help="Total unique candidate ceiling.")
     parser.add_argument("--skip-cleanup", action="store_true", help="Skip lifecycle link checks.")
     args = parser.parse_args()

@@ -96,7 +96,7 @@ export default function JobCard({ job, showMatch = false }: Props) {
           <div className={styles.titleBlock}>
             <div className={styles.companyRow}>
               <div className={styles.company}>{job.company}</div>
-              {sourceLabel && <span className={styles.sourceBadge}>{sourceLabel}</span>}
+              {job.directEmployerListing ? <span className={styles.sourceBadge} title={job.lastVerifiedAt ? `Verified ${job.lastVerifiedAt}` : undefined}>Direct employer listing</span> : job.source === 'adzuna' ? <a className={styles.sourceBadge} href="https://www.adzuna.com/" target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>Adzuna</a> : sourceLabel && <span className={styles.sourceBadge}>{sourceLabel}</span>}
             </div>
             <h3 className={styles.title}>{job.title}</h3>
 
@@ -112,7 +112,7 @@ export default function JobCard({ job, showMatch = false }: Props) {
           <div className={styles.right}>
             {salaryText !== 'Not listed' && <div className={styles.salary}>{salaryText}</div>}
             <div className={styles.type}>{job.type}</div>
-            {postedText && <div className={styles.posted}><IconClock /> Posted {postedText}</div>}
+            {postedText && <div className={styles.posted}><IconClock /> {job.source === 'adzuna' ? 'Adzuna ad date' : 'Posted'} {postedText}</div>}
             {discoveryText && <div className={styles.discovered}>{discoveryText}</div>}
           </div>
         </div>

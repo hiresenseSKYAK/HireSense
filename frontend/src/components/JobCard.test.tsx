@@ -54,6 +54,13 @@ describe('JobCard', () => {
     expect(document.body.textContent).not.toContain('New Listing')
   })
 
+  it('labels direct listings and links Adzuna attribution', () => {
+    renderCard(false, { ...job, directEmployerListing: true })
+    expect(document.body.textContent).toContain('Direct employer listing')
+    act(() => root?.render(<MemoryRouter><JobCard job={{ ...job, source: 'adzuna', directEmployerListing: false }} /></MemoryRouter>))
+    expect(document.querySelector<HTMLAnchorElement>('a[href="https://www.adzuna.com/"]')?.textContent).toBe('Adzuna')
+  })
+
   it('shows the employer as a primary identity and uses its initial fallback', () => {
     renderCard(false)
     expect(document.body.textContent).toContain('Example Systems')

@@ -17,9 +17,9 @@ export function formatDiscoveryAge(value?: string | null, now = new Date()): str
   if (!date) return null
   const elapsed = Math.max(0, now.getTime() - date.getTime())
   const minutes = Math.floor(elapsed / 60_000)
-  if (minutes < 60) return `Found by HireSense ${Math.max(1, minutes)}m ago`
+  if (minutes < 60) return `New to HireSense ${Math.max(1, minutes)}m ago`
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `Found by HireSense ${hours}h ago`
+  if (hours < 24) return `New to HireSense ${hours}h ago`
   const days = Math.floor(hours / 24)
   if (days < 30) return `Found by HireSense ${days}d ago`
   return `Found by HireSense ${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}`
@@ -31,4 +31,10 @@ export function sourcePostedAt(job: Pick<Job, 'datePosted' | 'posted'>): string 
 
 export function timestampValue(value?: string | null): number {
   return parsedDate(value)?.getTime() ?? 0
+}
+
+export function isNewSinceVisit(firstSeenAt?: string | null, lastVisitAt?: string | null): boolean {
+  const firstSeen = timestampValue(firstSeenAt)
+  const lastVisit = timestampValue(lastVisitAt)
+  return firstSeen > 0 && lastVisit > 0 && firstSeen > lastVisit
 }

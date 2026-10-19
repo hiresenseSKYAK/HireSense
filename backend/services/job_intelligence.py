@@ -9,6 +9,7 @@ from services.interview_context import safe_resume_context, safe_text
 from services.job_listing import _parse_posted
 from services.job_match import match_resume_to_job
 from services.job_match import KNOWN_SKILLS
+from services.job_location import assess_job_location
 
 
 def coaching_signals_from_feedback(feedback_items: list[dict]) -> list[str]:
@@ -45,10 +46,22 @@ def _evidence_for(skill: str, context: dict) -> str | None:
 
 def _freshness(job: dict, now: datetime) -> int:
     posted = _parse_posted(job.get('datePosted') or job.get('posted'), now)
-    if posted is None or posted > now:
+    if posted is not None and posted <= now:
+        days = (now - posted).days
+        return 14 if days <= 1 else 9 if days <= 7 else 4 if days <= 30 else -10 if days > 90 else 0
+    discovered = _parse_posted(job.get('firstSeenAt'), now)
+    if discovered is None or discovered > now:
         return 0
-    days = (now - posted).days
-    return 12 if days <= 1 else 8 if days <= 7 else 4 if days <= 30 else -8 if days > 90 else 0
+    days = (now - discovered).days
+    return 8 if days <= 1 else 5 if days <= 7 else 0
+
+
+def _source_and_location(job: dict) -> int:
+    source = str(job.get('source') or '').lower()
+    source_points = 5 if source in {'greenhouse', 'lever', 'ashby'} else 4 if source == 'usajobs' else 2 if source == 'adzuna' else 0
+    location = assess_job_location(job.get('location'), job.get('hybrid'))
+    location_points = 9 if location.category == 'DFW' else 2 if location.category == 'Remote' else -5
+    return source_points + location_points
 
 
 def rank_recommendations(jobs: list[dict], context: dict, now: datetime | None = None, limit: int = 12) -> list[dict]:
@@ -67,7 +80,7 @@ def rank_recommendations(jobs: list[dict], context: dict, now: datetime | None =
         freshness = _freshness(job, now)
         evidence_match = next(((skill, proof) for skill in matched[:5]
                                if (proof := _evidence_for(skill, context))), None)
-        score = match['matchScore'] * .65 + min(12, len(matched) * 3) + (12 if title_overlap else 0) + freshness
+        score = match['matchScore'] * .65 + min(12, len(matched) * 3) + (12 if title_overlap else 0) + freshness + _source_and_location(job)
         if job.get('experienceLevel') in ('Internship', 'Entry level'):
             score += 4
         if not job.get('applicationLink'):

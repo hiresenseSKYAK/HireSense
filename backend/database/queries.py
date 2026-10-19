@@ -200,6 +200,8 @@ def _map_db_row_to_frontend_job(row):
         "datePosted": posted,
         "firstSeenAt": first_seen,
         "source": row.get("source") or None,
+        "directEmployerListing": row.get("source") in {"greenhouse", "lever", "ashby"},
+        "lastVerifiedAt": row.get("last_verified_at").isoformat() if hasattr(row.get("last_verified_at"), "isoformat") else None,
         "badge": None,
         "match": 0,
         "logo": row.get("company_logo_url") or "",
@@ -260,8 +262,15 @@ _JOB_WRITE_COLUMNS = (
     "source", "source_job_id", "job_title", "company", "company_logo_url", "location", "salary",
     "date_posted", "application_link", "canonical_url", "identity_key",
     "job_description", "job_description_summary", "skills", "job_type",
-    "experience_level", "work_style",
+    "experience_level", "work_style", "source_url", "source_feed_key", "source_updated_at", "status",
 )
+
+SOURCE_CONFIDENCE = {"greenhouse": 4, "lever": 4, "ashby": 4,
+                     "usajobs": 3, "adzuna": 2, "linkedin": 1, "handshake": 1}
+
+
+def _source_rank(source):
+    return SOURCE_CONFIDENCE.get(str(source or "").lower(), 0)
 
 
 def _prepare_job_record(job):
@@ -282,7 +291,8 @@ def _prepare_job_record(job):
     experience_level_value = experience.level
     work_style_value = _normalize_work_style_for_db(job.get("work_style"))
     geography = assess_job_geography(
-        job.get("location"), work_style_value, job.get("job_description")
+        job.get("location"), work_style_value, job.get("job_description"),
+        scope="nationwide" if job.get("allow_relocation") else "dfw",
     )
     if not geography.accepted:
         return None, geography.reason
@@ -312,6 +322,10 @@ def _prepare_job_record(job):
         "job_type": job_type_value,
         "experience_level": experience_level_value,
         "work_style": work_style_value,
+        "source_url": _sanitize_http_url(job.get("source_url") or job.get("application_link")),
+        "source_feed_key": _nonempty_str(job.get("source_feed_key")),
+        "source_updated_at": job.get("source_updated_at"),
+        "status": "active",
     }, identity.strategy
 
 
@@ -321,6 +335,7 @@ def _record_changes(existing, incoming):
         "company", "company_logo_url", "location", "salary", "date_posted", "application_link",
         "canonical_url", "job_description", "job_description_summary", "source",
         "source_job_id",
+        "source_url", "source_feed_key", "source_updated_at",
     }
     for column in _JOB_WRITE_COLUMNS:
         value = incoming[column]
@@ -333,6 +348,8 @@ def _record_changes(existing, incoming):
             # mysql-connector returns DATE columns as datetime.date while the
             # crawlers provide YYYY-MM-DD strings. Treat equivalent values as
             # unchanged so a repeated crawl remains a true no-op.
+            values_match = str(existing_value or "") == str(value or "")
+        elif column == "source_updated_at":
             values_match = str(existing_value or "") == str(value or "")
         else:
             values_match = existing_value == value
@@ -358,6 +375,9 @@ class _MySQLJobRepository:
         if record.get("application_link"):
             clauses.append("application_link = %s")
             params.append(record["application_link"])
+        if record.get("source") and record.get("source_job_id"):
+            clauses.append("id IN (SELECT job_id FROM job_source_alias WHERE provider = %s AND source_job_id = %s)")
+            params.extend([record["source"], record["source_job_id"]])
         self.cursor.execute(
             f"SELECT id, {', '.join(_JOB_WRITE_COLUMNS)} FROM job_data "
             f"WHERE {' OR '.join(clauses)} ORDER BY id LIMIT 2 FOR UPDATE",
@@ -371,13 +391,26 @@ class _MySQLJobRepository:
             f"INSERT INTO job_data ({', '.join(_JOB_WRITE_COLUMNS)}) VALUES ({placeholders})",
             tuple(record[column] for column in _JOB_WRITE_COLUMNS),
         )
-        return self.cursor.lastrowid
+        job_id = self.cursor.lastrowid
+        if record.get("source") in {"greenhouse", "lever", "ashby", "usajobs"}:
+            self.cursor.execute("UPDATE job_data SET last_verified_at = CURRENT_TIMESTAMP WHERE id = %s", (job_id,))
+        return job_id
+
+    def record_alias(self, source, source_job_id, job_id):
+        if source and source_job_id:
+            self.cursor.execute(
+                """INSERT INTO job_source_alias (provider, source_job_id, job_id)
+                   VALUES (%s, %s, %s)
+                   ON DUPLICATE KEY UPDATE last_seen_at = CURRENT_TIMESTAMP""",
+                (source, source_job_id, job_id),
+            )
 
     def update(self, job_id, changes):
         assignments = ", ".join(f"{column} = %s" for column in changes)
         self.cursor.execute(
             f"UPDATE job_data SET {assignments}, last_seen_at = CURRENT_TIMESTAMP, "
-            "last_checked_at = CURRENT_TIMESTAMP, active = TRUE WHERE id = %s",
+            "last_checked_at = CURRENT_TIMESTAMP, active = TRUE, "
+            "last_verified_at = IF(source IN ('greenhouse','lever','ashby','usajobs'), CURRENT_TIMESTAMP, last_verified_at) WHERE id = %s",
             tuple(changes.values()) + (job_id,),
         )
 
@@ -388,6 +421,8 @@ class _MySQLJobRepository:
             SET last_seen_at = CURRENT_TIMESTAMP,
                 last_checked_at = CURRENT_TIMESTAMP,
                 active = TRUE
+                ,status = 'active'
+                ,last_verified_at = IF(source IN ('greenhouse','lever','ashby','usajobs'), CURRENT_TIMESTAMP, last_verified_at)
             WHERE id = %s
             """,
             (job_id,),
@@ -419,24 +454,33 @@ def upsert_job(job, *, dry_run=False, repository_factory=None):
             return JobWriteResult("conflict", reason="identity matched multiple existing rows")
         if matches:
             existing = matches[0]
-            changes = _record_changes(existing, record)
+            better_existing = _source_rank(existing.get("source")) > _source_rank(record.get("source"))
+            changes = {} if better_existing else _record_changes(existing, record)
             if not changes:
                 if dry_run:
                     repository.rollback()
                 else:
-                    repository.touch_seen(existing["id"])
+                    if hasattr(repository, "record_alias"):
+                        repository.record_alias(record["source"], record["source_job_id"], existing["id"])
+                    if not better_existing:
+                        repository.touch_seen(existing["id"])
                     repository.commit()
-                return JobWriteResult("unchanged", job_id=existing["id"], reason=identity_strategy)
+                return JobWriteResult("unchanged", job_id=existing["id"], reason="lower-confidence duplicate" if better_existing else identity_strategy)
             if dry_run:
                 repository.rollback()
                 return JobWriteResult("would_update", job_id=existing["id"], changed_fields=tuple(changes), reason=identity_strategy)
             repository.update(existing["id"], changes)
+            if hasattr(repository, "record_alias"):
+                repository.record_alias(existing.get("source"), existing.get("source_job_id"), existing["id"])
+                repository.record_alias(record["source"], record["source_job_id"], existing["id"])
             repository.commit()
             return JobWriteResult("updated", job_id=existing["id"], changed_fields=tuple(changes), reason=identity_strategy)
         if dry_run:
             repository.rollback()
             return JobWriteResult("would_insert", reason=identity_strategy)
         job_id = repository.insert(record)
+        if hasattr(repository, "record_alias"):
+            repository.record_alias(record["source"], record["source_job_id"], job_id)
         repository.commit()
         return JobWriteResult("inserted", job_id=job_id, reason=identity_strategy)
     except mysql.connector.IntegrityError as exc:
@@ -599,12 +643,13 @@ def get_jobs_to_check():
 
     cursor.execute(
         """
-        SELECT id, application_link
+        SELECT id, application_link, status
         FROM job_data
         WHERE active = TRUE
-          AND (date_posted IS NULL OR DATEDIFF(CURDATE(), date_posted) > 30)
+          AND (status = 'possibly_closed' OR date_posted IS NULL OR DATEDIFF(CURDATE(), date_posted) > 30)
           AND (
                 last_checked_at IS NULL
+                OR (status = 'possibly_closed' AND last_checked_at < (CURRENT_TIMESTAMP - INTERVAL 1 DAY))
                 OR last_checked_at < (CURRENT_TIMESTAMP - INTERVAL 7 DAY)
               )
         """
@@ -632,10 +677,15 @@ def update_job_check_status(job_id, *, active=None):
             cursor.execute(
                 """
                 UPDATE job_data
-                SET active = %s, last_checked_at = CURRENT_TIMESTAMP
+                SET active = CASE WHEN %s = FALSE AND status = 'possibly_closed' THEN FALSE ELSE TRUE END,
+                    status = CASE WHEN %s = TRUE THEN 'active'
+                                  WHEN status = 'possibly_closed' THEN 'closed'
+                                  ELSE 'possibly_closed' END,
+                    last_verified_at = CASE WHEN %s = TRUE THEN CURRENT_TIMESTAMP ELSE last_verified_at END,
+                    last_checked_at = CURRENT_TIMESTAMP
                 WHERE id = %s
                 """,
-                (bool(active), job_id),
+                (bool(active), bool(active), bool(active), job_id),
             )
         conn.commit()
         return cursor.rowcount > 0
@@ -651,7 +701,7 @@ def update_job_check_status(job_id, *, active=None):
         conn.close()
 
 
-def fetch_all_jobs_from_db():
+def fetch_all_jobs_from_db(*, scope="dfw"):
     ensure_job_description_summary_column()
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
@@ -677,6 +727,7 @@ def fetch_all_jobs_from_db():
             source,
             source_job_id,
             canonical_url
+            ,last_verified_at
         FROM job_data
         WHERE experience_level IN ('Internship', 'Entry level')
           AND active = TRUE
@@ -691,7 +742,7 @@ def fetch_all_jobs_from_db():
 
     return [
         _map_db_row_to_frontend_job(row)
-        for row in _eligible_unique_rows(rows)
+        for row in _eligible_unique_rows(rows, scope=scope)
     ]
 
 
@@ -721,6 +772,7 @@ def fetch_job_by_id_from_db(job_id: int):
             source,
             source_job_id,
             canonical_url
+            ,last_verified_at
         FROM job_data
         WHERE id = %s
           AND experience_level IN ('Internship', 'Entry level')
@@ -735,22 +787,23 @@ def fetch_job_by_id_from_db(job_id: int):
     cursor.close()
     conn.close()
 
-    if not row or not _row_is_geography_eligible(row):
+    if not row or not _row_is_geography_eligible(row, scope="nationwide"):
         return None
 
     return _map_db_row_to_frontend_job(row)
 
 
-def _row_is_geography_eligible(row):
+def _row_is_geography_eligible(row, *, scope="dfw"):
     return assess_job_geography(
         row.get("location"),
         row.get("work_style"),
         row.get("job_description"),
+        scope=scope,
     ).accepted
 
 
-def _eligible_unique_rows(rows):
+def _eligible_unique_rows(rows, *, scope="dfw"):
     """Defense-in-depth guard for legacy rows and exact content reposts."""
-    eligible = [row for row in rows if _row_is_geography_eligible(row)]
+    eligible = [row for row in rows if _row_is_geography_eligible(row, scope=scope)]
     unique, _duplicates = partition_unique_postings(eligible)
     return unique

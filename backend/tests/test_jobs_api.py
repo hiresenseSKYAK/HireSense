@@ -89,6 +89,13 @@ class JobsApiTests(unittest.TestCase):
         result = _eligible_unique_rows(rows)
         self.assertEqual([row["id"] for row in result], [4])
 
+    def test_explicit_nationwide_scope_can_show_eligible_relocation_role(self):
+        rows = [{"id": 8, "job_title": "Software Engineer I", "company": "Example",
+                 "location": "San Jose, CA", "work_style": "On-site",
+                 "job_description": "Build software.", "application_link": "https://example.com/8"}]
+        self.assertEqual(_eligible_unique_rows(rows), [])
+        self.assertEqual([row["id"] for row in _eligible_unique_rows(rows, scope="nationwide")], [8])
+
 
 if __name__ == "__main__":
     unittest.main()

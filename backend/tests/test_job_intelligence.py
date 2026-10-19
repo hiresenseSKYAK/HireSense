@@ -40,6 +40,17 @@ class JobIntelligenceTests(unittest.TestCase):
         self.assertNotIn('private@example.com', str(context) + str(ranked))
         self.assertNotIn('React', str(ranked))
 
+    def test_fresh_dfw_early_career_outweighs_old_equivalent_remote(self):
+        context = candidate_context({'skills': ['Python', 'SQL']})
+        jobs = [
+            {**JOBS[0], 'id': 21, 'location': 'Remote - United States', 'hybrid': 'Remote',
+             'source': 'adzuna', 'datePosted': '2026-06-01'},
+            {**JOBS[0], 'id': 22, 'location': 'Richardson, TX', 'source': 'greenhouse',
+             'datePosted': '2026-10-19'},
+        ]
+        ranked = rank_recommendations(jobs, context, datetime(2026, 10, 19))
+        self.assertEqual([item['id'] for item in ranked], [22, 21])
+
     def test_semantic_order_cannot_cross_deterministic_bands(self):
         candidates = [{**job, '_rank': score} for job, score in zip(JOBS, (80, 75, 45))]
         result = apply_bounded_rerank(candidates, [3, 2, 1])

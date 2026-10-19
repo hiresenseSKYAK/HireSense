@@ -180,10 +180,17 @@ def assess_job_geography(
     location: object,
     work_style: object = "",
     description: object = "",
+    scope: str = "dfw",
 ) -> LocationDecision:
     """Apply the complete shared feed policy, including source-text conflicts."""
     decision = assess_job_location(location, work_style)
-    if not decision.accepted or decision.category == "Remote":
+    if not decision.accepted and scope in {"texas", "nationwide"}:
+        text = " ".join(str(location or "").split())
+        texas = bool(re.search(r"(?:,\s*TX\b|,\s*Texas\b|\bTexas\b)", text, re.I))
+        us = bool(_US_STATE_CODE_PATTERN.search(text) or _US_STATE_NAME_PATTERN.search(text))
+        if texas or (scope == "nationwide" and us):
+            decision = LocationDecision(True, "Texas" if texas else "Relocation", "explicit US state location")
+    if not decision.accepted or decision.category in {"Remote", "Texas", "Relocation"}:
         return decision
 
     conflicts = find_location_conflicts(description)

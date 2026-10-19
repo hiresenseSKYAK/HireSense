@@ -45,7 +45,19 @@ class UpdaterTests(unittest.TestCase):
             result = updater.update_database()
 
         status.assert_called_once_with(7, active=False)
+        self.assertEqual(result["possibly_closed"], 1)
+
+    def test_second_independent_closed_signal_confirms_closure(self):
+        rows = [{"id": 3, "application_link": "https://example.com/job", "status": "possibly_closed"}]
+        with (
+            patch.object(updater, "get_jobs_to_check", return_value=rows),
+            patch.object(updater, "classify_application_link", return_value=(True, "http 410")),
+            patch.object(updater, "update_job_check_status", return_value=True) as status,
+            patch.object(updater.time, "sleep"),
+        ):
+            result = updater.update_database()
         self.assertEqual(result["deactivated"], 1)
+        status.assert_called_once_with(3, active=False)
 
     def test_transient_failure_only_records_check(self):
         rows = [{"id": 8, "application_link": "https://example.com/job"}]
