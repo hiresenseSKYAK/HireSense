@@ -137,3 +137,28 @@
 .card :global(.btn-primary) {
   margin-top: 6px;
 }
+
+.extensionCard {
+  gap: 8px;
+  border-color: rgba(1, 91, 252, 0.2);
+}
+
+.extensionActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.extensionStatus {
+  margin: 0;
+  color: var(--accent-text);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.extensionHint {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}

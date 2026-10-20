@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ResumeUploadResponse } from '../api/resume'
 import { markAutofillProfileConfirmed } from '../features/autofill/readiness'
+import { detectAutofillExtension } from '../features/autofill/extensionBridge'
 import ProfilePage from './ProfilePage'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -26,6 +27,10 @@ vi.mock('../api/auth', () => ({
   logout: vi.fn(async () => undefined),
 }))
 vi.mock('../utils/resumeStorage', () => ({ getResumeAnalysis: () => testState.resume }))
+vi.mock('../features/autofill/extensionBridge', () => ({
+  detectAutofillExtension: vi.fn(),
+  clearSyncedProfile: vi.fn(async () => undefined),
+}))
 
 const resume: ResumeUploadResponse = {
   filename: 'resume.pdf',
@@ -42,12 +47,14 @@ let root: Root | undefined
 beforeEach(() => {
   sessionStorage.clear()
   testState.resume = resume
+  vi.mocked(detectAutofillExtension).mockResolvedValue({ version: '0.4.0' })
 })
 
 afterEach(() => {
   if (root) act(() => root?.unmount())
   root = undefined
   document.body.replaceChildren()
+  vi.unstubAllEnvs()
 })
 
 async function renderProfile() {
@@ -85,5 +92,32 @@ describe('Profile page', () => {
     const autofill = document.querySelector('[aria-label="Autofill readiness"]')
     expect(autofill?.textContent).toContain('Ready')
     expect(autofill?.textContent).toContain('applicant profile reviewed and confirmed')
+  })
+
+  it('shows the store install action when configured and extension is not detected', async () => {
+    vi.stubEnv('VITE_CHROME_EXTENSION_STORE_URL', 'https://chromewebstore.google.com/detail/hiresense-autofill/' + 'a'.repeat(32))
+    vi.mocked(detectAutofillExtension).mockRejectedValue(new Error('not detected'))
+    await renderProfile()
+    const install = document.querySelector<HTMLAnchorElement>('a[href^="https://chromewebstore.google.com/detail/"]')
+    expect(install?.textContent).toBe('Install for Chrome')
+    expect(install?.target).toBe('_blank')
+    expect(install?.rel).toContain('noopener')
+  })
+
+  it('shows Coming soon when no store URL is configured and extension is absent', async () => {
+    vi.stubEnv('VITE_CHROME_EXTENSION_STORE_URL', '')
+    vi.mocked(detectAutofillExtension).mockRejectedValue(new Error('not detected'))
+    await renderProfile()
+    expect(document.body.textContent).toContain('Coming soon')
+    expect(document.body.textContent).not.toContain('Install for Chrome')
+  })
+
+  it('shows detected and sync state instead of install even with a store URL', async () => {
+    vi.stubEnv('VITE_CHROME_EXTENSION_STORE_URL', 'https://chromewebstore.google.com/detail/hiresense-autofill/' + 'a'.repeat(32))
+    markAutofillProfileConfirmed(resume)
+    await renderProfile()
+    expect(document.body.textContent).toContain('Extension detected')
+    expect(document.body.textContent).toContain('Sync profile')
+    expect(document.body.textContent).not.toContain('Install for Chrome')
   })
 })

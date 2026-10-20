@@ -7,7 +7,8 @@ import {
   clearAutofillProfileConfirmation,
   getAutofillReadiness,
 } from '../features/autofill/readiness'
-import { clearSyncedProfile } from '../features/autofill/extensionBridge'
+import { clearSyncedProfile, detectAutofillExtension } from '../features/autofill/extensionBridge'
+import { getChromeExtensionStoreUrl } from '../config/extension'
 import styles from './ProfilePage.module.css'
 
 export default function ProfilePage() {
@@ -18,6 +19,17 @@ export default function ProfilePage() {
   const [isLoadingMatches, setIsLoadingMatches] = useState(Boolean(savedResume))
   const [matchError, setMatchError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
+  const [extensionState, setExtensionState] = useState<'checking' | 'detected' | 'not-detected'>('checking')
+
+  useEffect(() => {
+    let cancelled = false
+    void detectAutofillExtension().then(() => {
+      if (!cancelled) setExtensionState('detected')
+    }).catch(() => {
+      if (!cancelled) setExtensionState('not-detected')
+    })
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     const resumeSkills = savedResume?.parsed_data.skills?.filter(Boolean) ?? []
@@ -57,6 +69,7 @@ export default function ProfilePage() {
   const autofillReadiness = getAutofillReadiness(savedResume)
   const savedOn = savedResume?.saved_at ? new Date(savedResume.saved_at).toLocaleDateString() : ''
   const bestMatch = matchSummary?.highest
+  const extensionStoreUrl = getChromeExtensionStoreUrl()
 
   const handleLogout = async () => {
     clearAutofillProfileConfirmation()
@@ -132,6 +145,27 @@ export default function ProfilePage() {
           <h2 id="autofill-heading" className={styles.cardTitle}>{autofillReadiness.label}</h2>
           <p className={styles.muted}>{autofillReadiness.detail}</p>
           <Link className="btn-primary" to="/application/prepare">Review autofill profile</Link>
+        </section>
+
+        <section className={`${styles.card} ${styles.extensionCard}`} aria-labelledby="extension-heading">
+          <p className={styles.eyebrow}>Browser companion</p>
+          <h2 id="extension-heading" className={styles.cardTitle}>HireSense Autofill Extension</h2>
+          <p className={styles.muted}>Use your reviewed HireSense profile to preview and fill safe application fields.</p>
+          {extensionState === 'checking' ? (
+            <p className={styles.extensionStatus} role="status">Checking for the extension…</p>
+          ) : extensionState === 'detected' ? (
+            <div className={styles.extensionActions}>
+              <span className={styles.extensionStatus} role="status">Extension detected</span>
+              <Link className="btn-outline" to="/application/prepare">{autofillReadiness.status === 'ready' ? 'Sync profile' : 'Review profile to sync'}</Link>
+            </div>
+          ) : extensionStoreUrl ? (
+            <div className={styles.extensionActions}>
+              <a className="btn-primary" href={extensionStoreUrl} target="_blank" rel="noopener noreferrer">Install for Chrome</a>
+              <span className={styles.extensionHint}>Already installed? Reload the extension and refresh this page.</span>
+            </div>
+          ) : (
+            <p className={styles.extensionStatus} role="status">Coming soon</p>
+          )}
         </section>
       </div>
     </div>
