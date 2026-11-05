@@ -134,7 +134,6 @@ const fields: Array<{
   type?: 'email' | 'tel' | 'url' | 'text'
   autoComplete?: string
 }> = [
-  { name: 'fullName', label: 'Full name', autoComplete: 'name' },
   { name: 'firstName', label: 'First name', autoComplete: 'given-name' },
   { name: 'lastName', label: 'Last name', autoComplete: 'family-name' },
   { name: 'email', label: 'Email', type: 'email', autoComplete: 'email' },

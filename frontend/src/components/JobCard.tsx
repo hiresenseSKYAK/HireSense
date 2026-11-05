@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import type { Job } from '../types'
 import styles from './JobCard.module.css'
 import { IconBriefcase, IconMap, IconClock, IconCheck } from './Icons'
@@ -42,6 +42,9 @@ function getCardDescription(job: Job) {
 
 export default function JobCard({ job, showMatch = false }: Props) {
   const navigate = useNavigate()
+  const location = useLocation()
+  // Lets the detail page's Back button return to this exact list (filters, search, page).
+  const openJob = () => navigate(`/jobs/${job.id}`, { state: { from: `${location.pathname}${location.search}` } })
   const resolvedLogo = job.companyLogoUrl || job.logo || ''
   const [logoFailed, setLogoFailed] = useState(false)
   useEffect(() => setLogoFailed(false), [resolvedLogo])
@@ -70,11 +73,11 @@ export default function JobCard({ job, showMatch = false }: Props) {
   return (
     <article
       className={styles.card}
-      onClick={() => navigate(`/jobs/${job.id}`)}
+      onClick={() => openJob()}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
-          navigate(`/jobs/${job.id}`)
+          openJob()
         }
       }}
       role="link"

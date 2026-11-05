@@ -16,7 +16,7 @@ try:
         PER_SEARCH_ACCEPT_LIMIT, PER_SEARCH_TIME_LIMIT_SEC, source_specs,
     )
     from database.job_identity import build_job_identity
-    from database.queries import upsert_job
+    from database.queries import record_feed_snapshot, upsert_job
     from services.updater import update_database
 except ImportError:
     import os
@@ -32,7 +32,7 @@ except ImportError:
         PER_SEARCH_ACCEPT_LIMIT, PER_SEARCH_TIME_LIMIT_SEC, source_specs,
     )
     from database.job_identity import build_job_identity
-    from database.queries import upsert_job
+    from database.queries import record_feed_snapshot, upsert_job
     from services.updater import update_database
 
 
@@ -50,9 +50,15 @@ def _log_db_target():
 
 
 def collect_jobs(
-    *, source: str, limit: int, time_limit_sec: int | None = None, persist_health: bool = False
+    *, source: str, limit: int, time_limit_sec: int | None = None, persist_health: bool = False,
+    snapshots: list[tuple[str, set[str]]] | None = None,
 ) -> tuple[list[dict], dict[str, int]]:
-    """Collect bounded candidates across searches and deduplicate before DB work."""
+    """Collect bounded candidates across searches and deduplicate before DB work.
+
+    When ``snapshots`` is given, every complete, error-free employer-board feed
+    (Greenhouse/Lever/Ashby) appends ``(feed_key, {source_job_id, ...})`` so the
+    caller can close jobs that disappeared from that board.
+    """
     jobs: list[dict] = []
     seen: set[str] = set()
     totals = {"discovered": 0, "accepted": 0, "rejected": 0, "duplicates": 0, "source_errors": 0}
@@ -103,14 +109,21 @@ def collect_jobs(
             continue
 
         found = result.jobs
+        complete_snapshot = (source_name in {"greenhouse", "lever", "ashby"}
+                             and result.discovered < per_search_limit and not result.errors)
+        if snapshots is not None and complete_snapshot and result.discovered > 0:
+            # Same id the database stores (inferred from the URL when the feed omits one).
+            identities = (build_job_identity(job) for job in found)
+            snapshots.append((source_key(spec), {
+                identity.source_job_id for identity in identities if identity and identity.source_job_id
+            }))
         if persist_health and result.error_code != "credentials_missing":
             try:
                 record_sync(spec, success=not result.errors, jobs_received=len(found),
                             duration_ms=int((time.monotonic() - started) * 1000),
                             error_code=result.error_code or ("fetch_error" if result.errors else None),
                             rate_limited=result.rate_limited,
-                            complete_snapshot=(source_name in {"greenhouse", "lever", "ashby"}
-                                               and result.discovered < per_search_limit and not result.errors))
+                            complete_snapshot=complete_snapshot)
             except Exception:
                 totals["source_errors"] += 1
 
@@ -165,9 +178,10 @@ def run(*, dry_run=False, source="all", limit=None, skip_cleanup=False):
             cleanup_errors = 1
             print(f"[crawl] lifecycle checks failed; ingestion continues: {exc}", flush=True)
 
+    snapshots: list[tuple[str, set[str]]] = []
     jobs, totals = collect_jobs(
         source=source, limit=effective_limit, time_limit_sec=effective_time_limit,
-        persist_health=not dry_run,
+        persist_health=not dry_run, snapshots=snapshots,
     )
     totals["source_errors"] += cleanup_errors
     print(f"[crawl] unique candidates before database work: {len(jobs)}", flush=True)
@@ -211,7 +225,17 @@ def run(*, dry_run=False, source="all", limit=None, skip_cleanup=False):
             flush=True,
         )
 
+    closed_missing = 0
     if not dry_run:
+        # Runs after upserts so jobs seen in this crawl are already up to date.
+        for feed_key, present_ids in snapshots:
+            try:
+                closed_missing += record_feed_snapshot(feed_key, present_ids)
+            except Exception as exc:
+                print(f"[crawl] feed snapshot bookkeeping failed feed={feed_key}: {exc}", flush=True)
+        if snapshots:
+            print(f"[crawl] closed {closed_missing} job(s) missing from {len(snapshots)} complete employer feed(s)",
+                  flush=True)
         backfill_missing_summaries()
         backfill_job_skills(only_empty=True)
 

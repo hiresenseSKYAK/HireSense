@@ -7,7 +7,9 @@ except ImportError:
         from connection import DB_NAME, get_connection
 
 import json
+import os
 import re
+from datetime import date, datetime, timedelta
 import mysql.connector
 from dataclasses import dataclass
 from urllib.parse import urlsplit
@@ -33,6 +35,19 @@ except ImportError:
     from services.job_deduplication import partition_unique_postings
 
 _JOB_SUMMARY_COLUMN_READY = False
+
+# ---------------------------------------------------------------------------
+# Job lifecycle policy
+# ---------------------------------------------------------------------------
+# A job is shown for at most JOB_MAX_AGE_DAYS after its posting date. When the
+# source gives no posting date, the day the crawler first found it is used.
+JOB_MAX_AGE_DAYS = max(1, int(os.getenv("JOB_MAX_AGE_DAYS", "30") or 30))
+# The age a row has, in SQL: posting date, or first-seen date when missing.
+JOB_AGE_DATE_SQL = "COALESCE(date_posted, DATE(first_seen_at))"
+# Employer boards whose feed is the authoritative list of open jobs.
+DIRECT_FEED_SOURCES = {"greenhouse", "lever", "ashby"}
+# Complete feed snapshots a job must be missing from, in a row, before closing.
+MISSED_SNAPSHOTS_TO_CLOSE = 2
 
 
 ALLOWED_JOB_TYPES = {
@@ -428,24 +443,27 @@ class _MySQLJobRepository:
                 (source, source_job_id, job_id),
             )
 
-    def update(self, job_id, changes):
-        assignments = ", ".join(f"{column} = %s" for column in changes)
+    def update(self, job_id, changes, *, reactivate=True):
+        assignments = "".join(f"{column} = %s, " for column in changes)
+        # A hidden (expired/closed) job keeps active = FALSE; only metadata is refreshed.
+        reactivation = "active = TRUE, " if reactivate else ""
         self.cursor.execute(
-            f"UPDATE job_data SET {assignments}, last_seen_at = CURRENT_TIMESTAMP, "
-            "last_checked_at = CURRENT_TIMESTAMP, active = TRUE, "
+            f"UPDATE job_data SET {assignments}last_seen_at = CURRENT_TIMESTAMP, "
+            f"last_checked_at = CURRENT_TIMESTAMP, {reactivation}"
             "last_verified_at = IF(source IN ('greenhouse','lever','ashby','usajobs'), CURRENT_TIMESTAMP, last_verified_at) WHERE id = %s",
             tuple(changes.values()) + (job_id,),
         )
 
-    def touch_seen(self, job_id):
+    def touch_seen(self, job_id, *, reactivate=True):
+        # A hidden (expired/closed) job only gets its "last seen" time refreshed.
+        reactivation = "active = TRUE, status = 'active'," if reactivate else ""
         self.cursor.execute(
-            """
+            f"""
             UPDATE job_data
             SET last_seen_at = CURRENT_TIMESTAMP,
                 last_checked_at = CURRENT_TIMESTAMP,
-                active = TRUE
-                ,status = 'active'
-                ,last_verified_at = IF(source IN ('greenhouse','lever','ashby','usajobs'), CURRENT_TIMESTAMP, last_verified_at)
+                {reactivation}
+                last_verified_at = IF(source IN ('greenhouse','lever','ashby','usajobs'), CURRENT_TIMESTAMP, last_verified_at)
             WHERE id = %s
             """,
             (job_id,),
@@ -460,6 +478,37 @@ class _MySQLJobRepository:
     def close(self):
         self.cursor.close()
         self.connection.close()
+
+
+def _posted_recently(value) -> bool:
+    if not value:
+        return False
+    if isinstance(value, datetime):
+        posted = value.date()
+    elif isinstance(value, date):
+        posted = value
+    else:
+        try:
+            posted = datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+        except ValueError:
+            return False
+    return posted >= date.today() - timedelta(days=JOB_MAX_AGE_DAYS)
+
+
+def _stays_hidden(existing, record) -> bool:
+    """Whether a re-crawled job that was hidden must stay hidden.
+
+    - "expired" (too old) stays hidden unless the source now reports a fresh posting date.
+    - "closed" stays hidden unless the job is back on its employer's own board
+      (Greenhouse/Lever/Ashby), which is authoritative. Showing up again in a
+      LinkedIn or Handshake search is not enough to bring it back.
+    """
+    status = existing.get("status")
+    if status == "expired":
+        return not _posted_recently(record.get("date_posted"))
+    if status == "closed":
+        return str(record.get("source") or "").lower() not in DIRECT_FEED_SOURCES
+    return False
 
 
 def upsert_job(job, *, dry_run=False, repository_factory=None):
@@ -479,6 +528,9 @@ def upsert_job(job, *, dry_run=False, repository_factory=None):
             existing = matches[0]
             better_existing = _source_rank(existing.get("source")) > _source_rank(record.get("source"))
             changes = {} if better_existing else _record_changes(existing, record)
+            stay_hidden = _stays_hidden(existing, record)
+            if stay_hidden:
+                changes.pop("status", None)
             if not changes:
                 if dry_run:
                     repository.rollback()
@@ -486,13 +538,13 @@ def upsert_job(job, *, dry_run=False, repository_factory=None):
                     if hasattr(repository, "record_alias"):
                         repository.record_alias(record["source"], record["source_job_id"], existing["id"])
                     if not better_existing:
-                        repository.touch_seen(existing["id"])
+                        repository.touch_seen(existing["id"], reactivate=not stay_hidden)
                     repository.commit()
                 return JobWriteResult("unchanged", job_id=existing["id"], reason="lower-confidence duplicate" if better_existing else identity_strategy)
             if dry_run:
                 repository.rollback()
                 return JobWriteResult("would_update", job_id=existing["id"], changed_fields=tuple(changes), reason=identity_strategy)
-            repository.update(existing["id"], changes)
+            repository.update(existing["id"], changes, reactivate=not stay_hidden)
             if hasattr(repository, "record_alias"):
                 repository.record_alias(existing.get("source"), existing.get("source_job_id"), existing["id"])
                 repository.record_alias(record["source"], record["source_job_id"], existing["id"])
@@ -515,11 +567,14 @@ def upsert_job(job, *, dry_run=False, repository_factory=None):
             if len(matches) == 1:
                 existing = matches[0]
                 changes = _record_changes(existing, record)
+                stay_hidden = _stays_hidden(existing, record)
+                if stay_hidden:
+                    changes.pop("status", None)
                 if changes:
-                    repository.update(existing["id"], changes)
+                    repository.update(existing["id"], changes, reactivate=not stay_hidden)
                     repository.commit()
                     return JobWriteResult("updated", job_id=existing["id"], changed_fields=tuple(changes), reason="concurrent identity match")
-                repository.touch_seen(existing["id"])
+                repository.touch_seen(existing["id"], reactivate=not stay_hidden)
                 repository.commit()
                 return JobWriteResult("unchanged", job_id=existing["id"], reason="concurrent identity match")
         return JobWriteResult("error", reason=f"integrity error: {exc}")
@@ -664,18 +719,25 @@ def get_jobs_to_check():
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
 
+    # Every visible job is link-checked, not just old ones: never-checked jobs
+    # first, then "possibly closed" (recheck daily), then anything not checked
+    # in 3 days. Jobs past the age limit are skipped; the age rule removes them.
     cursor.execute(
-        """
-        SELECT id, application_link, status
+        f"""
+        SELECT id, application_link, status, source, source_job_id
         FROM job_data
         WHERE active = TRUE
-          AND (status = 'possibly_closed' OR date_posted IS NULL OR DATEDIFF(CURDATE(), date_posted) > 30)
+          AND {JOB_AGE_DATE_SQL} >= CURRENT_DATE - INTERVAL %s DAY
           AND (
                 last_checked_at IS NULL
                 OR (status = 'possibly_closed' AND last_checked_at < (CURRENT_TIMESTAMP - INTERVAL 1 DAY))
-                OR last_checked_at < (CURRENT_TIMESTAMP - INTERVAL 7 DAY)
+                OR last_checked_at < (CURRENT_TIMESTAMP - INTERVAL 3 DAY)
               )
-        """
+        ORDER BY (last_checked_at IS NULL) DESC,
+                 (status = 'possibly_closed') DESC,
+                 last_checked_at ASC
+        """,
+        (JOB_MAX_AGE_DAYS,),
     )
 
     jobs = cursor.fetchall()
@@ -686,12 +748,101 @@ def get_jobs_to_check():
     return jobs
 
 
-def update_job_check_status(job_id, *, active=None):
+def record_feed_snapshot(feed_key, present_source_job_ids):
+    """Close employer-board jobs missing from complete feed snapshots.
+
+    Called after a complete, error-free Greenhouse/Lever/Ashby crawl of one
+    board. Jobs listed in the feed reset their miss counter; active jobs from
+    that feed that were not listed get +1. A job missing from
+    MISSED_SNAPSHOTS_TO_CLOSE snapshots in a row (about 30 minutes at the
+    15-minute ATS cadence) is marked closed and hidden.
+
+    Returns the number of jobs closed.
+    """
+    present = sorted({str(value) for value in present_source_job_ids if value})
+    if not feed_key or not present:
+        # An empty board response is more likely a glitch than every job closing
+        # at once; leave those jobs to the age rule and link checker.
+        return 0
+    placeholders = ", ".join(["%s"] * len(present))
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            f"UPDATE job_data SET missed_snapshots = 0 "
+            f"WHERE source_feed_key = %s AND source_job_id IN ({placeholders})",
+            (feed_key, *present),
+        )
+        cursor.execute(
+            f"UPDATE job_data SET missed_snapshots = missed_snapshots + 1 "
+            f"WHERE source_feed_key = %s AND active = TRUE "
+            f"AND (source_job_id IS NULL OR source_job_id NOT IN ({placeholders}))",
+            (feed_key, *present),
+        )
+        cursor.execute(
+            "UPDATE job_data SET active = FALSE, status = 'closed' "
+            "WHERE source_feed_key = %s AND active = TRUE AND missed_snapshots >= %s",
+            (feed_key, MISSED_SNAPSHOTS_TO_CLOSE),
+        )
+        closed = cursor.rowcount
+        conn.commit()
+        return closed
+    except mysql.connector.Error as exc:
+        conn.rollback()
+        print(f"[db] record_feed_snapshot FAILED: {exc!r} | feed={feed_key!r}", flush=True)
+        return 0
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def expire_old_jobs(*, dry_run=True):
+    """Hide jobs older than JOB_MAX_AGE_DAYS (posting date, else first-seen date).
+
+    Rows are marked status = 'expired', active = FALSE rather than deleted, so
+    interview history that points at a job keeps working. Returns the count.
+    """
+    predicate = f"active = TRUE AND {JOB_AGE_DATE_SQL} < CURRENT_DATE - INTERVAL %s DAY"
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        if dry_run:
+            cursor.execute(f"SELECT COUNT(*) FROM job_data WHERE {predicate}", (JOB_MAX_AGE_DAYS,))
+            return int(cursor.fetchone()[0])
+        cursor.execute(
+            f"UPDATE job_data SET status = 'expired', active = FALSE WHERE {predicate}",
+            (JOB_MAX_AGE_DAYS,),
+        )
+        count = cursor.rowcount
+        conn.commit()
+        return count
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def update_job_check_status(job_id, *, active=None, confirmed=False):
+    """Record a link check.
+
+    active=True: open. active=None: inconclusive. active=False: closure evidence;
+    the first one marks "possibly_closed" and a second (a day later) closes the
+    job, unless confirmed=True (the source itself said it is closed, e.g.
+    LinkedIn's "No longer accepting applications"), which closes immediately.
+    """
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
-        if active is None:
+        if active is False and confirmed:
+            cursor.execute(
+                "UPDATE job_data SET active = FALSE, status = 'closed', "
+                "last_checked_at = CURRENT_TIMESTAMP WHERE id = %s",
+                (job_id,),
+            )
+        elif active is None:
             cursor.execute(
                 "UPDATE job_data SET last_checked_at = CURRENT_TIMESTAMP WHERE id = %s",
                 (job_id,),
@@ -730,7 +881,7 @@ def fetch_all_jobs_from_db(*, scope="dfw"):
     cursor = conn.cursor(dictionary=True)
 
     cursor.execute(
-        """
+        f"""
         SELECT
             id,
             job_title,
@@ -754,8 +905,10 @@ def fetch_all_jobs_from_db(*, scope="dfw"):
         FROM job_data
         WHERE experience_level IN ('Internship', 'Entry level')
           AND active = TRUE
+          AND {JOB_AGE_DATE_SQL} >= CURRENT_DATE - INTERVAL %s DAY
         ORDER BY id DESC
-        """
+        """,
+        (JOB_MAX_AGE_DAYS,),
     )
 
     rows = cursor.fetchall()
@@ -775,7 +928,7 @@ def fetch_job_by_id_from_db(job_id: int):
     cursor = conn.cursor(dictionary=True)
 
     cursor.execute(
-        """
+        f"""
         SELECT
             id,
             job_title,
@@ -800,9 +953,10 @@ def fetch_job_by_id_from_db(job_id: int):
         WHERE id = %s
           AND experience_level IN ('Internship', 'Entry level')
           AND active = TRUE
+          AND {JOB_AGE_DATE_SQL} >= CURRENT_DATE - INTERVAL %s DAY
         LIMIT 1
         """,
-        (job_id,),
+        (job_id, JOB_MAX_AGE_DAYS),
     )
 
     row = cursor.fetchone()

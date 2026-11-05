@@ -205,6 +205,20 @@ function parsedResumeData(source: unknown): Record<string, unknown> {
   return source.parsed_data
 }
 
+function joinName(firstName: string, lastName: string): string {
+  return [firstName, lastName].filter(Boolean).join(' ')
+}
+
+// Older saved resumes only carry "name"; split it so first/last are still filled.
+function resumeNames(parsedData: Record<string, unknown>): { firstName: string; lastName: string } {
+  const firstName = trimmedString(parsedData.first_name)
+  const lastName = trimmedString(parsedData.last_name)
+  if (firstName || lastName) return { firstName, lastName }
+  const words = trimmedString(parsedData.name).split(/\s+/).filter(Boolean)
+  if (words.length === 0) return { firstName: '', lastName: '' }
+  return { firstName: words[0], lastName: words.length > 1 ? words[words.length - 1] : '' }
+}
+
 export function initializeApplicantProfile(
   source: ResumeUploadResponse,
 ): ApplicantProfile
@@ -214,9 +228,16 @@ export function initializeApplicantProfile(source: unknown): ApplicantProfile {
   const provided = isRecord(source) && isRecord(source.applicant_profile) ? source.applicant_profile : {}
   const historySource = Object.keys(provided).length > 0 ? provided : parsedData
 
+  const names = resumeNames(parsedData)
+
   return mirrorPrimaryEntries({
     ...EMPTY_PROFILE,
-    fullName: trimmedString(parsedData.name),
+    ...names,
+    fullName: joinName(names.firstName, names.lastName) || trimmedString(parsedData.name),
+    city: trimmedString(parsedData.city),
+    state: trimmedString(parsedData.state),
+    linkedin: trimmedString(parsedData.linkedin),
+    github: trimmedString(parsedData.github),
     email: trimmedString(parsedData.email),
     phone: trimmedString(parsedData.phone),
     skillList: skillListFromSource(provided, parsedData),
@@ -368,12 +389,16 @@ export function updateProfileValue<K extends StringProfileKey>(
     return state
   }
 
+  const values = { ...state.values, [field]: normalizedValue }
+  // "Full name" is not edited directly; it always follows first + last name
+  // so application forms that ask for one combined name still get filled.
+  if (field === 'firstName' || field === 'lastName') {
+    values.fullName = joinName(values.firstName, values.lastName)
+  }
+
   return {
     ...state,
-    values: {
-      ...state.values,
-      [field]: normalizedValue,
-    },
+    values,
     revision: state.revision + 1,
     confirmedRevision: null,
   }

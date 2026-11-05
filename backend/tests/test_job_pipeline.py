@@ -63,13 +63,17 @@ class MemoryRepository:
         self.state["rows"].append(row)
         return row["id"]
 
-    def update(self, job_id, changes):
+    def update(self, job_id, changes, *, reactivate=True):
         row = next(item for item in self.state["rows"] if item["id"] == job_id)
         row.update(changes)
+        if reactivate:
+            row["active"] = True
 
-    def touch_seen(self, job_id):
+    def touch_seen(self, job_id, *, reactivate=True):
         row = next(item for item in self.state["rows"] if item["id"] == job_id)
-        row["active"] = True
+        if reactivate:
+            row["active"] = True
+            row["status"] = "active"
         self.state["touches"] = self.state.get("touches", 0) + 1
 
     def commit(self):

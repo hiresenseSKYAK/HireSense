@@ -1,38 +1,28 @@
-"""Daily, reversible stale marking after 45 days of absence from a healthy feed."""
+"""Daily age cleanup: hide jobs older than the 30-day limit.
+
+A job's age is its posting date, or the day the crawler first found it when the
+source gives no posting date. Old jobs are marked status = 'expired' and
+active = FALSE (reversible; rows are not deleted, so interview history that
+points at a job keeps working). The limit can be changed with JOB_MAX_AGE_DAYS.
+
+Usage:
+    python -m scripts.cleanup_stale_jobs          # count only (dry run)
+    python -m scripts.cleanup_stale_jobs --apply  # hide them
+"""
 
 from __future__ import annotations
 
-from database.connection import get_connection
+from database.queries import JOB_MAX_AGE_DAYS, expire_old_jobs
 
 
 def cleanup_stale(*, dry_run: bool = True) -> int:
-    conn = get_connection()
-    cursor = conn.cursor()
-    predicate = """j.active = TRUE AND j.status = 'active'
-       AND j.source_feed_key IS NOT NULL
-       AND j.last_seen_at < CURRENT_TIMESTAMP - INTERVAL 45 DAY
-       AND (j.last_verified_at IS NULL OR j.last_verified_at < CURRENT_TIMESTAMP - INTERVAL 30 DAY)
-       AND h.last_success > j.last_seen_at AND h.failure_count = 0
-       AND h.complete_snapshot = TRUE"""
-    try:
-        if dry_run:
-            cursor.execute(f"SELECT COUNT(*) FROM job_data j JOIN job_source_health h ON h.source_key = j.source_feed_key WHERE {predicate}")
-            return int(cursor.fetchone()[0])
-        cursor.execute(f"UPDATE job_data j JOIN job_source_health h ON h.source_key = j.source_feed_key SET j.status = 'stale', j.active = FALSE WHERE {predicate}")
-        count = cursor.rowcount
-        conn.commit()
-        return count
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        cursor.close()
-        conn.close()
+    return expire_old_jobs(dry_run=dry_run)
 
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
-    print(f"[stale] {'marked' if args.apply else 'candidates'}={cleanup_stale(dry_run=not args.apply)}")
+    label = "expired" if args.apply else "would expire"
+    print(f"[expire] max_age_days={JOB_MAX_AGE_DAYS} {label}={cleanup_stale(dry_run=not args.apply)}")

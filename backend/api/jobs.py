@@ -21,8 +21,10 @@ except ImportError:
 
 try:
     from services.job_listing import assemble_job_page
+    from services.job_location import market_area_label
 except ImportError:
     from backend.services.job_listing import assemble_job_page
+    from backend.services.job_location import market_area_label
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 logger = logging.getLogger(__name__)
@@ -51,8 +53,11 @@ def get_market_insights():
         for tag in job.get("tags", []):
             skill_counter[tag] += 1
 
-        location = job.get("location", "Unknown")
-        location_counter[location] += 1
+        # Count by a normalized area so "Dallas" and "dallas, texas" are one row,
+        # and regional/unclear DFW postings show as "Dallas-Fort Worth area".
+        area = market_area_label(job.get("location"), job.get("hybrid"))
+        if area:
+            location_counter[area] += 1
 
         company = job.get("company", "Unknown")
         company_counter[company] += 1

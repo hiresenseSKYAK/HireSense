@@ -32,7 +32,7 @@ OPENAI_MAX_OUTPUT_TOKENS=1800
 OPENAI_MAX_RETRIES=1
 ```
 
-Only `OPENAI_API_KEY` is required to enable OpenAI. `OPENAI_INTERVIEW_MODEL` can select a stronger interview model; `OPENAI_LIGHT_MODEL` routes resume and job preparation to a cheaper model. Both inherit `OPENAI_MODEL` when unset. Never use a `VITE_*` variable for the key.
+Only `OPENAI_API_KEY` is required to enable OpenAI. The same key also powers AI-assisted resume parsing (see **Resume parsing** below); there is no separate key. `OPENAI_INTERVIEW_MODEL` can select a stronger interview model; `OPENAI_LIGHT_MODEL` routes resume and job preparation to a cheaper model. Both inherit `OPENAI_MODEL` when unset. Never use a `VITE_*` variable for the key.
 
 On Render, open the backend service, choose **Environment**, add `OPENAI_API_KEY`, and optionally override `OPENAI_MODEL`, `OPENAI_INTERVIEW_MODEL`, and `OPENAI_LIGHT_MODEL`. The database and `CORS_ORIGINS` variables remain required as before. Keep model names server-side; do not put the key in a `VITE_*` variable.
 
@@ -75,6 +75,19 @@ Provider responses are logged as `response_received` at the transport boundary. 
 The authenticated `/ai/resume-coach`, `/ai/jobs/{job_id}/preparation`, and `/ai/jobs/recommendations` endpoints reuse the same OpenAI SDK transport and structured completion client. Resume Coach runs after deterministic parsing. Job preparation uses the server's authoritative job snapshot and provides fit explanation, truthful resume tailoring, application talking points, recruiter-screen preparation, and a short prioritized skill-gap plan. Recommendations first rank real active jobs deterministically from bounded resume context and posting signals; the light model may reorder only inside ten-point rank bands. Its invalid/unavailable output leaves deterministic order intact. Repeated owned interview coaching gaps can add a preparation note, never a match-score penalty.
 
 Career outputs are cached in a bounded in-process cache keyed by user ID and a fingerprint of sanitized inputs. Identical requests in one worker reuse the result; each worker has its own cache. Career calls are capped at 20 per user per hour per worker. When the provider is unavailable or validation fails, resume and job preparation return deterministic guidance. No subjective answer is filled or submitted by these endpoints.
+
+## Resume parsing
+
+`POST /resume/upload` reuses the same OpenAI SDK client and structured completion client (`backend/services/resume_ai.py`, created in `backend/main.py` as `app.state.resume_ai_service`). It uses `OPENAI_LIGHT_MODEL`.
+
+1. **Rules first, always.** `services/resume_parser.py` runs on every upload. It reads the name (split into first/last), the applicant's "City, ST" from the contact header, email, phone, LinkedIn/GitHub (from visible text and from hyperlinks embedded in the PDF/DOCX), skills, and sections. Education is split into school, degree, and major across common layouts: school and degree on one line, "Computer Science, B.S.", "Major: …", and a "City, ST" glued onto the school name.
+2. **AI second, only when it is safe to spend the key.** If `OPENAI_API_KEY` is set and the upload carries a valid `Authorization: Bearer <token>` session, the resume text is sent with email addresses, phone numbers, and URLs removed. The model returns first/last name, city/state, education entries, and work-history entries in a strict schema.
+3. **Grounding check.** Every AI value must appear in the resume text, ignoring case and punctuation. An education entry whose school is not in the resume is dropped. Ungrounded values are discarded and the rules value is kept. AI education and experience lists replace the rules lists only when they contain at least as many entries.
+4. **Rules-only fields.** Email, phone, LinkedIn, and GitHub always come from the rules, because pattern matching is exact for them. The resume score is also computed from the rules result, so scores do not change with AI availability.
+
+AI parsing is limited to 10 calls per user per hour per worker. An identical resume is a cache hit and costs nothing. Missing key, signed-out upload, rate limit, timeout, provider error, or invalid output all return the rules result. Uploads never fail because of the AI step. The response field `parser_source` is `"ai"` or `"rules"`, and the server logs `resume_upload parser=… fallback_reason=…` without resume content.
+
+Privacy differs from the interview DTO: resume parsing sends the applicant's name and work history, because extracting them is the purpose. Contact details and links are removed before sending, calls use `store=False`, and the Privacy page discloses this.
 
 ## Database migration
 

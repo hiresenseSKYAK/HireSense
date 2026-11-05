@@ -22,6 +22,8 @@ The frontend uses `BrowserRouter`. Configure the static host to **rewrite** ever
 - Required database variables: `DB_HOST`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD`
 - Optional database variable: `DB_PORT` (defaults to `3306`)
 - Required deployment variable: `CORS_ORIGINS=https://<your-frontend-origin>`
+- Optional AI variable: `OPENAI_API_KEY` enables the AI Interview, career coaching, and AI-assisted resume parsing. One key covers all three. Without it, each feature uses its rule-based fallback. See `docs/ai-interview.md`.
+- Optional lifecycle variable: `JOB_MAX_AGE_DAYS` (default `30`) is the maximum job age the API will show. Set the same value for the API and the crawler workflow.
 
 `CORS_ORIGINS` accepts a comma-separated list, so local development can keep `http://localhost:5173` alongside the deployed frontend URL when needed.
 
@@ -75,20 +77,38 @@ other than the canonical production host, port, and database; prompts before
 migration and before writes; runs full bounded dry-runs for both sources; and
 reports before/after totals, source counts, and duplicate checks.
 
-The workflow `.github/workflows/crawl-jobs.yml` runs every six hours and can be
-started manually. Add repository secrets named `DB_HOST`, `DB_PORT`, `DB_NAME`,
-`DB_USER`, and `DB_PASSWORD`. It installs `requirements-crawler.txt`, applies
-migrations, disables heavyweight enrichment, prevents overlapping runs, and
-uses production ceilings of 150 LinkedIn, 100 Handshake, and 100 direct ATS candidates.
+The workflow `.github/workflows/crawl-jobs.yml` can be started manually and runs on
+four schedules: direct employer boards (Greenhouse/Lever/Ashby) every 15 minutes,
+official APIs (Adzuna/USAJOBS) hourly, LinkedIn and Handshake every six hours, and
+link verification plus the 30-day age expiry daily at 04:17 UTC. Add repository
+secrets named `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD`. It
+installs `requirements-crawler.txt`, applies migrations, disables heavyweight
+enrichment, prevents overlapping runs, and uses production ceilings of 300 direct
+ATS, 150 LinkedIn, 100 Handshake, and 50 per official API. See
+`docs/job-ingestion.md` for the full schedule.
 
 Jobs refresh in place using source IDs first and normalized application URLs
 second, with a conservative metadata fallback only if both are unavailable.
 Tracking query parameters are removed while functional query parameters remain.
-A confirmed 404, 410, or explicit closed-page message deactivates a job. Listings
-older than 30 days (or without a posted date) are checked at most weekly.
-Authentication failures, rate limits, timeouts, server errors, and network errors
-are inconclusive and never deactivate a job. Source failures are isolated and
-reported in the crawl summary.
+Jobs leave the feed by whichever comes first (details in
+`docs/job-ingestion.md`, "Job lifecycle"):
+
+- **Age:** a job is hidden once its posting date, or the date the crawler first
+  found it when there is no posting date, is more than 30 days old. The API
+  filters these out immediately. The daily step marks them `expired`.
+- **Gone from the employer's board:** a Greenhouse/Lever/Ashby job missing from
+  two complete crawls of its board in a row is closed (requires migration 008).
+- **Dead link:** the daily link checker now checks every visible job (new ones
+  first, others every 3 days). LinkedIn jobs are checked on LinkedIn's guest
+  job page, and its "No longer accepting applications" closes the job at once.
+  For other links, redirects are followed, and two confirmed 404/410 or "no
+  longer accepting" observations, at least a day apart, close a job. A redirect
+  to a normal page (such as a careers home page), authentication failures,
+  rate limits, timeouts, server errors, and network errors are inconclusive and
+  never close a job. Those jobs leave through the age limit instead.
+
+Hidden jobs are never deleted, and a later crawl does not quietly bring them
+back. Source failures are isolated and reported in the crawl summary.
 
 Greenhouse and Lever expose maintainable public board APIs only for configured
 employer board identifiers; they do not provide general employer discovery.

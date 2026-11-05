@@ -53,8 +53,8 @@ describe('profile initialization', () => {
 
     expect(initializeApplicantProfile(resume)).toEqual({
       fullName: 'Ada Lovelace',
-      firstName: '',
-      lastName: '',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
       email: 'ada@example.com',
       phone: '+1 (555) 123-4567',
       city: '',

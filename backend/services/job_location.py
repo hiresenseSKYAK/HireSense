@@ -116,6 +116,56 @@ _LEGAL_LOCATION_CONTEXT_PATTERN = re.compile(
 )
 
 
+DFW_AREA_LABEL = "Dallas-Fort Worth area"
+REMOTE_LABEL = "Remote"
+# Display spellings for city names that str.title() would get wrong.
+_CITY_DISPLAY_OVERRIDES = {"mckinney": "McKinney", "desoto": "DeSoto"}
+_STATE_SUFFIX_PATTERN = re.compile(
+    r"^(?:tx|texas)(?:\s+\d{5}(?:-\d{4})?)?$|^(?:united states(?: of america)?|u\.?s\.?a?\.?)$",
+    re.IGNORECASE,
+)
+
+
+def _display_city(city: str) -> str:
+    key = city.casefold()
+    return _CITY_DISPLAY_OVERRIDES.get(key) or " ".join(word.capitalize() for word in key.split())
+
+
+def market_area_label(location: object, work_style: object = "") -> str | None:
+    """Return one honest, de-duplicated area label for market statistics.
+
+    "Dallas", "dallas, texas", and "Dallas, TX 75201" all become "Dallas"
+    because the posting names the city of Dallas itself. Regional wording
+    ("DFW", "Dallas-Fort Worth Metroplex", "North Texas", "Dallas County") or a
+    posting that lists several DFW cities becomes "Dallas-Fort Worth area",
+    because we cannot tell which city the job is actually in.
+    """
+    text = " ".join(re.sub(r"\([^)]*\)", " ", str(location or "")).split())
+    if _REMOTE_PATTERN.search(text) or (
+        not text and _REMOTE_PATTERN.search(" ".join(str(work_style or "").split()))
+    ):
+        return REMOTE_LABEL
+
+    parts = [part.strip() for part in text.split(",") if part.strip()]
+    # Drop trailing ", TX" / ", Texas 75201" / ", United States" so "Dallas, Texas" -> ["Dallas"].
+    while len(parts) > 1 and _STATE_SUFFIX_PATTERN.match(parts[-1]):
+        parts.pop()
+
+    if len(parts) == 1 and parts[0].casefold() in DFW_CITIES:
+        return _display_city(parts[0])
+
+    has_region = bool(_DFW_REGION_PATTERN.search(text))
+    cities = {match.group(0).casefold() for match in _DFW_CITY_PATTERN.finditer(text)}
+    if has_region or cities:
+        return DFW_AREA_LABEL
+
+    if not parts:
+        return None
+    # Outside DFW (Texas / nationwide scopes): keep the city name, normalized for casing.
+    first = parts[0]
+    return _display_city(first) if first.islower() or first.isupper() else first
+
+
 def find_location_conflicts(description: object) -> tuple[str, ...]:
     """Return strong non-Texas workplace evidence found in source text.
 

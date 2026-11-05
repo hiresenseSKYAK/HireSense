@@ -94,6 +94,14 @@ def normalize_phone(phone: str | None) -> str | None:
     return phone.strip()
 
 
+def _capitalize_name_word(word: str) -> str:
+    """"o'neil" -> "O'Neil", "mary-jane" -> "Mary-Jane"."""
+    return "-".join(
+        "'".join(piece[:1].upper() + piece[1:].lower() for piece in chunk.split("'"))
+        for chunk in word.split("-")
+    )
+
+
 def normalize_name(name: str | None) -> str | None:
     if not name:
         return None
@@ -103,12 +111,17 @@ def normalize_name(name: str | None) -> str | None:
         return None
 
     parts = cleaned.split()
+    # An all-caps name line ("ALI KHAN") is styling, not acronyms: title-case every word.
+    all_caps = cleaned.isupper()
     normalized_parts = []
-    for part in parts:
-        if len(part) <= 3 and part.isupper():
-            normalized_parts.append(part)
+    for index, part in enumerate(parts):
+        if index > 0 and not all_caps and part.islower() and part in SURNAME_PARTICLES:
+            normalized_parts.append(part)  # "Maria de la Cruz"
+        elif all_caps or part.islower():
+            normalized_parts.append(_capitalize_name_word(part))
         else:
-            normalized_parts.append(part.capitalize())
+            # Already mixed case ("McDonald", "O'Neil", "Mary-Jane") or an initial: keep it.
+            normalized_parts.append(part)
 
     return " ".join(normalized_parts)
 
@@ -142,6 +155,88 @@ def extract_name(text: str) -> str | None:
         return normalize_name(line)
 
     return None
+
+
+NAME_SUFFIXES = {"jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "phd", "ph.d.", "md", "m.d."}
+SURNAME_PARTICLES = {"de", "del", "della", "da", "di", "du", "la", "le", "van", "von", "der", "den", "bin", "al", "el", "st.", "mac"}
+LINKEDIN_PATTERN = re.compile(r"(?:https?://)?(?:[a-z]{2,3}\.)?linkedin\.com/in/([A-Za-z0-9_%-]+)/?", re.IGNORECASE)
+GITHUB_PATTERN = re.compile(
+    r"(?:https?://)?(?:www\.)?github\.com/(?!orgs/|topics/|features/|about\b)([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))/?",
+    re.IGNORECASE,
+)
+HEADER_SEGMENT_SPLIT = re.compile(r"\s*(?:[|•·●◦▪♦✉☎]|\s[–—]\s|\t|\s{2,})\s*")
+MAX_HEADER_LINES = 10
+
+
+def split_name(name: str | None) -> tuple[str | None, str | None]:
+    """Split a full name into (first, last); middle names and initials are dropped.
+
+    "Saad A. Syed" -> ("Saad", "Syed"); "Maria de la Cruz" -> ("Maria", "de la Cruz");
+    "John Smith Jr." -> ("John", "Smith").
+    """
+    if not name:
+        return None, None
+    words = name.replace(",", " ").split()
+    while len(words) > 1 and words[-1].lower() in NAME_SUFFIXES:
+        words.pop()
+    if len(words) < 2:
+        return (words[0] if words else None), None
+    last_start = len(words) - 1
+    while last_start > 1 and words[last_start - 1].lower() in SURNAME_PARTICLES:
+        last_start -= 1
+    return words[0], " ".join(words[last_start:])
+
+
+def _header_lines(text: str) -> list[str]:
+    """Lines before the first section heading: where name, location, and links live."""
+    lines: list[str] = []
+    for raw in text.splitlines():
+        line = normalize_line(raw)
+        if not line:
+            continue
+        if match_section(line) or is_stop_header(line):
+            break
+        lines.append(line)
+        if len(lines) >= MAX_HEADER_LINES:
+            break
+    return lines
+
+
+def extract_location(text: str) -> tuple[str | None, str | None]:
+    """Find the applicant's "City, ST" in the contact header.
+
+    Accepts "Dallas, TX", "Dallas, Texas 75201", "123 Main St, Dallas, TX 75201", and
+    contact lines split by | • · or wide spacing.
+    """
+    for line in _header_lines(text):
+        # Remove email, URLs, and phone numbers so only the location text is left behind.
+        line = EMAIL_PATTERN.sub(" | ", line)
+        line = re.sub(r"\S*(?:https?://|www\.|\.com/|\.io/|\.dev/)\S*", " | ", line, flags=re.IGNORECASE)
+        line = PHONE_PATTERN.sub(" | ", line)
+        for segment in HEADER_SEGMENT_SPLIT.split(line):
+            segment = segment.strip(" ()|")
+            if not segment:
+                continue
+            split = _split_location(segment)
+            if not split:
+                continue
+            rest, city, state = split
+            # Only the location itself, or a street address in front of it.
+            if rest and not re.match(r"^\d", rest):
+                continue
+            return city, state
+    return None, None
+
+
+def extract_profile_links(text: str, links: list[str] | None = None) -> dict:
+    """LinkedIn/GitHub from visible text or from hyperlinks hidden behind words like "LinkedIn"."""
+    haystack = "\n".join([text or "", *(links or [])])
+    linkedin = LINKEDIN_PATTERN.search(haystack)
+    github = GITHUB_PATTERN.search(haystack)
+    return {
+        "linkedin": f"https://www.linkedin.com/in/{linkedin.group(1)}" if linkedin else None,
+        "github": f"https://github.com/{github.group(1)}" if github else None,
+    }
 
 
 def extract_skills(text: str) -> list[str]:
@@ -271,9 +366,78 @@ DEGREE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 EDUCATION_SKIP_PATTERN = re.compile(
-    r"^(gpa|relevant coursework|coursework|course work|relevant courses|dean'?s list|honors|activities)\b",
+    r"^(gpa|relevant coursework|coursework|course work|relevant courses|dean'?s list|honors|activities|"
+    r"minor|concentration|specialization|awards?|scholarships?)\b",
     re.IGNORECASE,
 )
+
+US_STATES = {
+    "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas", "CA": "California",
+    "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware", "FL": "Florida", "GA": "Georgia",
+    "HI": "Hawaii", "ID": "Idaho", "IL": "Illinois", "IN": "Indiana", "IA": "Iowa",
+    "KS": "Kansas", "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine", "MD": "Maryland",
+    "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota", "MS": "Mississippi", "MO": "Missouri",
+    "MT": "Montana", "NE": "Nebraska", "NV": "Nevada", "NH": "New Hampshire", "NJ": "New Jersey",
+    "NM": "New Mexico", "NY": "New York", "NC": "North Carolina", "ND": "North Dakota", "OH": "Ohio",
+    "OK": "Oklahoma", "OR": "Oregon", "PA": "Pennsylvania", "RI": "Rhode Island", "SC": "South Carolina",
+    "SD": "South Dakota", "TN": "Tennessee", "TX": "Texas", "UT": "Utah", "VT": "Vermont",
+    "VA": "Virginia", "WA": "Washington", "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming",
+    "DC": "District of Columbia",
+}
+_STATE_NAMES = {name.lower(): name for name in US_STATES.values()}
+# First words of two-word city names, so "College Station, TX" is not read as "Station".
+_CITY_PREFIX_WORDS = {
+    "san", "los", "las", "new", "fort", "ft.", "el", "college", "grand", "round", "sugar", "corpus",
+    "cedar", "salt", "st.", "saint", "santa", "palo", "ann", "baton", "little", "long", "des",
+    "bowling", "coral", "palm", "boca", "glen", "lake", "virginia", "kansas", "oklahoma", "jersey",
+    "carson", "the", "north", "south", "east", "west", "mount", "mt.", "port", "royal", "farmers", "flower",
+}
+_TRAILING_STATE_PATTERN = re.compile(
+    r",\s*(?P<state>[A-Za-z][A-Za-z .]{1,24}?)\.?(?:\s+\d{5}(?:-\d{4})?)?"
+    r"(?:\s*,\s*(?:usa|us|u\.s\.a?\.?|united states(?: of america)?))?\s*$",
+    re.IGNORECASE,
+)
+_LOCATION_SEPARATOR = re.compile(r"\s*(?:[|•·]|\s[–—-]\s|,|\s{2,}|\t)\s*")
+_CITY_PATTERN = re.compile(r"[A-Za-z][A-Za-z.'-]*(?:\s+[A-Za-z][A-Za-z.'-]*){0,3}")
+
+
+def _us_state(token: str) -> str | None:
+    cleaned = token.strip(" .")
+    # Only accept upper-case codes so words like "in", "or", "me" are not states.
+    if len(cleaned) == 2 and cleaned.isupper() and cleaned in US_STATES:
+        return cleaned
+    return _STATE_NAMES.get(cleaned.lower())
+
+
+def _split_location(text: str) -> tuple[str, str, str] | None:
+    """Split "<anything> City, ST" into (anything, city, state); None if no US location ends the text."""
+    match = _TRAILING_STATE_PATTERN.search(text)
+    if not match:
+        return None
+    state = _us_state(match.group("state"))
+    if not state:
+        return None
+    before = text[: match.start()].rstrip()
+    pieces = _LOCATION_SEPARATOR.split(before)
+    if len(pieces) > 1:
+        city = pieces[-1].strip()
+        rest = before[: before.rfind(city)].rstrip(" ,|•·–—-\t")
+    else:
+        words = before.split()
+        take = 2 if len(words) >= 2 and words[-2].lower() in _CITY_PREFIX_WORDS else 1
+        city = " ".join(words[-take:])
+        rest = " ".join(words[:-take])
+    if not city or not _CITY_PATTERN.fullmatch(city):
+        return None
+    return rest.strip(), city, state
+
+
+def _strip_trailing_location(text: str) -> str:
+    """"The University of Texas at Dallas Richardson, TX" -> "The University of Texas at Dallas"."""
+    split = _split_location(text)
+    if split and split[0]:
+        return split[0]
+    return text
 
 
 def word_is_stem(word: str, stem: str) -> bool:
@@ -549,7 +713,10 @@ def _apply_single(match: re.Match[str], purpose: str) -> dict | None:
     label = (match.group("label") or "").lower()
     has_month = _parse_date_token(token)[0] != ""
     other = normalize_line(match.string[: match.start()] + match.string[match.end() :])
-    if not has_month and label not in {"expected", "since", "from"} and other and len(other.split()) > 2:
+    # A bare year closing an education line ("..., University of North Texas 2026") is the graduation year.
+    ends_education_line = purpose == "education" and not match.string[match.end():].strip(" )|,.-")
+    if (not has_month and label not in {"expected", "since", "from"} and other and len(other.split()) > 2
+            and not ends_education_line):
         return None
 
     iso_date, display = _parse_date_token(token)
@@ -687,29 +854,97 @@ def group_history_blocks(lines: list[str], kind: str) -> list[list[str]]:
     return blocks
 
 
-def _parse_degree_line(line: str) -> tuple[str, str] | None:
-    field = ""
-    body = line
-    field_match = re.search(r"\bin\s+(.+)$", line, re.IGNORECASE)
-    if field_match:
-        field = field_match.group(1).strip(" ,.-")
-        body = line[: field_match.start()]
+FIELD_STOP_PATTERN = re.compile(
+    r"(?:\s*[,;|]\s*|\s+)(?:minor|concentration|specialization|track|emphasis|gpa|cgpa|"
+    r"expected|anticipated|honors?|cum laude|magna|summa|dean'?s)\b.*$",
+    re.IGNORECASE,
+)
+MAJOR_LABEL_PATTERN = re.compile(
+    r"^(?:major|field of study|area of study|program)\s*[:\-–—]\s*(.+)$",
+    re.IGNORECASE,
+)
+MAJOR_SUFFIX_PATTERN = re.compile(r"^(.+?)\s+major$", re.IGNORECASE)
+EDUCATION_SEGMENT_SPLIT = re.compile(r"\s+[|•·]\s+|\s+[–—]\s+|\s+-\s+|\t+|\s{2,}")
 
-    degree_match = DEGREE_PATTERN.search(body)
-    if not degree_match and not field:
+
+def _clean_field(text: str) -> str:
+    cleaned = FIELD_STOP_PATTERN.sub("", text or "")
+    cleaned = re.sub(r"\(\s*\)", "", cleaned)
+    return MULTISPACE_PATTERN.sub(" ", cleaned).strip(" ,.;:-–—|()")
+
+
+def _parse_degree_line(line: str) -> tuple[str, str] | None:
+    """Return (degree, field of study) from a degree line, or None.
+
+    Handles "Bachelor of Science in Computer Science", "B.S. Computer Science",
+    "Computer Science, B.S.", "Major: Computer Science", and "Computer Science Major".
+    """
+    label = MAJOR_LABEL_PATTERN.match(line)
+    if label:
+        field = _clean_field(label.group(1))
+        return ("", field) if field else None
+
+    suffix = MAJOR_SUFFIX_PATTERN.match(line)
+    if suffix and not _is_school_line(line):
+        field = _clean_field(suffix.group(1))
+        return ("", field) if field else None
+
+    degree_match = DEGREE_PATTERN.search(line)
+    if not degree_match:
+        # Legacy shape: "... in Computer Science" with no recognizable degree word.
+        in_match = re.search(r"\bin\s+(.+)$", line, re.IGNORECASE)
+        if in_match and not _is_school_line(line):
+            field = _clean_field(in_match.group(1))
+            return ("", field) if field else None
         return None
 
-    degree = degree_match.group(0).strip(" ,-|") if degree_match else ""
-    if degree_match and degree_match.end() < len(body) and body[degree_match.end()] == ".":
+    degree = degree_match.group(0).strip(" ,-|")
+    end = degree_match.end()
+    if end < len(line) and line[end] == "." and not degree.endswith("."):
         degree += "."
-    if not field and degree_match:
-        remainder = body[degree_match.end() :].strip(" ,-|")
-        if remainder and not DATE_PATTERN.search(remainder):
-            field = remainder
-    field = re.sub(r"\s*(gpa|expected)\b.*$", "", field, flags=re.IGNORECASE).strip(" ,-|")
+        end += 1
+
+    after = line[end:].strip(" ,:;-–—|")
+    after = re.sub(r"^(?:degree\s+)?(?:in|of)\s+", "", after, flags=re.IGNORECASE)
+    field = _clean_field(after)
+    if not field:
+        # "Computer Science, B.S." puts the major before the degree.
+        field = _clean_field(line[: degree_match.start()])
+    if DATE_PATTERN.search(field):
+        field = ""
     if not degree and not field:
         return None
     return degree, field
+
+
+def _education_segments(line: str) -> list[str]:
+    """Split one education line into school / degree pieces.
+
+    "University of North Texas, B.S. in Computer Science" and
+    "University of Texas at Dallas | Bachelor of Science | May 2026"
+    both hold the school and the degree on the same line.
+    """
+    segments: list[str] = []
+    for piece in EDUCATION_SEGMENT_SPLIT.split(line):
+        piece = piece.strip(" ,;|")
+        if not piece:
+            continue
+        degree_match = DEGREE_PATTERN.search(piece)
+        if _is_school_line(piece) and degree_match:
+            comma_parts = [part.strip() for part in piece.split(",") if part.strip()]
+            if len(comma_parts) > 1:
+                segments.extend(comma_parts)
+                continue
+            school_index = min(
+                (piece.lower().find(word) for word in ("university", "college", "institute", "academy", "school")
+                 if word in piece.lower()),
+                default=-1,
+            )
+            if 0 <= school_index < degree_match.start():
+                segments.extend([piece[: degree_match.start()].strip(), piece[degree_match.start():].strip()])
+                continue
+        segments.append(piece)
+    return segments
 
 
 def _education_summary(school: str, degree: str, field: str, dates: dict) -> str:
@@ -735,16 +970,25 @@ def parse_education_block(lines: list[str]) -> dict | None:
     school = ""
     degree = ""
     field = ""
+    fallback_school = ""
     for line in kept:
-        parsed_degree = _parse_degree_line(line)
-        if parsed_degree and not degree:
-            degree, field = parsed_degree
-            continue
-        if _is_school_line(line) and not school:
-            school = line
-            continue
-        if not school:
-            school = line
+        for segment in _education_segments(line):
+            if _is_school_line(segment):
+                if not school:
+                    school = _strip_trailing_location(segment)
+                continue
+            parsed_degree = _parse_degree_line(segment)
+            if parsed_degree:
+                parsed_name, parsed_field = parsed_degree
+                if parsed_name and not degree:
+                    degree = parsed_name
+                if parsed_field and not field:
+                    field = parsed_field
+                continue
+            if not fallback_school and not _split_location(segment):
+                fallback_school = _strip_trailing_location(segment)
+    if not school:
+        school = fallback_school
 
     if not school and not degree and not field:
         return None
@@ -958,8 +1202,12 @@ def flatten_structured_entries(entries: list[dict]) -> list[str]:
     return dedupe_preserve_order(flattened)
 
 
-def parse_resume_text(text: str) -> dict:
+def parse_resume_text(text: str, links: list[str] | None = None) -> dict:
     normalized_text = normalize_whitespace(text)
+    name = extract_name(normalized_text)
+    first_name, last_name = split_name(name)
+    city, state = extract_location(normalized_text)
+    profile_links = extract_profile_links(normalized_text, links)
 
     education_lines = extract_section(normalized_text, "education")
     experience_lines = extract_section(normalized_text, "experience")
@@ -973,7 +1221,13 @@ def parse_resume_text(text: str) -> dict:
     structured_leadership = _parsed_entries(leadership_lines, "experience")
 
     return {
-        "name": extract_name(normalized_text),
+        "name": name,
+        "first_name": first_name,
+        "last_name": last_name,
+        "city": city,
+        "state": state,
+        "linkedin": profile_links["linkedin"],
+        "github": profile_links["github"],
         "email": extract_email(normalized_text),
         "phone": extract_phone(normalized_text),
         "skills": combine_skills(normalized_text, skill_lines),

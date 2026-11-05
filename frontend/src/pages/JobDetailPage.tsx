@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom'
 import { fetchJob } from '../api/jobs'
 import type { Job } from '../types'
 import { getResumeAnalysis } from '../utils/resumeStorage'
@@ -12,6 +12,10 @@ import styles from './JobDetailPage.module.css'
 export default function JobDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
+  // The job list passes its own URL (with search, filters, and page) so Back returns there.
+  const from = (location.state as { from?: unknown } | null)?.from
+  const backTo = typeof from === 'string' && from.startsWith('/') && !from.startsWith('//') ? from : '/'
   const savedResume = getResumeAnalysis()
 
   const [job, setJob] = useState<Job | null>(null)
@@ -72,7 +76,7 @@ export default function JobDetailPage() {
   if (isLoading) {
     return (
       <div className="page">
-        <button className={styles.backBtn} onClick={() => navigate('/')}>
+        <button className={styles.backBtn} onClick={() => navigate(backTo)}>
           ← Back to Jobs
         </button>
         <div className={styles.detailSkeleton} aria-label="Loading job details">
@@ -85,7 +89,7 @@ export default function JobDetailPage() {
   if (error || !job) {
     return (
       <div className="page">
-        <button className={styles.backBtn} onClick={() => navigate('/')}>
+        <button className={styles.backBtn} onClick={() => navigate(backTo)}>
           ← Back to Jobs
         </button>
         <div className={styles.emptyState} role="alert">
@@ -98,7 +102,7 @@ export default function JobDetailPage() {
 
   return (
     <div className={`page ${styles.page}`}>
-      <button className={styles.backBtn} onClick={() => navigate('/')}>
+      <button className={styles.backBtn} onClick={() => navigate(backTo)}>
         ← Back to Jobs
       </button>
 

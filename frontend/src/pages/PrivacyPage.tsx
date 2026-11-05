@@ -8,6 +8,7 @@ const policy = [
   'The extension does not collect passwords, payment information, health information, or personal communications.',
   'Applicant profile and resume information used by the extension is only used to perform the user-requested autofill workflow. The extension does not automatically submit job applications.',
   'Users remain in control of reviewing, editing, and submitting all application information.',
+  'When a signed-in user uploads a resume on the HireSense website, the resume text may be sent to OpenAI to help read the name, location, education, and work history. Email addresses, phone numbers, and links are removed before sending, requests are made with OpenAI’s response storage turned off, and every value is checked against the resume before it is shown. If this step is unavailable, HireSense reads the resume with its own rules instead.',
 ]
 
 export default function PrivacyPage() {

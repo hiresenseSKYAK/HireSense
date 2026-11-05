@@ -1,8 +1,12 @@
 import logging
+from datetime import datetime
+from typing import Optional
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, Header, HTTPException, Request, UploadFile
+from starlette.concurrency import run_in_threadpool
+
 from services.applicant_profile import build_applicant_profile
-from services.file_extractor import extract_resume_text
+from services.file_extractor import extract_resume_links, extract_resume_text
 from services.resume_parser import parse_resume_text
 from services.resume_scorer import score_resume
 
@@ -13,8 +17,44 @@ ALLOWED_EXTENSIONS = (".pdf", ".docx")
 MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
 
 
+def _optional_user_id(authorization: Optional[str]) -> int | None:
+    """Signed-in user id from "Bearer <token>", or None. Never raises: signed-out uploads still work."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    token = authorization[7:].strip()
+    if not token:
+        return None
+    try:
+        from database.connection import SessionLocal
+        from database.models import UserSession
+
+        db = SessionLocal()
+        try:
+            session = db.query(UserSession).filter(
+                UserSession.token == token, UserSession.expires_at > datetime.utcnow(),
+            ).first()
+            return session.user_id if session else None
+        finally:
+            db.close()
+    except Exception:
+        logger.warning("Could not resolve resume uploader; using rules-only parsing")
+        return None
+
+
 @router.post("/upload")
-async def upload_resume(file: UploadFile = File(...)):
+async def upload_resume_endpoint(
+    request: Request,
+    file: UploadFile = File(...),
+    authorization: Optional[str] = Header(default=None),
+):
+    # AI parsing (same OPENAI_API_KEY as the AI interview) is only used for
+    # signed-in users so the key cannot be spent anonymously.
+    user_id = await run_in_threadpool(_optional_user_id, authorization)
+    resume_ai = getattr(request.app.state, "resume_ai_service", None)
+    return await upload_resume(file, user_id=user_id, resume_ai=resume_ai)
+
+
+async def upload_resume(file: UploadFile, *, user_id: int | None = None, resume_ai=None):
     filename = file.filename or ""
 
     if not filename:
@@ -53,13 +93,26 @@ async def upload_resume(file: UploadFile = File(...)):
                 detail="Could not extract text from the uploaded resume.",
             )
 
-        parsed_data = parse_resume_text(extracted_text)
+        parsed_data = parse_resume_text(extracted_text, extract_resume_links(filename, file_bytes))
+        # Score the rules result so scores stay stable whether or not AI is available.
         scored_data = score_resume(parsed_data)
+        parser_source, fallback_reason = "rules", "provider_unconfigured"
+        if resume_ai is not None:
+            parsed_data, parser_source, fallback_reason = await run_in_threadpool(
+                resume_ai.enhance, user_id, extracted_text, parsed_data,
+            )
+        logger.info("resume_upload parser=%s fallback_reason=%s", parser_source, fallback_reason)
 
         return {
             "filename": filename,
             "parsed_data": {
                 "name": parsed_data["name"],
+                "first_name": parsed_data["first_name"],
+                "last_name": parsed_data["last_name"],
+                "city": parsed_data["city"],
+                "state": parsed_data["state"],
+                "linkedin": parsed_data["linkedin"],
+                "github": parsed_data["github"],
                 "email": parsed_data["email"],
                 "phone": parsed_data["phone"],
                 "skills": parsed_data["skills"],
@@ -72,6 +125,7 @@ async def upload_resume(file: UploadFile = File(...)):
                 "leadership_entries": parsed_data["leadership_entries"],
             },
             "analysis": scored_data,
+            "parser_source": parser_source,
             "applicant_profile": build_applicant_profile(parsed_data),
         }
 

@@ -29,6 +29,11 @@ and fails loudly on SQL errors. It never drops job data or prints credentials.
 10. Run `007_widen_job_location.sql` before deploying the bounded location
     write path. It widens the unindexed nullable `location` field to
     `VARCHAR(512)` without changing rows or job IDs.
+11. Run `008_add_job_missed_snapshots.sql` before deploying the employer-board
+    disappearance check. It adds `job_data.missed_snapshots INT NOT NULL
+    DEFAULT 0` and an index on `(source_feed_key, active)`; existing rows start
+    at 0 and nothing is removed. The crawler logs and skips the check (it never
+    fails the crawl) if this migration has not been applied.
 
 For an already-migrated database, run `python -m database.migrate` from
 `backend` before starting the new crawler or deploying the API. Take a backup

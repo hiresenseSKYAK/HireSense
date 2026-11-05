@@ -8,8 +8,10 @@ from datetime import datetime, timedelta
 
 try:
     from services.job_match import match_resume_to_job
+    from services.job_location import market_area_label
 except ImportError:
     from backend.services.job_match import match_resume_to_job
+    from backend.services.job_location import market_area_label
 
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 50
@@ -99,9 +101,10 @@ def assemble_job_page(
 
 
 def extract_city(location) -> str | None:
+    """City filter label; shares market_area_label so "Dallas" and "dallas, texas" merge."""
     if not location:
         return None
-    city = str(location).split(",")[0].strip()
+    city = market_area_label(location)
     if not city or city.casefold() in SKIP_CITIES:
         return None
     return city

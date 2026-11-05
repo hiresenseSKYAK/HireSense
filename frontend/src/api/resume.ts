@@ -1,4 +1,5 @@
 import { API_BASE_URL } from './client'
+import { getAuthSession } from './auth'
 
 export interface StructuredResumeEntry {
   title: string
@@ -7,6 +8,12 @@ export interface StructuredResumeEntry {
 
 export interface ParsedResumeData {
   name: string | null
+  first_name?: string | null
+  last_name?: string | null
+  city?: string | null
+  state?: string | null
+  linkedin?: string | null
+  github?: string | null
   email: string | null
   phone: string | null
   skills: string[]
@@ -32,6 +39,8 @@ export interface ResumeUploadResponse {
   saved_at?: string
   parsed_data: ParsedResumeData
   analysis: ResumeAnalysis
+  /** "ai" when the OpenAI-assisted parser was used, "rules" when it fell back to the rule-based parser. */
+  parser_source?: 'ai' | 'rules'
   applicant_profile?: {
     skills?: string | string[]
     education?: Array<{ school?: string; degree?: string; fieldOfStudy?: string; startDate?: string; endDate?: string; current?: boolean }>
@@ -64,9 +73,12 @@ export async function uploadResume(file: File): Promise<ResumeUploadResponse> {
   const formData = new FormData()
   formData.append('file', file)
 
+  // Signed-in uploads let the backend use AI-assisted parsing (rules-only otherwise).
+  const token = getAuthSession()?.token
   const response = await fetch(`${API_BASE_URL}/resume/upload`, {
     method: 'POST',
     body: formData,
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   })
 
   if (!response.ok) {

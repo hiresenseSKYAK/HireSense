@@ -59,6 +59,9 @@ Each listing links to the real application page.
 
 5. Click a job card to open its details
 6. Click Apply directly to open the employer’s application page
+7. Click Back to Jobs (or the browser Back button) to return to the list. Your search text, filters, sort order, page number, and scroll position are kept. Refreshing the page keeps them too. Click the HireSense logo to start over with a clear list.
+
+Jobs are shown for up to 30 days after they were posted. If a listing has no posting date, the 30 days count from the day HireSense found it. Jobs that disappear from the company's own job board, or whose application link is confirmed dead, are removed sooner.
 
 
 ### Feature 3: Market insights
@@ -67,13 +70,21 @@ Summarizes the current job feed on the home page.
 2. Read the sidebar next to the job list
 3. Use the skill and location counts to see what the current listings ask for
 
+Top locations group each listing by where it is:
+- **Dallas** means the posting names the city of Dallas itself. "Dallas", "Dallas, TX", and "dallas, texas" are counted together.
+- **Dallas-Fort Worth area** means the posting only names the region (for example "DFW", "Dallas-Fort Worth Metroplex", "North Texas", or "Dallas County") or lists several DFW cities.
+- Other cities, such as Plano or Fort Worth, keep their own name, and remote roles show as **Remote**.
+
+The City filter uses the same names.
+
 ![The sidebar lists information such as work style split, most requested skills, top locations, and top companies](images/feature3-1.png)
 
 ![The sidebar can be scrolled to find all the information](images/feature3-2.png)
 
 ### Feature 4: Resume upload and analysis
 Accepts a PDF or DOCX resume up to 5 MB.
-Extracts contact details, skills, education, experience, and projects.
+Extracts first and last name, email, phone, city and state, LinkedIn and GitHub links, skills, education (school, degree, and major), experience, and projects.
+When you are signed in, HireSense also uses AI to read messy layouts more accurately. Every value it finds is checked against your resume. If the AI step is unavailable, the built-in parser is used instead.
 Scores the resume and lists strengths, warnings, and priority fixes.
 1. Click Upload Resume
 
@@ -131,7 +142,7 @@ Fills supported fields on an application page and leaves blanks empty.
 
 !['Prepare Application' is found on the upload resume page, after uploading a resume](images/feature7-2.png)
 
-3. Review and edit the extracted details
+3. Review and edit the extracted details. First name, last name, city, state, LinkedIn, and GitHub are filled from the resume when found. There is no separate Full name box: forms that ask for a full name get your first and last name together.
 
 ![Empty and pre-filled fields based on resume](images/feature7-3.png)
 
@@ -163,7 +174,7 @@ Fills supported fields on an application page and leaves blanks empty.
 
 **Q:** How often does the feed update?
 
-**A:** A scheduled crawler runs every six hours. It adds new listings, updates existing ones, and removes postings that are confirmed closed.
+**A:** Company job boards are checked every 15 minutes, official job APIs hourly, and LinkedIn and Handshake every six hours. Each run adds new listings and updates existing ones. Listings are removed when they are more than 30 days old, when they disappear from the company's own job board, or when their application link is confirmed closed.
 
 **Q:** Does HireSense submit the application?
 

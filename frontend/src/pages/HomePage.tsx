@@ -1,8 +1,8 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import JobCard from '../components/JobCard'
 import MarketSidebar from '../components/MarketSidebar'
-import FilterBar, { buildEmptyFilters, type FilterState } from '../components/FilterBar'
+import FilterBar, { buildEmptyFilters, FILTER_DEFINITIONS, type FilterState } from '../components/FilterBar'
 import { IconSearch } from '../components/Icons'
 import { fetchJobs, fetchMarketInsights, JOB_PAGE_SIZE, type MarketInsightsResponse } from '../api/jobs'
 import { getJobRecommendations, type JobRecommendationsResult } from '../api/career'
@@ -14,6 +14,32 @@ import styles from './HomePage.module.css'
 
 type SortOption = 'best-match' | 'newest-posted' | 'recently-discovered' | 'company' | 'location'
 type GeoScope = 'dfw' | 'remote' | 'texas' | 'nationwide'
+
+const SORT_OPTIONS: readonly SortOption[] = ['best-match', 'newest-posted', 'recently-discovered', 'company', 'location']
+const FILTER_IDS = FILTER_DEFINITIONS.map((filter) => filter.id)
+// Remembers where the user was in the list so "Back to Jobs" lands on the same card.
+const HOME_SCROLL_KEY = 'hiresense_home_scroll'
+
+function isSortOption(value: string | null): value is SortOption {
+  return value !== null && (SORT_OPTIONS as readonly string[]).includes(value)
+}
+
+// The URL is the source of truth for search, filters, sort, and page so that
+// leaving for a job detail and coming back (or refreshing) restores the list.
+function readFilters(params: URLSearchParams): FilterState {
+  const filters = buildEmptyFilters()
+  for (const id of Object.keys(filters)) {
+    for (const value of params.getAll(id)) {
+      if (value.trim()) filters[id].add(value)
+    }
+  }
+  return filters
+}
+
+function readPage(params: URLSearchParams): number {
+  const value = Number.parseInt(params.get('page') ?? '', 10)
+  return Number.isFinite(value) && value > 1 ? value : 1
+}
 
 function selected(filters: FilterState, id: string) {
   return [...(filters[id] ?? [])]
@@ -68,12 +94,19 @@ function useStickyOffsets(
 export default function HomePage() {
   const savedResume = getResumeAnalysis()
   const resumeSkills = savedResume?.parsed_data.skills?.filter(Boolean) ?? []
-  const [query, setQuery] = useState('')
-  const [debouncedQuery, setDebouncedQuery] = useState('')
-  const [filters, setFilters] = useState<FilterState>(buildEmptyFilters())
+  const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const urlQuery = searchParams.get('q') ?? ''
+  const [query, setQuery] = useState(urlQuery)
+  const filters = useMemo(() => readFilters(searchParams), [searchParams])
+  const page = readPage(searchParams)
+  const useResume = Boolean(savedResume) && searchParams.get('resume') !== 'off'
+  const sortParam = searchParams.get('sort')
+  const sortBy: SortOption = isSortOption(sortParam) && (sortParam !== 'best-match' || savedResume)
+    ? sortParam
+    : useResume ? 'best-match' : 'recently-discovered'
   const [jobs, setJobs] = useState<Job[]>([])
   const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(JOB_PAGE_SIZE)
   const [cities, setCities] = useState<string[]>([])
   const [insights, setInsights] = useState<MarketInsightsResponse | null>(null)
@@ -81,8 +114,6 @@ export default function HomePage() {
   const [insightsLoading, setInsightsLoading] = useState(true)
   const [error, setError] = useState('')
   const [loadKey, setLoadKey] = useState(0)
-  const [sortBy, setSortBy] = useState<SortOption>(savedResume ? 'best-match' : 'recently-discovered')
-  const [useResume, setUseResume] = useState(Boolean(savedResume))
   const geoKey = `hiresense_geo_scope_${getAuthSession()?.user.id ?? 'guest'}`
   const [geoScope, setGeoScope] = useState<GeoScope>(() => {
     try {
@@ -113,14 +144,99 @@ export default function HomePage() {
   const rangeStart = total === 0 ? 0 : (page - 1) * pageSize + 1
   const rangeEnd = Math.min(page * pageSize, total)
 
+  const lastWrittenQuery = useRef(urlQuery)
+  const listUrl = `${location.pathname}${location.search}`
+
+  // Every list-state change replaces the current history entry, so the browser
+  // Back button leaves the job list instead of undoing filter clicks one by one.
+  const updateParams = useCallback((apply: (next: URLSearchParams) => void) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      apply(next)
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
+
+  const setPage = useCallback((next: number) => {
+    updateParams((params) => {
+      if (next > 1) params.set('page', String(next))
+      else params.delete('page')
+    })
+  }, [updateParams])
+
+  function setFilters(next: FilterState) {
+    updateParams((params) => {
+      for (const id of FILTER_IDS) params.delete(id)
+      for (const id of FILTER_IDS) {
+        for (const value of [...(next[id] ?? [])].sort()) params.append(id, value)
+      }
+      params.delete('page')
+    })
+  }
+
+  function setSortBy(next: SortOption) {
+    updateParams((params) => {
+      params.set('sort', next)
+      params.delete('page')
+    })
+  }
+
+  function setUseResume(enabled: boolean) {
+    updateParams((params) => {
+      if (enabled) params.delete('resume')
+      else params.set('resume', 'off')
+      params.delete('sort')
+      params.delete('page')
+    })
+  }
+
+  function resetSearch() {
+    setQuery('')
+    lastWrittenQuery.current = ''
+    updateParams((params) => {
+      params.delete('q')
+      for (const id of FILTER_IDS) params.delete(id)
+      params.delete('page')
+    })
+  }
+
+  // Keep the search box in sync when the URL changes from outside this page
+  // (Back/Forward, or clicking the HireSense logo to reset the list).
   useEffect(() => {
-    if (!query) {
-      setDebouncedQuery('')
-      return
-    }
-    const timer = window.setTimeout(() => setDebouncedQuery(query), 300)
+    if (urlQuery === lastWrittenQuery.current) return
+    lastWrittenQuery.current = urlQuery
+    setQuery(urlQuery)
+  }, [urlQuery])
+
+  useEffect(() => {
+    if (query === urlQuery) return
+    const timer = window.setTimeout(() => {
+      lastWrittenQuery.current = query
+      updateParams((params) => {
+        if (query) params.set('q', query)
+        else params.delete('q')
+        params.delete('page')
+      })
+    }, query ? 300 : 0)
     return () => window.clearTimeout(timer)
-  }, [query])
+  }, [query, urlQuery, updateParams])
+
+  // Scroll restoration: remember the list position whenever the user clicks
+  // inside the page (e.g. on a job), and restore it once the same list reloads.
+  const restoreScrollY = useRef<number | null | undefined>(undefined)
+  if (restoreScrollY.current === undefined) {
+    restoreScrollY.current = null
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(HOME_SCROLL_KEY) ?? 'null') as { search?: string; y?: number } | null
+      if (saved && saved.search === location.search && typeof saved.y === 'number') restoreScrollY.current = saved.y
+    } catch { /* Optional scroll memory. */ }
+  }
+
+  function rememberScroll() {
+    try {
+      sessionStorage.setItem(HOME_SCROLL_KEY, JSON.stringify({ search: location.search, y: window.scrollY }))
+    } catch { /* Optional scroll memory. */ }
+  }
 
   useEffect(() => {
     const controller = new AbortController()
@@ -142,7 +258,6 @@ export default function HomePage() {
   }, [loadKey])
 
   useEffect(() => {
-    if (query !== debouncedQuery) return
     const controller = new AbortController()
 
     async function loadJobs() {
@@ -152,7 +267,7 @@ export default function HomePage() {
         const result = await fetchJobs({
           page,
           pageSize: JOB_PAGE_SIZE,
-          query: debouncedQuery,
+          query: urlQuery,
           sort: sortBy,
           geo: geoScope,
           cities: selected(filters, 'city'),
@@ -185,7 +300,15 @@ export default function HomePage() {
 
     void loadJobs()
     return () => controller.abort()
-  }, [debouncedQuery, query, activeFilters, sortBy, geoScope, page, loadKey, skillKey, filters, useResume])
+  }, [urlQuery, activeFilters, sortBy, geoScope, page, loadKey, skillKey, filters, useResume, setPage])
+
+  useEffect(() => {
+    if (isJobsLoading || restoreScrollY.current === null || restoreScrollY.current === undefined) return
+    const y = restoreScrollY.current
+    restoreScrollY.current = null
+    try { sessionStorage.removeItem(HOME_SCROLL_KEY) } catch { /* Optional scroll memory. */ }
+    window.requestAnimationFrame?.(() => window.scrollTo?.(0, y))
+  }, [jobs, isJobsLoading])
 
   useEffect(() => {
     if (!pendingScroll.current || isJobsLoading) return
@@ -218,7 +341,12 @@ export default function HomePage() {
   }
 
   return (
-    <div className={`page ${styles.home}`} ref={pageRef}>
+    <div
+      className={`page ${styles.home}`}
+      ref={pageRef}
+      onClickCapture={rememberScroll}
+      onKeyDownCapture={(event) => { if (event.key === 'Enter' || event.key === ' ') rememberScroll() }}
+    >
       <div className={styles.controls} ref={controlsRef}>
         <div className={styles.searchWrap}>
           <div className={styles.searchBar}>
@@ -227,10 +355,7 @@ export default function HomePage() {
               type="text"
               placeholder="Search by title, company, or skill..."
               value={query}
-              onChange={(e) => {
-                setQuery(e.target.value)
-                setPage(1)
-              }}
+              onChange={(e) => setQuery(e.target.value)}
               className={styles.searchInput}
             />
           </div>
@@ -247,10 +372,7 @@ export default function HomePage() {
 
         <FilterBar
           filters={filters}
-          onChange={(next) => {
-            setFilters(next)
-            setPage(1)
-          }}
+          onChange={setFilters}
           resultCount={total}
           cityOptions={cities}
         />
@@ -264,10 +386,7 @@ export default function HomePage() {
         <section className={styles.jobsSection} id="job-results" aria-busy={isJobsLoading}>
           {savedResume && <label className={styles.resumeToggle}>
             <input type="checkbox" checked={useResume} onChange={(event) => {
-              const enabled = event.target.checked
-              setUseResume(enabled)
-              setSortBy(enabled ? 'best-match' : 'recently-discovered')
-              setPage(1)
+              setUseResume(event.target.checked)
             }} />
             <span>Use my resume</span><small>Prioritize roles using your saved skills; filters still apply.</small>
           </label>}
@@ -275,7 +394,7 @@ export default function HomePage() {
             <div className={styles.recommendedHeading}><div><span className={styles.recommendedEyebrow}>Your next opportunities</span><h2 id="recommended-title">Recommended for you</h2></div>{newMatchCount > 0 && <span className={styles.newMatches}>{newMatchCount} new since your last visit</span>}</div>
             <p>Ranked from your resume and current role details. These are preparation priorities, not hiring odds.</p>
             <div className={styles.recommendedList}>{recommendations.items.slice(0, 4).map((job) => <div key={job.id} className={styles.recommendedItem}>
-              <div><span className={styles.priority}>{job.priority}</span><Link to={`/jobs/${job.id}`}><strong>{job.title}</strong></Link><small>{job.company} · {job.location}{formatPostedDate(sourcePostedAt(job)) ? ` · ${job.source === 'adzuna' ? 'Adzuna ad date' : 'Posted'} ${formatPostedDate(sourcePostedAt(job))}` : ''}</small>{job.source === 'adzuna' && <a href="https://www.adzuna.com/" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', minWidth: 116, minHeight: 23 }}>Adzuna</a>}</div>
+              <div><span className={styles.priority}>{job.priority}</span><Link to={`/jobs/${job.id}`} state={{ from: listUrl }}><strong>{job.title}</strong></Link><small>{job.company} · {job.location}{formatPostedDate(sourcePostedAt(job)) ? ` · ${job.source === 'adzuna' ? 'Adzuna ad date' : 'Posted'} ${formatPostedDate(sourcePostedAt(job))}` : ''}</small>{job.source === 'adzuna' && <a href="https://www.adzuna.com/" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', minWidth: 116, minHeight: 23 }}>Adzuna</a>}</div>
               <div className={styles.recommendedReason}><span>{job.whyThisFits}</span>{job.topGap && <small>Prepare: {job.topGap}</small>}{job.preparationNote && <small>{job.preparationNote}</small>}</div>
             </div>)}</div>
           </section>}
@@ -283,7 +402,7 @@ export default function HomePage() {
           {newOnPage.length > 0 && <section className={styles.recommended} aria-labelledby="new-for-you-title">
             <div className={styles.recommendedHeading}><div><span className={styles.recommendedEyebrow}>Discovered since your previous visit</span><h2 id="new-for-you-title">New for you</h2></div></div>
             <div className={styles.recommendedList}>{newOnPage.map((job) => <div key={job.id} className={styles.recommendedItem}>
-              <div><Link to={`/jobs/${job.id}`}><strong>{job.title}</strong></Link><small>{job.company} · {job.location}</small>{job.source === 'adzuna' && <a href="https://www.adzuna.com/" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', minWidth: 116, minHeight: 23 }}>Adzuna</a>}</div>
+              <div><Link to={`/jobs/${job.id}`} state={{ from: listUrl }}><strong>{job.title}</strong></Link><small>{job.company} · {job.location}</small>{job.source === 'adzuna' && <a href="https://www.adzuna.com/" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', minWidth: 116, minHeight: 23 }}>Adzuna</a>}</div>
               <small>New to HireSense</small>
             </div>)}</div>
           </section>}
@@ -315,10 +434,7 @@ export default function HomePage() {
               <span>Sort by</span>
               <select
                 value={sortBy}
-                onChange={(event) => {
-                  setSortBy(event.target.value as SortOption)
-                  setPage(1)
-                }}
+                onChange={(event) => setSortBy(event.target.value as SortOption)}
               >
                 <option value="best-match" disabled={!savedResume}>Best Match</option>
                 <option value="newest-posted">Newest Posted</option>
@@ -358,7 +474,7 @@ export default function HomePage() {
               <div className={styles.emptyState}>
                 <strong>No roles match those filters.</strong>
                 <p>Clear a filter or broaden your search to see more of the live feed.</p>
-                <button type="button" className="btn-outline" onClick={() => { setQuery(''); setFilters(buildEmptyFilters()); setPage(1) }}>
+                <button type="button" className="btn-outline" onClick={resetSearch}>
                   Reset search
                 </button>
               </div>

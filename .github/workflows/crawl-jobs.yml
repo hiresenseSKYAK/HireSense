@@ -7,7 +7,7 @@ on:
     - cron: "*/15 * * * *" # direct employer ATS
     - cron: "7 * * * *"    # credentialed official APIs
     - cron: "11 */6 * * *" # legacy public discovery; keep conservative cadence
-    - cron: "17 4 * * *"   # verification and stale cleanup
+    - cron: "17 4 * * *"   # link verification and 30-day age expiry
 
 concurrency:
   group: production-jobs-${{ github.event.schedule || 'manual' }}
@@ -69,7 +69,7 @@ jobs:
       - name: Verify old application links
         if: github.event_name == 'workflow_dispatch' || github.event.schedule == '17 4 * * *'
         run: python -m services.updater
-      - name: Mark stale direct-feed jobs
+      - name: Expire jobs older than 30 days
         if: github.event_name == 'workflow_dispatch' || github.event.schedule == '17 4 * * *'
         run: python -m scripts.cleanup_stale_jobs --apply
       - name: Report provider failures

@@ -14,7 +14,8 @@ application URLs, interview routes and saved-job links are retained.
 | LinkedIn and Handshake public discovery | every 6 hours | enabled; conservative existing cadence pending source-permission review |
 | Adzuna official US API | hourly | disabled unless both Adzuna secrets are present |
 | USAJOBS official search API | hourly | disabled unless both USAJOBS secrets are present |
-| Link verification and stale cleanup | daily at 04:17 UTC | enabled |
+| Link verification and 30-day age expiry | daily at 04:17 UTC | enabled |
+| Employer-board disappearance check | every ATS run (15 minutes) | enabled; part of `crawler.crawl --source ats` |
 
 GitHub scheduled workflows are best-effort, not a real-time SLA. A Render cron
 job or always-on background worker may replace GitHub Actions, but **do not run
@@ -68,12 +69,54 @@ retains secondary provider IDs after a stronger source wins. Feed-level
 dedupe also compares normalized company/title/location and near-identical
 descriptions. Direct ATS wins over government, then Adzuna, then discovery
 reposts. A provider exception is isolated and recorded without emptying the
-database. 429s trigger a one-hour provider cooldown. Link checks treat
-403/429/5xx and transport errors as inconclusive. Two explicit 404/410 or
-closed-page observations are required to close a job. Daily stale cleanup
-marks a record stale only after 45 days absent from a complete, successful
-direct-feed snapshot, with no recent verification; it never deletes rows.
-Reappearance reactivates a record.
+database. 429s trigger a one-hour provider cooldown.
+
+## Job lifecycle: when a job leaves the feed
+
+A job is hidden (never deleted) by whichever of these happens first. Hidden
+rows keep their ID so interview history and old links keep working.
+
+1. **30-day age limit (`status = 'expired'`).** A job's age is its source
+   `date_posted`; when the source gives no posting date, the day the crawler
+   first found it (`first_seen_at`) is used. The API never returns a job older
+   than 30 days, and the daily `scripts.cleanup_stale_jobs --apply` step marks
+   those rows `expired`. Change the limit with the `JOB_MAX_AGE_DAYS`
+   environment variable.
+2. **Gone from the employer's own board (`status = 'closed'`).** After every
+   complete, error-free Greenhouse/Lever/Ashby crawl of a board (the board was
+   not cut off by the per-search limit), jobs listed on it reset
+   `missed_snapshots` to 0 and that board's other active jobs get +1. A job
+   missing from **two complete crawls in a row** (about 30 minutes at the
+   15-minute cadence) is closed. A board that returns zero jobs is ignored
+   rather than closing everything. Requires migration 008.
+3. **Dead application link (`possibly_closed`, then `closed`).** The daily link
+   checker (`services.updater`) now checks every visible job, not only old
+   ones: never-checked jobs first, `possibly_closed` jobs daily, everything
+   else every 3 days.
+   - **LinkedIn jobs** are checked through LinkedIn's public guest endpoint
+     (`/jobs-guest/jobs/api/jobPosting/<id>`), because the normal
+     `linkedin.com/jobs/view/...` link always answers automated requests with
+     a redirect or login wall and could never be classified. When LinkedIn
+     itself shows "No longer accepting applications" (or the posting returns
+     404), the job is closed immediately. LinkedIn checks are spaced 2 seconds
+     apart and pause 30 seconds after a 429.
+   - **Other links** are followed through redirects. A final 404/410 or an
+     explicit "no longer accepting" page marks the job `possibly_closed`, and
+     a second confirmation at least a day later closes it.
+   - 403/429/5xx, timeouts, and a redirect that ends on a normal page (for
+     example a company careers home page) are treated as "can't tell" and
+     never close a job; those jobs leave through the 30-day age limit instead.
+   - The checker stops after `UPDATER_MAX_RUNTIME_SEC` (default 25 minutes)
+     so the daily job finishes inside the 45-minute workflow timeout;
+     unchecked jobs go first the next day.
+
+Hidden jobs stay hidden when a crawler sees them again:
+
+- `expired` jobs come back only if the source now reports a posting date
+  within the age limit (a genuine repost).
+- `closed` jobs come back only if they reappear on their employer's own board
+  (Greenhouse/Lever/Ashby). Showing up again in a LinkedIn or Handshake search
+  is not enough.
 
 ## Diagnostics and rollout
 
