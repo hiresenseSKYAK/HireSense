@@ -1,16 +1,26 @@
+import { lazy, Suspense, type ReactNode } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import Navbar from './components/Navbar'
 import ProtectedRoute from './components/ProtectedRoute'
-import HomePage from './pages/HomePage'
-import ResumePage from './pages/ResumePage'
-import JobDetailPage from './pages/JobDetailPage'
-import ProfilePage from './pages/ProfilePage'
-import LoginPage from './pages/LoginPage'
-import PrivacyPage from './pages/PrivacyPage'
-import PrepareApplicationPage from './features/autofill/PrepareApplicationPage'
-import ControlledApplicationPage from './features/autofill/ControlledApplicationPage'
-import NotFoundPage from './pages/NotFoundPage'
-import InterviewPage from './pages/InterviewPage'
+
+const HomePage = lazy(() => import('./pages/HomePage'))
+const ResumePage = lazy(() => import('./pages/ResumePage'))
+const JobDetailPage = lazy(() => import('./pages/JobDetailPage'))
+const ProfilePage = lazy(() => import('./pages/ProfilePage'))
+const LoginPage = lazy(() => import('./pages/LoginPage'))
+const PrivacyPage = lazy(() => import('./pages/PrivacyPage'))
+const PrepareApplicationPage = lazy(() => import('./features/autofill/PrepareApplicationPage'))
+const ControlledApplicationPage = lazy(() => import('./features/autofill/ControlledApplicationPage'))
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
+const InterviewPage = lazy(() => import('./pages/InterviewPage'))
+
+function RouteFallback() {
+  return <main className="route-loading" aria-busy="true" aria-label="Loading page" />
+}
+
+function RouteLoader({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<RouteFallback />}>{children}</Suspense>
+}
 
 export default function App() {
   const location = useLocation()
@@ -18,11 +28,11 @@ export default function App() {
   return (
     <Routes>
       {/* Public */}
-      <Route path="/login" element={<LoginPage />} />
+      <Route path="/login" element={<RouteLoader><LoginPage /></RouteLoader>} />
       <Route path="/privacy" element={
         <>
           <Navbar />
-          <PrivacyPage />
+          <RouteLoader><PrivacyPage /></RouteLoader>
         </>
       } />
 
@@ -31,6 +41,7 @@ export default function App() {
         <ProtectedRoute>
           <>
             {!inInterviewRoom && <Navbar />}
+            <RouteLoader>
             <Routes>
               <Route path="/"        element={<HomePage />} />
               <Route path="/resume"  element={<ResumePage />} />
@@ -43,6 +54,7 @@ export default function App() {
               <Route path="/application/preview" element={<ControlledApplicationPage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Routes>
+            </RouteLoader>
           </>
         </ProtectedRoute>
       } />

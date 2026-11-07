@@ -15,6 +15,10 @@ from database.queries import _eligible_unique_rows, _map_db_row_to_frontend_job
 
 
 class JobsApiTests(unittest.TestCase):
+    def setUp(self):
+        jobs._catalog_cache.clear()
+        jobs._market_cache = None
+
     def test_api_keeps_source_posted_and_first_seen_separate(self):
         result = _map_db_row_to_frontend_job({
             "id": 1,
@@ -69,6 +73,17 @@ class JobsApiTests(unittest.TestCase):
             result = jobs.get_market_insights()
         self.assertEqual(result["overview"]["total_jobs"], 1)
         self.assertEqual(result["top_companies"][0]["name"], "Real Company")
+
+    def test_market_insights_are_cached_across_requests(self):
+        with patch.object(jobs, "fetch_all_jobs_from_db", return_value=[]) as fetch:
+            self.assertEqual(jobs.get_market_insights(), jobs.get_market_insights())
+        fetch.assert_called_once_with(scope="dfw")
+
+    def test_catalog_is_reused_briefly_for_parallel_page_data(self):
+        with patch.object(jobs, "fetch_all_jobs_from_db", return_value=[{"id": 1}]) as fetch:
+            self.assertEqual(jobs.get_jobs_data(), [{"id": 1}])
+            self.assertEqual(jobs.get_jobs_data(), [{"id": 1}])
+        fetch.assert_called_once_with(scope="dfw")
 
     def test_read_guard_excludes_legacy_geography_and_exact_duplicates(self):
         base = {

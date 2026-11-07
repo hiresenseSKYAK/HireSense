@@ -1,5 +1,8 @@
 from collections import Counter
 import logging
+import os
+import threading
+import time
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
@@ -28,14 +31,30 @@ except ImportError:
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 logger = logging.getLogger(__name__)
+_CATALOG_TTL_SECONDS = max(1, int(os.getenv("JOB_CATALOG_CACHE_SECONDS", "15")))
+_MARKET_TTL_SECONDS = max(1, int(os.getenv("MARKET_INSIGHTS_CACHE_SECONDS", "60")))
+_catalog_cache: dict[str, tuple[float, object, list[dict]]] = {}
+_catalog_cache_lock = threading.Lock()
+_market_cache: tuple[float, object, dict] | None = None
+_market_cache_lock = threading.Lock()
 
 
 def get_jobs_data(geo: str = "dfw"):
     if fetch_all_jobs_from_db is None:
         logger.error("Jobs database query module is unavailable")
         raise HTTPException(status_code=503, detail="Job service temporarily unavailable")
+    now = time.monotonic()
+    cached = _catalog_cache.get(geo)
+    if cached and cached[0] > now and cached[1] is fetch_all_jobs_from_db:
+        return cached[2]
     try:
-        return fetch_all_jobs_from_db(scope=geo)
+        with _catalog_cache_lock:
+            cached = _catalog_cache.get(geo)
+            if cached and cached[0] > time.monotonic() and cached[1] is fetch_all_jobs_from_db:
+                return cached[2]
+            jobs = fetch_all_jobs_from_db(scope=geo)
+            _catalog_cache[geo] = (time.monotonic() + _CATALOG_TTL_SECONDS, fetch_all_jobs_from_db, jobs)
+            return jobs
     except Exception:
         logger.exception("Failed to read jobs from the database")
         raise HTTPException(status_code=503, detail="Job service temporarily unavailable")
@@ -43,6 +62,11 @@ def get_jobs_data(geo: str = "dfw"):
 
 @router.get("/market-insights")
 def get_market_insights():
+    global _market_cache
+    cached = _market_cache
+    if cached and cached[0] > time.monotonic() and cached[1] is fetch_all_jobs_from_db:
+        return cached[2]
+
     jobs = get_jobs_data()
 
     skill_counter = Counter()
@@ -67,7 +91,7 @@ def get_market_insights():
     hybrid_jobs = sum(1 for job in jobs if job.get("hybrid") == "Hybrid")
     onsite_jobs = sum(1 for job in jobs if job.get("hybrid") == "On-site")
 
-    return {
+    result = {
         "overview": {
             "total_jobs": total_jobs,
             "remote_jobs": remote_jobs,
@@ -87,6 +111,9 @@ def get_market_insights():
             for name, count in company_counter.most_common(5)
         ],
     }
+    with _market_cache_lock:
+        _market_cache = (time.monotonic() + _MARKET_TTL_SECONDS, fetch_all_jobs_from_db, result)
+    return result
 
 
 def _query_values(values: list[str] | None) -> list[str]:

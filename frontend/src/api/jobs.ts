@@ -1,6 +1,5 @@
 import type { Job } from '../types'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
+import client, { ApiError } from './client'
 
 export type MarketInsightsResponse = {
   overview: {
@@ -69,51 +68,52 @@ export async function fetchJobs(params: JobListParams = {}): Promise<JobsPage> {
   appendAll(search, 'date', params.dates)
   appendAll(search, 'skill', params.skills)
 
-  const response = await fetch(`${API_BASE_URL}/jobs/?${search.toString()}`, { signal: params.signal })
-
-  if (!response.ok) {
-    if (response.status === 503) {
+  let body: Record<string, unknown>
+  try {
+    body = (await client.get<Record<string, unknown>>(`/jobs/?${search.toString()}`, {
+      signal: params.signal,
+      cacheTtlMs: 10_000,
+    })).data
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 503) {
       throw new Error('The live job service is temporarily unavailable. Please try again shortly.')
     }
-    throw new Error('Failed to fetch jobs.')
+    throw error
   }
-
-  const body = await response.json()
   return {
     items: Array.isArray(body.items) ? body.items : [],
     total: Number(body.total) || 0,
     page: Number(body.page) || 1,
     pageSize: Number(body.page_size) || JOB_PAGE_SIZE,
     cities: Array.isArray(body.cities) ? body.cities : [],
-    matchSummary: body.match_summary ?? null,
+    matchSummary: (body.match_summary as MatchSummary | null | undefined) ?? null,
   }
 }
 
 export async function fetchJob(jobId: number): Promise<Job> {
-  const response = await fetch(`${API_BASE_URL}/jobs/${jobId}`)
-
-  if (!response.ok) {
-    if (response.status === 404) {
+  try {
+    return (await client.get<Job>(`/jobs/${jobId}`, { cacheTtlMs: 30_000 })).data
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
       throw new Error('This job is no longer available.')
     }
-    if (response.status === 503) {
+    if (error instanceof ApiError && error.status === 503) {
       throw new Error('The live job service is temporarily unavailable. Please try again shortly.')
     }
-    throw new Error('Failed to fetch job details.')
+    throw error
   }
-
-  return response.json()
 }
 
-export async function fetchMarketInsights(): Promise<MarketInsightsResponse> {
-  const response = await fetch(`${API_BASE_URL}/jobs/market-insights`)
-
-  if (!response.ok) {
-    if (response.status === 503) {
+export async function fetchMarketInsights(signal?: AbortSignal): Promise<MarketInsightsResponse> {
+  try {
+    return (await client.get<MarketInsightsResponse>('/jobs/market-insights', {
+      signal,
+      cacheTtlMs: 60_000,
+    })).data
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 503) {
       throw new Error('Market insights are temporarily unavailable.')
     }
-    throw new Error('Failed to fetch market insights.')
+    throw error
   }
-
-  return response.json()
 }

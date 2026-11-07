@@ -175,3 +175,8 @@ select {
     padding: 20px 0 36px;
   }
 }
+
+/* Keeps route transitions stable while a lazy chunk is fetched. */
+.route-loading {
+  min-height: calc(100vh - 72px);
+}

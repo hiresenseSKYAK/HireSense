@@ -244,7 +244,7 @@ export default function HomePage() {
     async function loadInsights() {
       try {
         setInsightsLoading(true)
-        const result = await fetchMarketInsights()
+        const result = await fetchMarketInsights(controller.signal)
         if (!controller.signal.aborted) setInsights(result)
       } catch {
         if (!controller.signal.aborted) setInsights(null)
