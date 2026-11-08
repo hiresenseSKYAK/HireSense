@@ -1,9 +1,45 @@
 import type { ApplicantProfile } from './core/types'
-import { initializeApplicantProfile, MAX_PROFILE_ENTRIES, MAX_SKILLS, mirrorPrimaryEntries, normalizeIsoDate, validateApplicantProfile } from './core/profile'
+import { initializeApplicantProfile, LEGACY_MAX_PROFILE_ENTRIES, LEGACY_MAX_SKILLS, MAX_PROFILE_ENTRIES, MAX_SKILLS, mirrorPrimaryEntries, normalizeIsoDate, validateApplicantProfile } from './core/profile'
 import { hasApplicantValue, isApplicantProfile } from './review'
 
 export const BRIDGE_PROTOCOL_VERSION = 1
 export const PROFILE_TTL_MS = 24 * 60 * 60 * 1000
+// First extension version that accepts MAX_SKILLS skills and MAX_PROFILE_ENTRIES schools/jobs.
+export const LARGE_PROFILE_EXTENSION_VERSION = '0.5.0'
+
+/** Compare dotted versions such as "0.4.0". Unreadable versions count as old. */
+export function versionAtLeast(version: string, minimum: string): boolean {
+  const parse = (text: string) => text.split('.').map((part) => Number.parseInt(part, 10))
+  const have = parse(version)
+  const need = parse(minimum)
+  if (have.some((part) => !Number.isFinite(part))) return false
+  for (let index = 0; index < need.length; index += 1) {
+    const a = have[index] ?? 0
+    if (a !== need[index]) return a > need[index]
+  }
+  return true
+}
+
+/**
+ * Older installed extensions reject profiles above 20 skills or 4 schools/jobs.
+ * Trim to what that extension accepts instead of failing the whole sync.
+ */
+export function fitProfileForExtension(profile: ApplicantProfile, extensionVersion: string): { profile: ApplicantProfile; limited: boolean } {
+  if (versionAtLeast(extensionVersion, LARGE_PROFILE_EXTENSION_VERSION)) return { profile, limited: false }
+  const limited = profile.skillList.length > LEGACY_MAX_SKILLS
+    || profile.education.length > LEGACY_MAX_PROFILE_ENTRIES
+    || profile.experience.length > LEGACY_MAX_PROFILE_ENTRIES
+  if (!limited) return { profile, limited: false }
+  return {
+    profile: mirrorPrimaryEntries({
+      ...profile,
+      skillList: profile.skillList.slice(0, LEGACY_MAX_SKILLS),
+      education: profile.education.slice(0, LEGACY_MAX_PROFILE_ENTRIES),
+      experience: profile.experience.slice(0, LEGACY_MAX_PROFILE_ENTRIES),
+    }),
+    limited: true,
+  }
+}
 export const allowedOrigins = ['https://hiresense-9yub.onrender.com', 'http://localhost:5173']
 
 export function profileFingerprint(profile: ApplicantProfile): string {

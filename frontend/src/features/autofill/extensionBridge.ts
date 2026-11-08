@@ -1,5 +1,5 @@
 import type { ApplicantProfile } from './core/types'
-import { BRIDGE_PROTOCOL_VERSION, transferableProfile } from './bridgeContract'
+import { BRIDGE_PROTOCOL_VERSION, fitProfileForExtension, transferableProfile } from './bridgeContract'
 
 type BridgeResponse = { ok?: boolean; error?: string; version?: string; fingerprint?: string; syncedAt?: number }
 
@@ -35,15 +35,20 @@ export async function detectAutofillExtension(): Promise<{ version: string }> {
   return { version: response.version }
 }
 
-export async function sendConfirmedProfileToExtension(profile: ApplicantProfile): Promise<{ fingerprint: string; syncedAt: number }> {
+export async function sendConfirmedProfileToExtension(profile: ApplicantProfile): Promise<{ fingerprint: string; syncedAt: number; limitedForOlderExtension?: true }> {
   const safeProfile = transferableProfile(profile)
   if (!safeProfile) throw new Error('Review and confirm valid applicant details first.')
-  await detectAutofillExtension()
-  const response = await requestExtension('set-confirmed-profile', safeProfile)
+  const { version } = await detectAutofillExtension()
+  const fitted = fitProfileForExtension(safeProfile, version)
+  const response = await requestExtension('set-confirmed-profile', fitted.profile)
   if (!response.ok || !response.fingerprint || typeof response.syncedAt !== 'number') {
     throw new Error(response.error || 'The extension could not store your profile. Retry from Profile Review.')
   }
-  return { fingerprint: response.fingerprint, syncedAt: response.syncedAt }
+  return {
+    fingerprint: response.fingerprint,
+    syncedAt: response.syncedAt,
+    ...(fitted.limited ? { limitedForOlderExtension: true as const } : {}),
+  }
 }
 
 export async function clearSyncedProfile(): Promise<void> {

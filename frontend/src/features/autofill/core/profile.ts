@@ -1,8 +1,33 @@
 import type { ResumeUploadResponse } from '../../../api/resume'
 import type { ApplicantProfile, EducationEntry, ExperienceEntry, ProfileReviewState } from './types'
 
-export const MAX_PROFILE_ENTRIES = 4
-export const MAX_SKILLS = 20
+// Keep in step with MAX_ENTRIES and MAX_SKILLS in backend/services/applicant_profile.py.
+export const MAX_PROFILE_ENTRIES = 6
+export const MAX_SKILLS = 50
+// Extensions older than 0.5.0 reject profiles above these sizes.
+export const LEGACY_MAX_PROFILE_ENTRIES = 4
+export const LEGACY_MAX_SKILLS = 20
+// Applications with a single skills box receive this joined text.
+const SKILLS_TEXT_LIMIT = 1000
+
+/** Join skills with commas, stopping before a skill that would not fit (never cutting one in half). */
+export function joinSkills(skills: string[], limit = SKILLS_TEXT_LIMIT): string {
+  let text = ''
+  for (const skill of skills.map((item) => item.trim()).filter(Boolean)) {
+    const next = text ? `${text}, ${skill}` : skill
+    if (next.length > limit) break
+    text = next
+  }
+  return text
+}
+
+/** Number of distinct skills the resume lists, before any limit is applied. */
+export function resumeSkillCount(source: unknown): number {
+  const skills = isRecord(source) && isRecord(source.parsed_data) && Array.isArray(source.parsed_data.skills)
+    ? source.parsed_data.skills
+    : []
+  return new Set(skills.map((skill) => trimmedString(skill).toLowerCase()).filter(Boolean)).size
+}
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/
 
@@ -149,7 +174,9 @@ function skillListFromSource(provided: Record<string, unknown>, parsed: Record<s
     : Array.isArray(provided.skillList)
       ? provided.skillList
       : parsed.skills
-  const raw = Array.isArray(source) ? source : typeof source === 'string' ? source.split(',') : []
+  let raw: unknown[] = Array.isArray(source) ? source : typeof source === 'string' ? source.split(',') : []
+  // Resumes saved before the limit was raised carry a 20-skill copy; the parsed list has all of them.
+  if (Array.isArray(parsed.skills) && parsed.skills.length > raw.length) raw = parsed.skills
   const skills: string[] = []
   raw.forEach((skill) => {
     const cleaned = trimmedString(skill).slice(0, 60)
@@ -167,7 +194,7 @@ export function mirrorPrimaryEntries(profile: ApplicantProfile): ApplicantProfil
   return {
     ...profile,
     skillList,
-    skills: skillList.map((skill) => skill.trim()).filter(Boolean).join(', ').slice(0, 500),
+    skills: joinSkills(skillList),
     school: education?.school ?? '',
     degree: education?.degree ?? '',
     fieldOfStudy: education?.fieldOfStudy ?? '',

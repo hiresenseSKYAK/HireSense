@@ -5,7 +5,8 @@ import {
   initializeProfileReviewState,
   isProfileReviewConfirmed,
 } from './core/profile'
-import { emptyEducationEntry, emptyExperienceEntry, historyDateError, MAX_SKILLS, mirrorPrimaryEntries } from './core/profile'
+import { emptyEducationEntry, emptyExperienceEntry, historyDateError, LEGACY_MAX_PROFILE_ENTRIES, LEGACY_MAX_SKILLS, MAX_PROFILE_ENTRIES, MAX_SKILLS, mirrorPrimaryEntries, resumeSkillCount } from './core/profile'
+import SkillTagInput from './SkillTagInput'
 import type { ApplicantProfile, EducationEntry, ExperienceEntry } from './core/types'
 import {
   canConfirmProfile,
@@ -159,6 +160,7 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
       : initial
   })
   const initialValues = useMemo(() => initializeProfileReviewState(resume).values, [resume])
+  const totalResumeSkills = useMemo(() => resumeSkillCount(resume), [resume])
   const [edited, setEdited] = useState(false)
   const [sending, setSending] = useState(false)
   const [revoking, setRevoking] = useState(false)
@@ -231,7 +233,10 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
     try {
       const result = await sendConfirmedProfileToExtension(reviewState.values)
       setExtensionState('available')
-      setBridgeStatus(`Profile synced ${new Date(result.syncedAt).toLocaleString()}. Open an application tab, then choose Preview in HireSense Autofill.`)
+      const synced = `Profile synced ${new Date(result.syncedAt).toLocaleString()}. Open an application tab, then choose Preview in HireSense Autofill.`
+      setBridgeStatus(result.limitedForOlderExtension
+        ? `${synced} Your extension is an older version, so only your first ${LEGACY_MAX_SKILLS} skills and first ${LEGACY_MAX_PROFILE_ENTRIES} schools and jobs were sent. Update HireSense Autofill to send everything.`
+        : synced)
     } catch (error) {
       setExtensionState('unavailable')
       setBridgeStatus(error instanceof Error ? error.message : 'Could not send the profile to the browser bridge.')
@@ -298,40 +303,18 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
 
       <section className={styles.historySection}>
         <p className={styles.fieldGuide}>Skills</p>
-        <p className={styles.confirmationHint}>Add each skill on its own. An application with one skills box receives them together.</p>
-        {(reviewState.values.skillList.length > 0 ? reviewState.values.skillList : ['']).map((skill, index, skills) => (
-          <div key={`skill-${index}`} className={styles.skillRow}>
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Skill {index + 1}</span>
-              <input
-                className={styles.input}
-                value={skill}
-                disabled={sending}
-                onChange={(event) => {
-                  const next = [...skills]
-                  next[index] = event.target.value
-                  replaceProfile({ ...reviewState.values, skillList: next })
-                }}
-              />
-            </label>
-            {skills.length > 1 && (
-              <button type="button" className={styles.exampleLink} disabled={sending} onClick={() => replaceProfile({
-                ...reviewState.values,
-                skillList: skills.filter((_, skillIndex) => skillIndex !== index),
-              })}>
-                Remove
-              </button>
-            )}
-          </div>
-        ))}
-        {(reviewState.values.skillList.length > 0 ? reviewState.values.skillList.length : 1) < MAX_SKILLS && (
-          <button type="button" className="btn-outline" disabled={sending} onClick={() => replaceProfile({
-            ...reviewState.values,
-            skillList: [...(reviewState.values.skillList.length > 0 ? reviewState.values.skillList : ['']), ''],
-          })}>
-            Add skill
-          </button>
+        <p className={styles.confirmationHint}>Press Enter or type a comma after each skill. An application with one skills box receives them together.</p>
+        {totalResumeSkills > MAX_SKILLS && (
+          <p className={styles.confirmationHint} role="status">
+            Your resume lists {totalResumeSkills} skills. The first {MAX_SKILLS} are included; remove some to make room for others.
+          </p>
         )}
+        <SkillTagInput
+          skills={reviewState.values.skillList.map((skill) => skill.trim()).filter(Boolean)}
+          max={MAX_SKILLS}
+          disabled={sending}
+          onChange={(skillList) => replaceProfile({ ...reviewState.values, skillList })}
+        />
       </section>
 
       <HistoryEditor
@@ -352,7 +335,7 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
           ...reviewState.values,
           education: [...(reviewState.values.education.length > 0 ? reviewState.values.education : [emptyEducationEntry()]), emptyEducationEntry()],
         })}
-        canAdd={(reviewState.values.education.length > 0 ? reviewState.values.education.length : 1) < 4}
+        canAdd={(reviewState.values.education.length > 0 ? reviewState.values.education.length : 1) < MAX_PROFILE_ENTRIES}
       />
 
       <HistoryEditor
@@ -374,7 +357,7 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
           ...reviewState.values,
           experience: [...(reviewState.values.experience.length > 0 ? reviewState.values.experience : [emptyExperienceEntry()]), emptyExperienceEntry()],
         })}
-        canAdd={(reviewState.values.experience.length > 0 ? reviewState.values.experience.length : 1) < 4}
+        canAdd={(reviewState.values.experience.length > 0 ? reviewState.values.experience.length : 1) < MAX_PROFILE_ENTRIES}
       />
 
       <div className={styles.confirmationPanel}>

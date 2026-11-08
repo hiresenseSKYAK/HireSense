@@ -57,9 +57,9 @@ Each listing links to the real application page.
 
 ![Sorting is to the right of the 'Live Opportunities' text](images/feature2-3.png)
 
-5. Click a job card to open its details
+5. Click a job card to open its details. The About the role section shows the job description; click Show full description for long postings.
 6. Click Apply directly to open the employer’s application page
-7. Click Back to Jobs (or the browser Back button) to return to the list. Your search text, filters, sort order, page number, and scroll position are kept. Refreshing the page keeps them too. Click the HireSense logo to start over with a clear list.
+7. Click Back to Jobs (or the browser Back button) to return to the list. Your search text, filters, sort order, page number, and scroll position are kept. Refreshing the page keeps them too. The Jobs link in the top bar also returns to your last list. Click the HireSense logo to start over with a clear list.
 
 Jobs are shown for up to 30 days after they were posted. If a listing has no posting date, the 30 days count from the day HireSense found it. Jobs that disappear from the company's own job board, or whose application link is confirmed dead, are removed sooner.
 
@@ -86,17 +86,19 @@ Accepts a PDF or DOCX resume up to 5 MB.
 Extracts first and last name, email, phone, city and state, LinkedIn and GitHub links, skills, education (school, degree, and major), experience, and projects.
 When you are signed in, HireSense also uses AI to read messy layouts more accurately. Every value it finds is checked against your resume. If the AI step is unavailable, the built-in parser is used instead.
 Scores the resume and lists strengths, warnings, and priority fixes.
-1. Click Upload Resume
+1. Click Resume in the top bar (it was called Upload Resume in earlier versions)
 
 !['Upload Resume' is always in the top right where the account icon is](images/feature4-2.png)
 
 2. Drop a PDF or DOCX file, or click Choose File
 3. Wait for Processed
-4. Review the score, skills, sections, warnings, and priority fixes
+4. Review the score, skills, sections, warnings, and priority fixes. Contact Information shows first and last name, email, phone, city and state, and LinkedIn and GitHub links. Education shows each school with its degree, major, and years.
 
 ![An example of an evaluated resume](images/feature4-1.png)
 
-5. Click Replace to upload a different file
+5. Click Replace, or drop a new file on the file bar, to upload a different file. If the new file fails, your previous resume stays saved.
+
+The analysis is saved in this browser only. Logging out removes it, so upload again after signing back in.
 
 ### Feature 5: Job match score
 Compares the saved resume with a job’s listed skills.
@@ -143,6 +145,8 @@ Fills supported fields on an application page and leaves blanks empty.
 !['Prepare Application' is found on the upload resume page, after uploading a resume](images/feature7-2.png)
 
 3. Review and edit the extracted details. First name, last name, city, state, LinkedIn, and GitHub are filled from the resume when found. There is no separate Full name box: forms that ask for a full name get your first and last name together.
+   - Skills appear as tags. Type a skill and press Enter (or a comma) to add it, and click × to remove one. Up to 50 skills are kept.
+   - Up to 6 schools and 6 jobs can be listed.
 
 ![Empty and pre-filled fields based on resume](images/feature7-3.png)
 
@@ -155,6 +159,8 @@ Fills supported fields on an application page and leaves blanks empty.
 7. Open the employer’s application page in Chrome
 8. Open HireSense Autofill and choose Preview
 9. Review the fields, then fill only the supported ones
+
+Extension versions before 0.5.0 accept only 20 skills and 4 schools and jobs. With an older version, HireSense sends the first ones and says so after Send to extension. Update the extension to send everything.
 
 ## 6. Troubleshooting
 | PROBLEM | CAUSE | SOLUTION |

@@ -3,6 +3,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { getAuthSession, logout } from '../api/auth'
 import { clearAutofillProfileConfirmation } from '../features/autofill/readiness'
 import { clearSyncedProfile } from '../features/autofill/extensionBridge'
+import { jobListHref } from '../utils/jobListMemory'
 import styles from './Navbar.module.css'
 
 function accountInitials(username?: string | null) {
@@ -59,6 +60,13 @@ export default function Navbar() {
           <span className={styles.wordmark}>ireSense</span>
         </NavLink>
         <div className={styles.links}>
+          <NavLink
+            to={jobListHref()}
+            end
+            className={`${styles.link} ${location.pathname === '/' || location.pathname.startsWith('/jobs/') ? styles.active : ''}`}
+          >
+            Jobs
+          </NavLink>
           <NavLink to="/interviews" className={`${styles.link} ${location.pathname.startsWith('/interviews') ? styles.active : ''}`}>
             Interviews
           </NavLink>
@@ -68,7 +76,7 @@ export default function Navbar() {
               `${styles.link} ${isActive ? styles.active : ''}`
             }
           >
-            Upload Resume
+            Resume
           </NavLink>
           <NavLink
             to="/application/prepare"

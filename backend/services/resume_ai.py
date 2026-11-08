@@ -31,7 +31,7 @@ from services.resume_parser import EMAIL_PATTERN, MONTH_LABELS, PHONE_PATTERN, _
 logger = logging.getLogger(__name__)
 
 MAX_RESUME_CHARS = 12000
-MAX_ENTRIES = 4
+MAX_ENTRIES = 6
 MAX_BULLETS = 8
 # AI parses allowed per signed-in user per hour. Re-uploading the same file is a free cache hit.
 MAX_AI_PARSES_PER_HOUR = 10

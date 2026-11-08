@@ -58,4 +58,4 @@ The writer rechecks each approved field, dispatches input/change events, and che
 
 ## Final presenter check
 
-After deploying your reviewed changes, reload extension version 0.4.0 and refresh HireSense and the application tab. Test production profile handoff, browser restart, popup preview, phone formatting, manual ITAR classification, preserved existing answers, optional explicit attachment and the site's upload status, and Clear synced profile & optional file. Automated tests mock Chrome API boundaries; they do not replace this installed-extension check.
+After deploying your reviewed changes, reload extension version 0.5.0 and refresh HireSense and the application tab. Test production profile handoff, browser restart, popup preview, phone formatting, manual ITAR classification, preserved existing answers, optional explicit attachment and the site's upload status, and Clear synced profile & optional file. Automated tests mock Chrome API boundaries; they do not replace this installed-extension check.

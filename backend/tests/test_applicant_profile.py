@@ -7,7 +7,7 @@ os.environ.setdefault("DB_NAME", "testdb")
 os.environ.setdefault("DB_USER", "testuser")
 os.environ.setdefault("DB_PASSWORD", "testpassword")
 
-from services.applicant_profile import build_applicant_profile, split_experience_title
+from services.applicant_profile import MAX_ENTRIES, build_applicant_profile, split_experience_title
 
 
 class ApplicantProfileTests(unittest.TestCase):
@@ -34,13 +34,13 @@ class ApplicantProfileTests(unittest.TestCase):
         self.assertEqual(profile["experience"][0]["title"], "Intern")
         self.assertEqual(profile["experience"][0]["description"], "Built a parser")
 
-    def test_keeps_only_four_entries(self):
+    def test_keeps_only_max_entries(self):
         profile = build_applicant_profile({
-            "education": [f"School {index}" for index in range(6)],
-            "experience_entries": [{"title": f"Role {index}", "bullets": []} for index in range(6)],
+            "education": [f"School {index}" for index in range(MAX_ENTRIES + 2)],
+            "experience_entries": [{"title": f"Role {index}", "bullets": []} for index in range(MAX_ENTRIES + 2)],
         })
-        self.assertEqual(len(profile["education"]), 4)
-        self.assertEqual(len(profile["experience"]), 4)
+        self.assertEqual(len(profile["education"]), MAX_ENTRIES)
+        self.assertEqual(len(profile["experience"]), MAX_ENTRIES)
 
 
 if __name__ == "__main__":

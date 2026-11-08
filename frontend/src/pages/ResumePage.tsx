@@ -3,11 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { IconCheck, IconUpload, IconX } from '../components/Icons'
 import {
   uploadResume,
+  type ParsedResumeData,
   type ResumeUploadResponse,
   type StructuredResumeEntry,
 } from '../api/resume'
 import {
-  clearResumeAnalysis,
   getResumeAnalysis,
   saveResumeAnalysis,
 } from '../utils/resumeStorage'
@@ -86,6 +86,77 @@ function AnalysisList({
       ) : (
         <div className={styles.emptyMini}>{emptyText}</div>
       )}
+    </section>
+  )
+}
+
+// Older saved resumes only have "name"; split it the same way the autofill profile does.
+function resumeNames(parsed: ParsedResumeData): { first: string; last: string } {
+  const first = parsed.first_name?.trim() ?? ''
+  const last = parsed.last_name?.trim() ?? ''
+  if (first || last) return { first, last }
+  const words = (parsed.name ?? '').trim().split(/\s+/).filter(Boolean)
+  return { first: words[0] ?? '', last: words.length > 1 ? words[words.length - 1] : '' }
+}
+
+function InfoItem({ label, value, link = false }: { label: string; value?: string | null; link?: boolean }) {
+  const text = value?.trim() ?? ''
+  return (
+    <div className={styles.infoItem}>
+      <span className={styles.infoLabel}>{label}</span>
+      {!text ? (
+        <span className={`${styles.infoValue} ${styles.infoMissing}`}>Not found</span>
+      ) : link && /^https:\/\//.test(text) ? (
+        <a className={`${styles.infoValue} ${styles.infoLink}`} href={text} target="_blank" rel="noopener noreferrer">
+          {text.replace(/^https:\/\/(www\.)?/, '')}
+        </a>
+      ) : (
+        <span className={styles.infoValue}>{text}</span>
+      )}
+    </div>
+  )
+}
+
+function educationDates(entry: { startDate?: string; endDate?: string; current?: boolean }): string {
+  const year = (date?: string) => (date && /^\d{4}/.test(date) ? date.slice(0, 4) : '')
+  const start = year(entry.startDate)
+  const end = entry.current ? 'Present' : year(entry.endDate)
+  return start && end ? `${start} – ${end}` : end || start
+}
+
+function EducationSection({ resume }: { resume: ResumeUploadResponse }) {
+  const structured = (resume.applicant_profile?.education ?? []).filter((entry) => entry.school || entry.degree || entry.fieldOfStudy)
+  if (structured.length === 0) {
+    return (
+      <StructuredEntrySection
+        title="Education"
+        entries={(resume.parsed_data.education || []).map((item) => ({ title: item, bullets: [] }))}
+        emptyText="No education found."
+      />
+    )
+  }
+  return (
+    <section className={styles.sectionCard}>
+      <div className={styles.analysisSectionTitle}>Education</div>
+      <div className={styles.entryGroupList}>
+        {structured.map((entry, index) => {
+          const degree = [entry.degree, entry.fieldOfStudy].filter(Boolean).join(' in ')
+          const dates = educationDates(entry)
+          return (
+            <div key={`${entry.school}-${index}`} className={styles.entryCard}>
+              <div className={styles.entryTitleCard}>
+                <div className={styles.entryTitle}>{entry.school || 'School not found'}</div>
+              </div>
+              {(degree || dates) && (
+                <div className={styles.educationMeta}>
+                  {degree && <span>{degree}</span>}
+                  {dates && <span>{dates}</span>}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </section>
   )
 }
@@ -170,6 +241,7 @@ export default function ResumePage() {
       return
     }
 
+    const previousFileName = selectedFileName
     try {
       setError('')
       setIsUploading(true)
@@ -180,14 +252,10 @@ export default function ResumePage() {
       saveResumeAnalysis(result)
       setUploadedAt(formatTime())
     } catch (err) {
-      setResumeResult(null)
-      clearResumeAnalysis()
-
-      if (err instanceof Error) {
-        setError(err.message)
-      } else {
-        setError('Something went wrong while uploading the resume.')
-      }
+      // A failed replacement keeps the resume that was already saved.
+      setSelectedFileName(previousFileName)
+      const message = err instanceof Error ? err.message : 'Something went wrong while uploading the resume.'
+      setError(resumeResult ? `${message} Your previous resume is still saved.` : message)
     } finally {
       setIsUploading(false)
     }
@@ -227,6 +295,7 @@ export default function ResumePage() {
   const parsed = resumeResult?.parsed_data
   const analysis = resumeResult?.analysis
   const priorityFixes = analysis?.improvements.slice(0, 3) ?? []
+  const contactNames = parsed ? resumeNames(parsed) : { first: '', last: '' }
 
   return (
     <div className="page">
@@ -283,7 +352,12 @@ export default function ResumePage() {
             )}
           </div>
         ) : (
-          <div className={styles.savedBar}>
+          <div
+            className={`${styles.savedBar} ${isDragging ? styles.savedBarDragging : ''}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
             <div className={styles.recentFile}>
               <div className={styles.recentFileBadge}>CV</div>
               <div className={styles.recentFileInfo}>
@@ -291,7 +365,11 @@ export default function ResumePage() {
                   {selectedFileName || resumeResult.filename}
                 </div>
                 <div className={styles.recentFileMeta}>
-                  {isUploading ? 'Analyzing your resume...' : `Uploaded ${uploadedAt || 'just now'}`}
+                  {isUploading
+                    ? 'Analyzing your resume...'
+                    : isDragging
+                      ? 'Drop to replace this resume'
+                      : `Uploaded ${uploadedAt || 'just now'} · drop a new file here to replace it`}
                 </div>
               </div>
               <div className={styles.recentFileStatus}>{isUploading ? 'Processing' : 'Processed'}</div>
@@ -386,18 +464,13 @@ export default function ResumePage() {
               <section className={styles.sectionCard}>
                 <div className={styles.analysisSectionTitle}>Contact Information</div>
                 <div className={styles.infoGrid}>
-                  <div className={styles.infoItem}>
-                    <span className={styles.infoLabel}>Name</span>
-                    <span className={styles.infoValue}>{parsed.name || 'Not found'}</span>
-                  </div>
-                  <div className={styles.infoItem}>
-                    <span className={styles.infoLabel}>Email</span>
-                    <span className={styles.infoValue}>{parsed.email || 'Not found'}</span>
-                  </div>
-                  <div className={styles.infoItem}>
-                    <span className={styles.infoLabel}>Phone</span>
-                    <span className={styles.infoValue}>{parsed.phone || 'Not found'}</span>
-                  </div>
+                  <InfoItem label="First name" value={contactNames.first} />
+                  <InfoItem label="Last name" value={contactNames.last} />
+                  <InfoItem label="Email" value={parsed.email} />
+                  <InfoItem label="Phone" value={parsed.phone} />
+                  <InfoItem label="City / State" value={[parsed.city, parsed.state].filter(Boolean).join(', ')} />
+                  <InfoItem label="LinkedIn" value={parsed.linkedin} link />
+                  <InfoItem label="GitHub" value={parsed.github} link />
                 </div>
               </section>
 
@@ -416,11 +489,7 @@ export default function ResumePage() {
                 )}
               </section>
 
-              <StructuredEntrySection
-                title="Education"
-                entries={(parsed.education || []).map((item) => ({ title: item, bullets: [] }))}
-                emptyText="No education found."
-              />
+              <EducationSection resume={resumeResult} />
 
               <StructuredEntrySection
                 title="Experience"

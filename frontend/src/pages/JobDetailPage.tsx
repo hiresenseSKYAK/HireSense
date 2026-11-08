@@ -9,6 +9,33 @@ import { formatDiscoveryAge, formatPostedDate, sourcePostedAt } from '../utils/j
 import JobPreparationPanel from '../components/JobPreparationPanel'
 import styles from './JobDetailPage.module.css'
 
+// Longer descriptions start collapsed so the match and apply sections stay close to the top.
+const DESCRIPTION_PREVIEW_CHARS = 900
+const NO_DESCRIPTION = 'No description available.'
+
+function jobDescription(job: Job): string {
+  const full = job.fullDescription?.trim()
+  if (full && full !== NO_DESCRIPTION) return full
+  if (typeof job.description === 'string') {
+    const text = job.description.trim()
+    return text === NO_DESCRIPTION ? '' : text
+  }
+  if (!job.description) return ''
+  return [
+    job.description.about,
+    ...job.description.responsibilities,
+    ...job.description.requirements,
+    ...job.description.benefits,
+  ].filter(Boolean).join('\n')
+}
+
+function previewText(text: string): string {
+  if (text.length <= DESCRIPTION_PREVIEW_CHARS) return text
+  const cut = text.slice(0, DESCRIPTION_PREVIEW_CHARS)
+  const lastSpace = cut.lastIndexOf(' ')
+  return `${(lastSpace > DESCRIPTION_PREVIEW_CHARS * 0.8 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`
+}
+
 export default function JobDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -16,13 +43,15 @@ export default function JobDetailPage() {
   // The job list passes its own URL (with search, filters, and page) so Back returns there.
   const from = (location.state as { from?: unknown } | null)?.from
   const backTo = typeof from === 'string' && from.startsWith('/') && !from.startsWith('//') ? from : '/'
-  const savedResume = getResumeAnalysis()
+  // Read once per page; re-reading on every render made the skill match recalculate each time.
+  const savedResume = useMemo(() => getResumeAnalysis(), [])
 
   const [job, setJob] = useState<Job | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [loadKey, setLoadKey] = useState(0)
   const [logoFailed, setLogoFailed] = useState(false)
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const [openedApplicationJobId, setOpenedApplicationJobId] = useState(() => {
     try { return sessionStorage.getItem('hiresense_last_opened_application_job') } catch { return null }
   })
@@ -69,6 +98,8 @@ export default function JobDetailPage() {
 
     return formatSalary(job.salaryRange || job.salary)
   }, [job])
+  const description = useMemo(() => (job ? jobDescription(job) : ''), [job])
+  const descriptionIsLong = description.length > DESCRIPTION_PREVIEW_CHARS
   const hasMatchSignal = Boolean(
     matchResult && (matchResult.matchedSkills.length || matchResult.missingSkills.length)
   )
@@ -150,6 +181,30 @@ export default function JobDetailPage() {
                 <div className={styles.detailValue}>{formatPostedDate(sourcePostedAt(job)) || 'Not provided by source'}</div>
               </div>
             </div>
+          </section>
+
+          <section className={styles.sectionCard} aria-labelledby="role-description-heading">
+            <h2 id="role-description-heading" className={styles.sectionTitle}>About the role</h2>
+            {description ? (
+              <>
+                <p id="role-description" className={styles.description}>
+                  {descriptionExpanded || !descriptionIsLong ? description : previewText(description)}
+                </p>
+                {descriptionIsLong && (
+                  <button
+                    type="button"
+                    className={styles.descriptionToggle}
+                    aria-expanded={descriptionExpanded}
+                    aria-controls="role-description"
+                    onClick={() => setDescriptionExpanded((expanded) => !expanded)}
+                  >
+                    {descriptionExpanded ? 'Show less' : 'Show full description'}
+                  </button>
+                )}
+              </>
+            ) : (
+              <p className={styles.matchEmpty}>The source did not provide a description. Open the original listing for full details.</p>
+            )}
           </section>
 
           <section className={styles.matchCard}>

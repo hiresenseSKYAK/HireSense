@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
+import { rememberJobListSearch } from '../utils/jobListMemory'
 import JobCard from '../components/JobCard'
 import MarketSidebar from '../components/MarketSidebar'
 import FilterBar, { buildEmptyFilters, FILTER_DEFINITIONS, type FilterState } from '../components/FilterBar'
@@ -146,6 +147,7 @@ export default function HomePage() {
 
   const lastWrittenQuery = useRef(urlQuery)
   const listUrl = `${location.pathname}${location.search}`
+  useEffect(() => { rememberJobListSearch(location.search) }, [location.search])
 
   // Every list-state change replaces the current history entry, so the browser
   // Back button leaves the job list instead of undoing filter clicks one by one.

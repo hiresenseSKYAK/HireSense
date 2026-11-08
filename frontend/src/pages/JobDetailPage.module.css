@@ -108,6 +108,30 @@
   color: var(--text-primary);
 }
 
+.description {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.7;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.descriptionToggle {
+  margin-top: 12px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--accent-text);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.descriptionToggle:hover {
+  text-decoration: underline;
+}
+
 .tagsWrap {
   display: flex;
   flex-wrap: wrap;

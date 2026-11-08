@@ -154,11 +154,52 @@
   background: var(--surface-strong);
 }
 
-.skillRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+.tagInput {
+  display: flex;
+  flex-direction: column;
   gap: 12px;
-  align-items: end;
+}
+
+.tagList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent-light);
+  border: 1px solid rgba(var(--caramel-rgb), 0.45);
+  border-radius: 999px;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  padding: 4px 4px 4px 12px;
+}
+
+.tagRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.tagRemove:hover:not(:disabled),
+.tagRemove:focus-visible {
+  background: rgba(var(--burgundy-rgb), 0.12);
+  color: var(--red);
 }
 
 .currentToggle {

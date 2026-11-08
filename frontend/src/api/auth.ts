@@ -1,5 +1,6 @@
 import client from './client'
 import type { AuthResponse } from '../types'
+import { clearResumeAnalysis } from '../utils/resumeStorage'
 
 const AUTH_STORAGE_KEY = 'hiresense_auth_session'
 
@@ -60,6 +61,8 @@ export function getAuthSession(): StoredAuthSession | null {
 export function clearAuthSession(): void {
   localStorage.removeItem(AUTH_STORAGE_KEY)
   localStorage.removeItem('mock_auth')
+  // The saved resume analysis holds personal details; don't leave it behind on a shared computer.
+  clearResumeAnalysis()
 }
 
 export function isAuthenticated(): boolean {

@@ -67,7 +67,7 @@ hiresense/
 | Route       | Page              | Description                                      |
 |-------------|-------------------|--------------------------------------------------|
 | `/`         | Home              | Search, filters, market sidebar, job listings    |
-| `/resume`   | Upload Resume     | File upload, resume analysis, skill scores       |
+| `/resume`   | Resume            | File upload, resume analysis, skill scores       |
 | `/jobs/:id` | Job Detail        | Full JD, match score, AI practice interview      |
 
 ---

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import re
 
-MAX_ENTRIES = 4
-MAX_SKILLS = 20
+# Keep in step with MAX_PROFILE_ENTRIES and MAX_SKILLS in
+# frontend/src/features/autofill/core/profile.ts.
+MAX_ENTRIES = 6
+MAX_SKILLS = 50
 ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
