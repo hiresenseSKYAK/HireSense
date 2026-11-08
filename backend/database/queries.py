@@ -259,6 +259,11 @@ def _normalize_location_for_db(value):
     return concise[: LOCATION_MAX_LENGTH - 1].rstrip() + "…"
 
 
+# Same ceiling as the description parser (crawler/parsers/linkedin.py MAX_ANNUAL_SALARY):
+# a larger annual figure on this early-career board is a parsing mistake, so store nothing.
+MAX_STORED_SALARY = 500_000
+
+
 def _sanitize_salary_for_db(raw_salary):
     if raw_salary is None:
         return None
@@ -268,7 +273,7 @@ def _sanitize_salary_for_db(raw_salary):
         return None
     if value < 0:
         return None
-    if value > 2_147_483_647:
+    if value > MAX_STORED_SALARY:
         return None
     return value
 

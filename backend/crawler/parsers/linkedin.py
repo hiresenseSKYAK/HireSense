@@ -296,6 +296,22 @@ def _parse_salary_number(raw_amount):
 
 
 _SALARY_PERIOD_LOCAL_RADIUS = 120
+# Anything above this is a parsing mistake for this job board (early-career roles).
+MAX_ANNUAL_SALARY = 500_000
+# Amounts this large are yearly (or at most monthly) figures, never hourly, daily, or weekly pay.
+_MIN_YEARLY_LOOKING_AMOUNT = 15_000
+# The salary text itself says the amount is yearly ("$58,400 - $98,200 annually").
+_ANNUAL_CUE = re.compile(
+    r"\b(?:annual(?:ly)?|yearly|per\s+(?:year|annum)|a\s+year)\b|/\s*(?:yr|year)\b",
+    re.IGNORECASE,
+)
+# Work-schedule phrases near a salary ("work on-site 5 days per week", "40 hours a week")
+# describe hours, not pay, and must not turn an annual salary into a weekly one.
+_SCHEDULE_PHRASE = re.compile(
+    r"\b\d+(?:\.\d+)?\s*(?:\+\s*)?(?:(?:-|to)\s*\d+(?:\.\d+)?\s*)?"
+    r"(?:days?|hours?|hrs?|shifts?|nights?)\s*(?:per|a|an|/|each)\s*(?:week|wk|day|month)\b",
+    re.IGNORECASE,
+)
 
 
 def _normalize_for_salary_substring_match(text):
@@ -311,7 +327,7 @@ def _period_multiplier_from_fragment(fragment):
     """Infer hourly/daily/weekly/monthly pay from a short fragment (salary line or local window)."""
     if not fragment:
         return 1
-    text = fragment.lower()
+    text = _SCHEDULE_PHRASE.sub(" ", fragment.lower())
     if any(token in text for token in ("/hour", "per hour", "/hr", " hourly", " an hour", "hourly rate")):
         return 2080
     if any(token in text for token in ("/day", "per day", " daily")):
@@ -337,6 +353,8 @@ def _salary_period_multiplier(salary_text, context_text=None):
     m = _period_multiplier_from_fragment(salary_text)
     if m != 1:
         return m
+    if _ANNUAL_CUE.search(salary_text or ""):
+        return 1
     st = (salary_text or "").strip()
     if not context_text or len(st) < 6:
         return 1
@@ -400,10 +418,12 @@ def _normalize_salary_to_annual(salary_text, context_text=None):
     mult = _salary_period_multiplier(salary_text, context_text)
     if mult == 1 and _hourly_rate_pair_hint(salary_text, context_text):
         mult = 2080
+    if mult not in (1, 12) and max(values[:2]) >= _MIN_YEARLY_LOOKING_AMOUNT:
+        mult = 1
 
     base_value = values[0] if len(values) == 1 else (values[0] + values[1]) / 2
     annual_salary = base_value * mult
-    if annual_salary < 10000:
+    if annual_salary < 10000 or annual_salary > MAX_ANNUAL_SALARY:
         return None
     return int(round(annual_salary))
 

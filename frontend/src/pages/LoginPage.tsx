@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { login, signup } from '../api/auth'
+import { restoreSavedResume } from '../utils/resumeStorage'
 import styles from './LoginPage.module.css'
 
 export default function LoginPage() {
@@ -32,6 +33,8 @@ export default function LoginPage() {
       }
 
       await login(email.trim(), password)
+      // Bring back the resume saved on this account before any page reads it.
+      await restoreSavedResume()
       navigate('/')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to continue right now.')

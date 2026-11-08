@@ -329,11 +329,19 @@ def _coerce_number(value):
         return None
 
 
+# Same limits as crawler/parsers/linkedin.py. Handshake sometimes labels a monthly or yearly
+# amount as hourly; an out-of-range result returns None so the description is used instead.
+MAX_ANNUAL_SALARY = 500_000
+_MIN_YEARLY_LOOKING_AMOUNT = 15_000
+
+
 def _annualize_amount(amount, multiplier):
     if amount is None:
         return None
+    if multiplier not in (1, 12) and amount >= _MIN_YEARLY_LOOKING_AMOUNT:
+        multiplier = 1
     annual = amount * multiplier
-    if annual < 10000:
+    if annual < 10000 or annual > MAX_ANNUAL_SALARY:
         return None
     return int(round(annual))
 

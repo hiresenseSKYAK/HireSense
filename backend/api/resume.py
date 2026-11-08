@@ -9,6 +9,7 @@ from services.applicant_profile import build_applicant_profile
 from services.file_extractor import extract_resume_links, extract_resume_text
 from services.resume_parser import parse_resume_text
 from services.resume_scorer import score_resume
+from services.saved_resume import delete_resume, load_resume, save_resume
 
 router = APIRouter(prefix="/resume", tags=["resume"])
 logger = logging.getLogger(__name__)
@@ -51,7 +52,32 @@ async def upload_resume_endpoint(
     # signed-in users so the key cannot be spent anonymously.
     user_id = await run_in_threadpool(_optional_user_id, authorization)
     resume_ai = getattr(request.app.state, "resume_ai_service", None)
-    return await upload_resume(file, user_id=user_id, resume_ai=resume_ai)
+    result = await upload_resume(file, user_id=user_id, resume_ai=resume_ai)
+    # Signed-in uploads are kept on the account so the resume is back after signing in again.
+    # A failed save never fails the upload; the browser still has its own copy.
+    saved_at = await run_in_threadpool(save_resume, user_id, result) if user_id is not None else None
+    if saved_at:
+        result["saved_at"] = saved_at
+    result["saved_to_account"] = bool(saved_at)
+    return result
+
+
+def _required_user_id(authorization: Optional[str]) -> int:
+    user_id = _optional_user_id(authorization)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Sign in again to load your saved resume.")
+    return user_id
+
+
+@router.get("/saved")
+def get_saved_resume(authorization: Optional[str] = Header(default=None)):
+    """The signed-in user's latest resume analysis, or {"resume": null} if none is saved."""
+    return {"resume": load_resume(_required_user_id(authorization))}
+
+
+@router.delete("/saved")
+def delete_saved_resume(authorization: Optional[str] = Header(default=None)):
+    return {"deleted": delete_resume(_required_user_id(authorization))}
 
 
 async def upload_resume(file: UploadFile, *, user_id: int | None = None, resume_ai=None):

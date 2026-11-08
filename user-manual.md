@@ -98,7 +98,7 @@ Scores the resume and lists strengths, warnings, and priority fixes.
 
 5. Click Replace, or drop a new file on the file bar, to upload a different file. If the new file fails, your previous resume stays saved.
 
-The analysis is saved in this browser only. Logging out removes it, so upload again after signing back in.
+The analysis is saved to your account, so it is still there after you log out and back in, or sign in on another computer. The original file is not kept. Click Remove to delete the saved resume; uploading a new one replaces it.
 
 ### Feature 5: Job match score
 Compares the saved resume with a job’s listed skills.

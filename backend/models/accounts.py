@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from database.connection import Base
@@ -55,3 +55,18 @@ class AppliedJob(Base):
 
     user = relationship("User", back_populates="applied_jobs")
     job = relationship("Job", back_populates="applied_by")
+
+
+class UserResume(Base):
+    """The latest resume analysis for a user, so it is still there after signing in again.
+
+    Stores the parsed details and score returned by /resume/upload (JSON), never the original file.
+    Created by migration 009_add_user_resumes.sql.
+    """
+
+    __tablename__ = "user_resumes"
+
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    filename = Column(String(255), nullable=False)
+    analysis_json = Column(Text(16_777_215), nullable=False)  # MEDIUMTEXT in MySQL
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)

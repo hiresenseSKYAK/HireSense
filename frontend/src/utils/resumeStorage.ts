@@ -1,4 +1,4 @@
-import type { ResumeUploadResponse } from "../api/resume";
+import { fetchSavedResume, type ResumeUploadResponse } from "../api/resume";
 import { getAuthSession } from "../api/auth";
 
 const RESUME_STORAGE_KEY = "hiresense_resume_analysis";
@@ -36,6 +36,28 @@ export function getResumeAnalysis(): ResumeUploadResponse | null {
 
 export function clearResumeAnalysis(): void {
   localStorage.removeItem(RESUME_STORAGE_KEY);
+}
+
+/**
+ * Make sure this browser has the signed-in user's resume. The browser copy is removed on
+ * logout, so after signing in it is loaded back from the account. Never throws; waits at
+ * most timeoutMs so a slow server cannot hold up sign-in.
+ */
+export async function restoreSavedResume(timeoutMs = 5000): Promise<ResumeUploadResponse | null> {
+  const local = getResumeAnalysis();
+  if (local) return local;
+  if (!getAuthSession()) return null;
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const saved = await fetchSavedResume(controller.signal);
+    if (saved) saveResumeAnalysis(saved);
+    return saved;
+  } catch {
+    return null;
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 export function hasResumeAnalysis(): boolean {

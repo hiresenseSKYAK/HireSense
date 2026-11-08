@@ -34,6 +34,11 @@ and fails loudly on SQL errors. It never drops job data or prints credentials.
     DEFAULT 0` and an index on `(source_feed_key, active)`; existing rows start
     at 0 and nothing is removed. The crawler logs and skips the check (it never
     fails the crawl) if this migration has not been applied.
+12. Run `009_add_user_resumes.sql` before deploying saved resumes. It creates
+    the new `user_resumes` table (one row per user: file name, the parsed
+    resume analysis as JSON, and the update time) and changes no existing
+    tables. The API also creates this table at startup if it is missing, so the
+    statement uses `CREATE TABLE IF NOT EXISTS`.
 
 For an already-migrated database, run `python -m database.migrate` from
 `backend` before starting the new crawler or deploying the API. Take a backup

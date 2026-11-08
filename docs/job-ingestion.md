@@ -71,6 +71,19 @@ descriptions. Direct ATS wins over government, then Adzuna, then discovery
 reposts. A provider exception is isolated and recorded without emptying the
 database. 429s trigger a one-hour provider cooldown.
 
+## Salaries
+
+Each job stores one yearly figure: the midpoint of the posted range, converted to a yearly amount when the pay is hourly, daily, weekly, or monthly. ATS boards and Handshake provide structured pay data; LinkedIn and Handshake descriptions are read with `_extract_salary_from_description` and `_normalize_salary_to_annual` in `crawler/parsers/linkedin.py`.
+
+Safeguards against inflated salaries:
+
+- Salary text that says it is yearly ("annually", "per year", "/yr") is never multiplied.
+- Work-schedule phrases near the pay ("5 days per week", "40 hours a week") are ignored when guessing the pay period.
+- Amounts of $15,000 or more are never treated as hourly, daily, or weekly pay. This also covers Handshake postings that label a monthly or yearly amount as hourly.
+- A yearly result over $500,000 is discarded (`MAX_ANNUAL_SALARY`, and `MAX_STORED_SALARY` in `database/queries.py`), so the job shows "Not listed", or the description is used when the structured value was the bad one.
+
+To repair salaries saved before these rules, run `python -m scripts.fix_salaries` from `backend` (dry run), then `python -m scripts.fix_salaries --apply`.
+
 ## Job lifecycle: when a job leaves the feed
 
 A job is hidden (never deleted) by whichever of these happens first. Hidden

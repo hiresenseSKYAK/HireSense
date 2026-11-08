@@ -39,6 +39,8 @@ export interface ResumeUploadResponse {
   saved_at?: string
   parsed_data: ParsedResumeData
   analysis: ResumeAnalysis
+  /** True when the backend kept this analysis on the signed-in account. */
+  saved_to_account?: boolean
   /** "ai" when the OpenAI-assisted parser was used, "rules" when it fell back to the rule-based parser. */
   parser_source?: 'ai' | 'rules'
   applicant_profile?: {
@@ -95,4 +97,28 @@ export async function uploadResume(file: File): Promise<ResumeUploadResponse> {
   }
 
   return response.json()
+}
+
+function authHeaders(): Record<string, string> | null {
+  const token = getAuthSession()?.token
+  return token ? { Authorization: `Bearer ${token}` } : null
+}
+
+/** The resume analysis saved on the signed-in account, or null when there is none. */
+export async function fetchSavedResume(signal?: AbortSignal): Promise<ResumeUploadResponse | null> {
+  const headers = authHeaders()
+  if (!headers) return null
+  const response = await fetch(`${API_BASE_URL}/resume/saved`, { headers, signal })
+  if (!response.ok) throw new Error('Could not load your saved resume.')
+  const body = (await response.json()) as { resume?: ResumeUploadResponse | null }
+  const resume = body.resume
+  return resume && typeof resume === 'object' && resume.parsed_data && resume.analysis ? resume : null
+}
+
+/** Remove the saved resume analysis from the signed-in account. */
+export async function deleteSavedResume(): Promise<void> {
+  const headers = authHeaders()
+  if (!headers) return
+  const response = await fetch(`${API_BASE_URL}/resume/saved`, { method: 'DELETE', headers })
+  if (!response.ok) throw new Error('Could not remove your saved resume. Try again.')
 }

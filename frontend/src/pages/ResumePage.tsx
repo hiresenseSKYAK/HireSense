@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { IconCheck, IconUpload, IconX } from '../components/Icons'
 import {
+  deleteSavedResume,
   uploadResume,
   type ParsedResumeData,
   type ResumeUploadResponse,
   type StructuredResumeEntry,
 } from '../api/resume'
 import {
-  getResumeAnalysis,
+  clearResumeAnalysis,
+  restoreSavedResume,
   saveResumeAnalysis,
 } from '../utils/resumeStorage'
 import styles from './ResumePage.module.css'
@@ -169,20 +171,44 @@ export default function ResumePage() {
   const [uploadedAt, setUploadedAt] = useState('')
   const [error, setError] = useState('')
   const [resumeResult, setResumeResult] = useState<ResumeUploadResponse | null>(null)
+  const [isRestoring, setIsRestoring] = useState(true)
+  const [isRemoving, setIsRemoving] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    const savedResume = getResumeAnalysis()
-
-    if (savedResume) {
-      setResumeResult(savedResume)
-      setSelectedFileName(savedResume.filename || 'Previously uploaded resume')
-      setUploadedAt(savedResume.saved_at
-        ? new Date(savedResume.saved_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-        : 'saved locally')
-    }
+    let cancelled = false
+    // Uses this browser's copy, or loads the one saved on the account (for example after logging back in).
+    void restoreSavedResume().then((savedResume) => {
+      if (cancelled) return
+      if (savedResume) {
+        setResumeResult(savedResume)
+        setSelectedFileName(savedResume.filename || 'Previously uploaded resume')
+        setUploadedAt(savedResume.saved_at
+          ? new Date(savedResume.saved_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+          : 'saved locally')
+      }
+      setIsRestoring(false)
+    })
+    return () => { cancelled = true }
   }, [])
+
+  const handleRemove = async () => {
+    if (isRemoving || !window.confirm('Remove this resume from HireSense? You can upload it again at any time.')) return
+    try {
+      setIsRemoving(true)
+      setError('')
+      await deleteSavedResume()
+      clearResumeAnalysis()
+      setResumeResult(null)
+      setSelectedFileName('')
+      setUploadedAt('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not remove your saved resume. Try again.')
+    } finally {
+      setIsRemoving(false)
+    }
+  }
 
   const isAllowedFile = (file: File) => {
     const fileName = file.name.toLowerCase()
@@ -325,12 +351,12 @@ export default function ResumePage() {
             </div>
 
             <h3 className={styles.uploadTitle}>
-              {isUploading ? 'Analyzing your resume...' : 'Drop your resume here'}
+              {isUploading ? 'Analyzing your resume...' : isRestoring ? 'Checking for your saved resume...' : 'Drop your resume here'}
             </h3>
             <p className={styles.uploadSub}>
               {isUploading
                 ? 'We are extracting content, grading it, and generating recommendations.'
-                : 'or click to browse your files'}
+                : 'or click to browse your files. Your analysis is saved to your account.'}
             </p>
 
             <button
@@ -387,9 +413,16 @@ export default function ResumePage() {
               <button
                 className={styles.secondaryButton}
                 onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
+                disabled={isUploading || isRemoving}
               >
                 Replace
+              </button>
+              <button
+                className={styles.secondaryButton}
+                onClick={() => void handleRemove()}
+                disabled={isUploading || isRemoving}
+              >
+                {isRemoving ? 'Removing...' : 'Remove'}
               </button>
             </div>
             {error && (
