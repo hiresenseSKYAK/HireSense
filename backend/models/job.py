@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, Date, DateTime, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import relationship
 
 from database.connection import Base
@@ -42,3 +42,20 @@ class Job(Base):
 
     saved_by = relationship("SavedJob", back_populates="job", cascade="all, delete")
     applied_by = relationship("AppliedJob", back_populates="job", cascade="all, delete")
+
+
+class JobAISummary(Base):
+    """One AI-written summary per job, shared by every user who opens it.
+
+    source_hash is the SHA-256 of the description that was summarized, so a
+    changed description is summarized again. Created by migration
+    010_add_job_ai_summaries.sql.
+    """
+
+    __tablename__ = "job_ai_summaries"
+
+    job_id = Column(Integer, ForeignKey("job_data.id", ondelete="CASCADE"), primary_key=True)
+    source_hash = Column(String(64), nullable=False)
+    model = Column(String(100), nullable=False)
+    summary_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())

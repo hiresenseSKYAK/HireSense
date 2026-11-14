@@ -4,3 +4,5 @@ mysql-connector-python
 python-dotenv
 requests
 beautifulsoup4
+# AI job summaries (scripts.backfill_job_summaries); only used when OPENAI_API_KEY is set.
+openai>=1.66.0,<3

@@ -14,6 +14,7 @@ from database.models import InterviewResponse, InterviewSession
 from services.career_ai import CareerAIService
 from services.job_intelligence import coaching_signals_from_feedback
 from services.job_location import assess_job_geography
+from services.job_summary import JobSummaryService
 
 router = APIRouter(prefix='/ai', tags=['career-coaching'])
 
@@ -63,6 +64,22 @@ def job_preparation(
     }
     db.rollback()
     return service.job_preparation(user_id, authoritative, _bounded_resume(body))
+
+
+@router.get('/jobs/{job_id}/summary')
+def job_summary(
+    job_id: int,
+    request: Request,
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    """AI summary of the job description; source='unavailable' means show the original only."""
+    user_id = _resolve_user_id(db, authorization)
+    job = db.query(Job).filter(Job.id == job_id, Job.active.is_(True)).first()
+    if not job:
+        raise HTTPException(404, 'Job not found')
+    service: JobSummaryService = request.app.state.job_summary_service
+    return service.summarize(db, user_id, job)
 
 
 @router.post('/jobs/recommendations')

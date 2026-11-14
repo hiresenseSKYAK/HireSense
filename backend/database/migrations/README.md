@@ -39,6 +39,10 @@ and fails loudly on SQL errors. It never drops job data or prints credentials.
     resume analysis as JSON, and the update time) and changes no existing
     tables. The API also creates this table at startup if it is missing, so the
     statement uses `CREATE TABLE IF NOT EXISTS`.
+13. Run `010_add_job_ai_summaries.sql` before deploying AI job summaries. It
+    creates the new `job_ai_summaries` table (one row per job: the summary as
+    JSON, the model name, and a hash of the summarized description) and changes
+    no existing tables. Like 009, the API also creates it at startup if missing.
 
 For an already-migrated database, run `python -m database.migrate` from
 `backend` before starting the new crawler or deploying the API. Take a backup

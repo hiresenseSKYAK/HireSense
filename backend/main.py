@@ -15,6 +15,7 @@ from services.interview_provider import build_openai_interview_provider, build_o
 from services.interview_settings import get_interview_ai_settings
 from services.career_ai import build_career_ai_service
 from services.resume_ai import build_resume_ai_service
+from services.job_summary import build_job_summary_service
 
 app = FastAPI(title="HireSense API")
 ai_settings = get_interview_ai_settings()
@@ -23,6 +24,8 @@ app.state.interview_provider = build_openai_interview_provider(ai_settings, open
 app.state.career_ai_service = build_career_ai_service(ai_settings, openai_sdk)
 # Resume parsing reuses the same OPENAI_API_KEY / client; rules-only when the key is unset.
 app.state.resume_ai_service = build_resume_ai_service(ai_settings, openai_sdk)
+# Job description summaries on the job page use the same client and light model.
+app.state.job_summary_service = build_job_summary_service(ai_settings, openai_sdk)
 
 Base.metadata.create_all(bind=engine)
 ensure_job_description_summary_column()

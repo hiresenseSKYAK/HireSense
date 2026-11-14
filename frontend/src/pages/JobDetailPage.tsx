@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom'
 import { fetchJob } from '../api/jobs'
+import { getJobSummary, type JobSummary } from '../api/career'
 import type { Job } from '../types'
 import { getResumeAnalysis } from '../utils/resumeStorage'
 import { matchResumeToJob } from '../utils/jobMatcher'
@@ -52,6 +53,8 @@ export default function JobDetailPage() {
   const [loadKey, setLoadKey] = useState(0)
   const [logoFailed, setLogoFailed] = useState(false)
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
+  const [summary, setSummary] = useState<JobSummary | null>(null)
+  const [summaryLoading, setSummaryLoading] = useState(false)
   const [openedApplicationJobId, setOpenedApplicationJobId] = useState(() => {
     try { return sessionStorage.getItem('hiresense_last_opened_application_job') } catch { return null }
   })
@@ -82,6 +85,19 @@ export default function JobDetailPage() {
 
     void loadJob()
   }, [id, loadKey])
+
+  const jobId = job?.id
+  useEffect(() => {
+    if (jobId === undefined) return
+    const controller = new AbortController()
+    setSummary(null)
+    setSummaryLoading(true)
+    getJobSummary(jobId, controller.signal)
+      .then((result) => setSummary(result))
+      .catch(() => { /* Navigated away; the next job loads its own summary. */ })
+      .finally(() => { if (!controller.signal.aborted) setSummaryLoading(false) })
+    return () => controller.abort()
+  }, [jobId])
 
   const matchResult = useMemo(() => {
     if (!job) {
@@ -185,7 +201,42 @@ export default function JobDetailPage() {
 
           <section className={styles.sectionCard} aria-labelledby="role-description-heading">
             <h2 id="role-description-heading" className={styles.sectionTitle}>About the role</h2>
-            {description ? (
+            {summaryLoading && description && (
+              <div className={styles.summaryLoading} role="status" aria-label="Summarizing this role">
+                <span /><span /><span />
+              </div>
+            )}
+            {!summaryLoading && summary?.source === 'ai' && description ? (
+              <>
+                <div className={styles.aiSummary}>
+                  <span className={styles.aiSummaryLabel}>AI summary</span>
+                  <p className={styles.aiSummaryOverview}>{summary.overview}</p>
+                  {([
+                    ['What you’ll do', summary.responsibilities],
+                    ['What they’re looking for', summary.requirements],
+                    ['Nice to have', summary.nice_to_have],
+                  ] as const).map(([heading, items]) => items.length > 0 && (
+                    <div key={heading} className={styles.aiSummaryGroup}>
+                      <h3>{heading}</h3>
+                      <ul>{items.map((item) => <li key={item}>{item}</li>)}</ul>
+                    </div>
+                  ))}
+                  <p className={styles.aiSummaryNote}>Summarized by AI from the posting. Check the full description before you apply.</p>
+                </div>
+                <button
+                  type="button"
+                  className={styles.descriptionToggle}
+                  aria-expanded={descriptionExpanded}
+                  aria-controls="role-description"
+                  onClick={() => setDescriptionExpanded((expanded) => !expanded)}
+                >
+                  {descriptionExpanded ? 'Hide full description' : 'Show full description'}
+                </button>
+                {descriptionExpanded && (
+                  <p id="role-description" className={`${styles.description} ${styles.fullDescription}`}>{description}</p>
+                )}
+              </>
+            ) : summaryLoading && description ? null : description ? (
               <>
                 <p id="role-description" className={styles.description}>
                   {descriptionExpanded || !descriptionIsLong ? description : previewText(description)}

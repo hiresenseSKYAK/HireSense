@@ -30,6 +30,7 @@ jobs:
       ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
       USAJOBS_EMAIL: ${{ secrets.USAJOBS_EMAIL }}
       USAJOBS_API_KEY: ${{ secrets.USAJOBS_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       SUMMARIZE_JOB_DESCRIPTIONS: "false"
       EXTRACT_JOB_SKILLS: "false"
     steps:
@@ -66,6 +67,12 @@ jobs:
         id: usajobs
         continue-on-error: true
         run: python -m crawler.crawl --source usajobs --limit 50 --skip-cleanup
+      - name: AI summaries for new jobs
+        # Only after the 15-minute run, so overlapping schedules never summarize the same job twice.
+        # Jobs that already have a summary cost nothing; skipped when the secret is not set.
+        if: always() && (github.event_name == 'workflow_dispatch' || github.event.schedule == '*/15 * * * *') && env.OPENAI_API_KEY != ''
+        continue-on-error: true
+        run: python -m scripts.backfill_job_summaries --limit 200 --max-runtime 600
       - name: Verify old application links
         if: github.event_name == 'workflow_dispatch' || github.event.schedule == '17 4 * * *'
         run: python -m services.updater

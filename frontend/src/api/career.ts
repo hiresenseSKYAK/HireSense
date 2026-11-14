@@ -65,3 +65,23 @@ async function request<T>(path: string, resume: ParsedResumeData): Promise<T> {
 export const getResumeCoach = (resume: ParsedResumeData) => request<ResumeCoachResult>('/ai/resume-coach', resume)
 export const getJobPreparation = (jobId: number, resume: ParsedResumeData) => request<JobPreparationResult>(`/ai/jobs/${jobId}/preparation`, resume)
 export const getJobRecommendations = (resume: ParsedResumeData) => request<JobRecommendationsResult>('/ai/jobs/recommendations', resume)
+
+export type JobSummary =
+  | { source: 'ai'; overview: string; responsibilities: string[]; requirements: string[]; nice_to_have: string[]; cached: boolean }
+  | { source: 'unavailable'; reason: string }
+
+/** AI summary of a job's description. Resolves to source 'unavailable' rather than throwing. */
+export async function getJobSummary(jobId: number, signal?: AbortSignal): Promise<JobSummary> {
+  const token = getAuthSession()?.token
+  if (!token) return { source: 'unavailable', reason: 'signed_out' }
+  try {
+    const response = await fetch(`${API_BASE_URL}/ai/jobs/${jobId}/summary`, {
+      signal, headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!response.ok) return { source: 'unavailable', reason: `http_${response.status}` }
+    return await response.json() as JobSummary
+  } catch (error) {
+    if (signal?.aborted) throw error
+    return { source: 'unavailable', reason: 'network' }
+  }
+}
