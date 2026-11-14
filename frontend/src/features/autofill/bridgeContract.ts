@@ -41,6 +41,30 @@ export function fitProfileForExtension(profile: ApplicantProfile, extensionVersi
   }
 }
 export const allowedOrigins = ['https://hiresense-9yub.onrender.com', 'http://localhost:5173']
+export const BRIDGE_REQUEST_CHANNEL = 'hiresense-extension-request'
+export const BRIDGE_RESPONSE_CHANNEL = 'hiresense-extension-response'
+export const BRIDGE_READY_CHANNEL = 'hiresense-extension-ready'
+export const BRIDGE_OPERATIONS = ['ping', 'set-confirmed-profile', 'clear-profile'] as const
+export type BridgeOperation = typeof BRIDGE_OPERATIONS[number]
+export const RUNTIME_BRIDGE_MESSAGES = {
+  ping: 'site-bridge-ping',
+  'set-confirmed-profile': 'site-bridge-profile',
+  'clear-profile': 'site-bridge-clear',
+} as const satisfies Record<BridgeOperation, string>
+
+export type BridgeErrorCode =
+  | 'extension_not_installed'
+  | 'content_script_missing'
+  | 'bridge_timeout'
+  | 'protocol_mismatch'
+  | 'background_rejected'
+  | 'origin_rejected'
+  | 'profile_validation_failed'
+  | 'storage_failed'
+
+export function isBridgeOperation(value: unknown): value is BridgeOperation {
+  return typeof value === 'string' && (BRIDGE_OPERATIONS as readonly string[]).includes(value)
+}
 
 export function profileFingerprint(profile: ApplicantProfile): string {
   // A change marker, not an authentication secret.

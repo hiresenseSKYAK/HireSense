@@ -7,9 +7,9 @@ type Listener = (message: any, sender: any, respond: (value: any) => void) => un
 let internal: Listener
 const profile = { ...initializeApplicantProfile(null), fullName: 'Ada Lovelace', email: 'ada@example.com' }
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); document.body.replaceChildren(); delete (window as any).__hireSenseAutofillListener })
-async function setupBackground() {
+async function setupBackground(initialStore: Record<string, any> = {}) {
   vi.resetModules()
-  const store: Record<string, any> = {}
+  const store: Record<string, any> = { ...initialStore }
   const sessionStore: Record<string, any> = {}
   const api = {
     runtime: {
@@ -58,7 +58,7 @@ describe('extension background handoff and permissions', () => {
     const response = vi.fn()
     internal({ type: 'site-bridge-profile', profile },
       { id: 'test-extension', url: 'https://evil.example', tab: { url: 'https://evil.example' } }, response)
-    expect(response).not.toHaveBeenCalled()
+    expect(response).toHaveBeenCalledWith(expect.objectContaining({ ok: false, code: 'origin_rejected' }))
     expect(store).toEqual({})
   })
   it('rejects forged sender tabs and malformed website messages', async () => {
@@ -67,7 +67,7 @@ describe('extension background handoff and permissions', () => {
     internal(
       { type: 'site-bridge-profile', profile },
       { id: 'test-extension', url: 'https://hiresense-9yub.onrender.com/application/prepare', tab: { url: 'https://evil.example' } }, forgedResponse)
-    expect(forgedResponse).not.toHaveBeenCalled()
+    expect(forgedResponse).toHaveBeenCalledWith(expect.objectContaining({ ok: false, code: 'origin_rejected' }))
     const malformed = await new Promise<any>((resolve) => internal(
       { type: 'site-bridge-profile', profile: { email: 'ada@example.com' } },
       { id: 'test-extension', url: 'https://hiresense-9yub.onrender.com/application/prepare', tab: { url: 'https://hiresense-9yub.onrender.com/application/prepare' } }, resolve))
@@ -80,6 +80,45 @@ describe('extension background handoff and permissions', () => {
     vi.resetModules()
     await import('../../../extension/src/background')
     expect((await call({ type: 'get-profile' })).state).toBe('ready')
+  })
+  it('reads the Chrome-local profile after a simulated browser restart', async () => {
+    const firstRun = await setupBackground()
+    await firstRun.transfer()
+    const persisted = { confirmedApplicantProfile: firstRun.store.confirmedApplicantProfile }
+    const restartedBrowser = await setupBackground(persisted)
+    expect((await restartedBrowser.call({ type: 'get-profile' }))).toMatchObject({
+      state: 'ready',
+      fingerprint: persisted.confirmedApplicantProfile.fingerprint,
+    })
+  })
+  it('starts empty for a fresh user, then reports ready immediately after sync', async () => {
+    const { transfer, call } = await setupBackground()
+    expect((await call({ type: 'get-profile' })).state).toBe('missing')
+    const synced = await transfer()
+    expect(synced).toMatchObject({ ok: true, syncedAt: expect.any(Number) })
+    expect((await call({ type: 'get-profile' }))).toMatchObject({ state: 'ready', syncedAt: synced.syncedAt })
+  })
+  it('reinjects the site bridge when HireSense was open before an extension reload', async () => {
+    const { call, api } = await setupBackground()
+    api.tabs.query.mockResolvedValueOnce([{ id: 11, url: 'https://hiresense-9yub.onrender.com/application/prepare' }])
+    const response = await call({ type: 'get-profile' })
+    expect(response.siteBridge).toBe('injected')
+    expect(api.scripting.executeScript).toHaveBeenCalledWith({ target: { tabId: 11 }, files: ['siteBridge.js'] })
+  })
+  it('reports a missing site bridge when active-tab reinjection fails', async () => {
+    const { call, api } = await setupBackground()
+    api.tabs.query.mockResolvedValueOnce([{ id: 11, url: 'https://hiresense-9yub.onrender.com/application/prepare' }])
+    api.scripting.executeScript.mockRejectedValueOnce(new Error('injection unavailable'))
+    expect(await call({ type: 'get-profile' })).toMatchObject({ siteBridge: 'unavailable' })
+  })
+  it('keeps two Chrome installations in independent extension storage', async () => {
+    const first = await setupBackground()
+    await first.transfer()
+    const second = await setupBackground()
+    expect((await second.call({ type: 'get-profile' })).state).toBe('missing')
+    await second.transfer()
+    expect(first.store.confirmedApplicantProfile).not.toBe(second.store.confirmedApplicantProfile)
+    expect(first.store.confirmedApplicantProfile.token).not.toBe(second.store.confirmedApplicantProfile.token)
   })
   it('replaces the sync fingerprint on update and accepts website revocation', async () => {
     const { transfer, store } = await setupBackground()
@@ -95,7 +134,7 @@ describe('extension background handoff and permissions', () => {
   it('reports storage failures to the website', async () => {
     const { api, transfer } = await setupBackground()
     api.storage.local.set.mockRejectedValueOnce(new Error('storage unavailable'))
-    expect((await transfer()).ok).toBe(false)
+    expect(await transfer()).toMatchObject({ ok: false, code: 'storage_failed' })
   })
   it('expires and clears profiles before a page can receive them', async () => {
     const { transfer, call, store, api } = await setupBackground()

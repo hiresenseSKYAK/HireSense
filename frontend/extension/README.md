@@ -24,9 +24,39 @@ The extension build also type-checks its background, content, popup, and resume-
 
 After rebuilding, click **Reload** on the extension card. Refresh the HireSense website and any open application tabs before testing a new content-script build.
 
+## Update an installed copy
+
+Chrome Web Store installs update automatically. To force Chrome to check, open
+**chrome://extensions**, enable **Developer mode**, then click **Update**. Confirm
+the version on the HireSense Autofill card and refresh HireSense plus any open
+application tabs.
+
+For an unpacked developer install, open **chrome://extensions**, enable
+**Developer mode**, and click **Reload** on the HireSense Autofill card after each
+rebuild. Use **Update** when you want Chrome to check all installed extensions.
+
+## Two-minute teammate checks
+
+### Chrome Web Store
+
+1. Install HireSense Autofill from its Chrome Web Store listing. Existing installs update automatically; use **chrome://extensions** → **Developer mode** → **Update** to force a check.
+2. Refresh `https://hiresense-9yub.onrender.com`, sign in, and open **Application Autofill**.
+3. Review and confirm the profile, then choose **Send to extension**.
+4. Open the popup and confirm **Profile ready** with the current sync time.
+5. Open an application, choose **Preview autofill**, review the proposed fields, then explicitly choose **Fill supported fields**.
+
+### Unpacked development build
+
+1. Pull the latest `main`, run `cd frontend`, `npm ci`, and `npm run build:extension`.
+2. Open **chrome://extensions**, enable **Developer mode**, then load `frontend/extension/dist` or click **Reload** on the existing HireSense card.
+3. Refresh both HireSense and open application tabs. Confirm and send the profile again because an extension reload invalidates the old page bridge.
+4. Open the popup, confirm **Profile ready**, then preview before filling.
+
 ## Connect the website
 
 No extension ID environment variable is needed. The manifest injects a small bridge only on `https://hiresense-9yub.onrender.com/*` and `http://localhost:5173/*`. The website pings it, checks protocol version 1, then sends the validated profile. The background worker checks both sender and tab origin. Use **localhost**, not 127.0.0.1, for development handoff. Do not add wildcard origins.
+
+If HireSense was already open when the extension was installed or reloaded, opening the extension popup on that tab safely reinjects the packaged `siteBridge.js` using Chrome's user-granted `activeTab` access. No fixed extension ID, host-wide permission, local path, or persistent service-worker memory is required.
 
 ## User flow
 
@@ -58,4 +88,4 @@ The writer rechecks each approved field, dispatches input/change events, and che
 
 ## Final presenter check
 
-After deploying your reviewed changes, reload extension version 0.5.0 and refresh HireSense and the application tab. Test production profile handoff, browser restart, popup preview, phone formatting, manual ITAR classification, preserved existing answers, optional explicit attachment and the site's upload status, and Clear synced profile & optional file. Automated tests mock Chrome API boundaries; they do not replace this installed-extension check.
+After deploying your reviewed changes, reload extension version 0.4.1 and refresh HireSense and the application tab. Test production profile handoff, browser restart, popup preview, phone formatting, manual ITAR classification, preserved existing answers, optional explicit attachment and the site's upload status, and Clear synced profile & optional file. Automated tests mock Chrome API boundaries; they do not replace this installed-extension check.

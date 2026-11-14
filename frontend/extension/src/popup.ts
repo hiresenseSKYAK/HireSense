@@ -18,6 +18,7 @@ let profileUrl = 'https://hiresense-9yub.onrender.com/application/prepare'
 type Response = {
   ok?: boolean; error?: string; state?: string; supported?: boolean; summary?: string; ready?: number;
   previewId?: string; tabId?: number; host?: string; attachmentReady?: boolean; resumeStatus?: string; syncedAt?: number;
+  siteBridge?: 'not-applicable' | 'injected' | 'unavailable';
   resume?: { name: string; token: string }; attached?: boolean;
   fields?: Array<{ label: string; status: string; reason: string; value?: string; tone: string; section: string }>
 }
@@ -83,6 +84,8 @@ async function refresh() {
     resumeState(response)
     status.textContent = response.state === 'ready'
       ? 'Preview this application before filling. Existing answers stay yours.'
+      : response.siteBridge === 'unavailable'
+        ? 'HireSense is open, but its extension bridge could not start. Refresh the HireSense tab, then reopen the extension.'
       : 'Already uploaded a resume? Open HireSense Profile Review and choose Send to extension. Otherwise, upload it there first. No second upload is needed for autofill.'
   } catch (error) {
     status.textContent = error instanceof Error ? error.message : 'Could not connect.'
@@ -186,3 +189,6 @@ clearButton.addEventListener('click', async () => {
   }
 })
 void refresh()
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === 'local' && changes.confirmedApplicantProfile) void refresh()
+})

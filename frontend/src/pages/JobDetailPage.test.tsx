@@ -63,3 +63,17 @@ it('falls back to the original description when no summary is available', async 
   expect(container.textContent).not.toContain('AI summary')
   expect(container.textContent).toContain('Original posting text')
 })
+
+it('keeps the employer description collapsed until requested and can hide it again', async () => {
+  const htmlDescription = `<p>${'Detailed employer wording. '.repeat(50)}</p><h2>Responsibilities</h2><ul><li>Build APIs</li></ul>`
+  vi.mocked(fetchJob).mockResolvedValue({ id: 1, title: 'Backend Engineer', company: 'Acme', location: 'Denton, TX', type: 'Full-time', hybrid: 'Hybrid', skills: [], fullDescription: htmlDescription } as never)
+  await renderJob()
+  const toggle = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Show full description')
+  expect(toggle).toBeDefined()
+  expect(container.textContent).not.toContain('Build APIs')
+  await act(async () => toggle?.click())
+  expect(container.textContent).toContain('Build APIs')
+  expect(toggle?.textContent).toBe('Hide full description')
+  await act(async () => toggle?.click())
+  expect(container.textContent).not.toContain('Build APIs')
+})

@@ -1,4 +1,11 @@
-import { allowedSender, PROFILE_TTL_MS, profileExpired, profileFingerprint, transferableProfile } from '../../src/features/autofill/bridgeContract'
+import {
+  allowedSender,
+  PROFILE_TTL_MS,
+  profileExpired,
+  profileFingerprint,
+  RUNTIME_BRIDGE_MESSAGES,
+  transferableProfile,
+} from '../../src/features/autofill/bridgeContract'
 import { RESUME_TTL_MS, validResume, type SessionResume } from '../../src/features/autofill/resume/contract'
 
 const profileKey = 'confirmedApplicantProfile'
@@ -32,22 +39,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const fromResumePage = sender.url === chrome.runtime.getURL('resume.html')
   const fromHireSense = sender.id === chrome.runtime.id && allowedSender(sender.url) &&
     Boolean(sender.tab && (!sender.tab.url || allowedSender(sender.tab.url)))
-  if (!fromPopup && !fromResumePage && !fromHireSense) return
+  const isSiteBridgeMessage = Object.values(RUNTIME_BRIDGE_MESSAGES).includes(message?.type)
+  if (!fromPopup && !fromResumePage && !fromHireSense) {
+    if (isSiteBridgeMessage) {
+      sendResponse({ ok: false, code: 'origin_rejected', error: 'This HireSense origin is not authorized.' })
+    }
+    return
+  }
   void (async () => {
     if (fromHireSense) {
-      if (message?.type === 'site-bridge-ping') return { ok: true, version: chrome.runtime.getManifest().version }
-      if (message?.type === 'site-bridge-clear') {
+      if (message?.type === RUNTIME_BRIDGE_MESSAGES.ping) return { ok: true, version: chrome.runtime.getManifest().version }
+      if (message?.type === RUNTIME_BRIDGE_MESSAGES['clear-profile']) {
         await chrome.storage.local.remove(profileKey)
         return { ok: true }
       }
-      if (message?.type !== 'site-bridge-profile') throw new Error('Unknown website action.')
+      if (message?.type !== RUNTIME_BRIDGE_MESSAGES['set-confirmed-profile']) {
+        return { ok: false, code: 'background_rejected', error: 'Unknown website action.' }
+      }
       const profile = transferableProfile(message.profile)
-      if (!profile) throw new Error('Review and confirm valid applicant details first.')
+      if (!profile) return { ok: false, code: 'profile_validation_failed', error: 'Review and confirm valid applicant details first.' }
       const syncedAt = Date.now()
       const fingerprint = profileFingerprint(profile)
-      await chrome.storage.local.set({ [profileKey]: {
-        profile, expiresAt: syncedAt + PROFILE_TTL_MS, token: crypto.randomUUID(), fingerprint, syncedAt,
-      } satisfies StoredProfile })
+      try {
+        await chrome.storage.local.set({ [profileKey]: {
+          profile, expiresAt: syncedAt + PROFILE_TTL_MS, token: crypto.randomUUID(), fingerprint, syncedAt,
+        } satisfies StoredProfile })
+      } catch {
+        return { ok: false, code: 'storage_failed', error: 'Chrome could not store the profile. Check extension storage and retry.' }
+      }
       return { ok: true, fingerprint, syncedAt }
     }
     if (message?.type === 'set-active-resume' && fromResumePage) {
@@ -83,8 +102,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
     const supported = Boolean(tab?.id && tab.url && /^https?:\/\//.test(tab.url))
     const host = supported ? new URL(tab!.url!).hostname : ''
-    if (message?.type === 'get-profile') return { ok: true, state, supported, host, expiresAt: stored?.expiresAt,
-      fingerprint: stored?.fingerprint, syncedAt: stored?.syncedAt, resume: resumeInfo }
+    if (message?.type === 'get-profile') {
+      let siteBridge: 'not-applicable' | 'injected' | 'unavailable' = 'not-applicable'
+      if (tab?.id && allowedSender(tab.url)) {
+        try {
+          await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['siteBridge.js'] })
+          siteBridge = 'injected'
+        } catch {
+          siteBridge = 'unavailable'
+        }
+      }
+      return { ok: true, state, supported, host, expiresAt: stored?.expiresAt,
+        fingerprint: stored?.fingerprint, syncedAt: stored?.syncedAt, resume: resumeInfo, siteBridge }
+    }
     if (!['preview-active-tab', 'fill-active-tab', 'attach-active-resume'].includes(message?.type)) throw new Error('Unknown action.')
     if (!stored) throw new Error(state === 'expired' ? 'Profile expired. Send it again from HireSense.' : 'Send a confirmed profile from HireSense first.')
     if (!supported || !tab?.id) throw new Error('Open a regular application webpage. Browser settings and protected pages cannot be filled.')
@@ -100,6 +130,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       ...(message.type === 'attach-active-resume' ? { resume: resume!.file, resumeExpiresAt: resume!.expiresAt } : {}),
     })
     return { ...result, tabId: tab.id, host, resume: resumeInfo }
-  })().then(sendResponse).catch((error: unknown) => sendResponse({ ok: false, error: error instanceof Error ? error.message : 'This page is unavailable. Try reopening the application tab.' }))
+  })().then(sendResponse).catch((error: unknown) => sendResponse({ ok: false, code: 'background_rejected', error: error instanceof Error ? error.message : 'This page is unavailable. Try reopening the application tab.' }))
   return true
 })

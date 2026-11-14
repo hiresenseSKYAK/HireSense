@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+from crawler.parsers.description import html_to_structured_text
 from services.job_relevance import assess_job_relevance
 from services.job_experience import assess_job_experience
 from services.job_location import assess_job_geography
@@ -540,8 +541,9 @@ def _extract_details_from_posting(job_id, session, deadline=None):
     else:
         application_link = f"{BASE_URL}/jobs/view/{job_id}/"
 
+    description_node = soup.select_one("div.show-more-less-html__markup")
     description = _normalize_linkedin_text(
-        _safe_text(soup.select_one("div.show-more-less-html__markup"))
+        html_to_structured_text(str(description_node)) if description_node else ""
     )
     salary_text = _safe_text(soup.select_one("span.compensation__salary"))
     if not salary_text:

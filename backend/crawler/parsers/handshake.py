@@ -6,6 +6,7 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+from crawler.parsers.description import html_to_structured_text
 from services.job_relevance import assess_job_relevance
 from services.job_experience import assess_job_experience
 from services.job_location import assess_job_geography
@@ -89,9 +90,7 @@ def _normalize_text(text):
 
 
 def _html_to_text(html):
-    if not html:
-        return ""
-    return _normalize_text(BeautifulSoup(html, "html.parser").get_text(" ", strip=True))
+    return _normalize_text(html_to_structured_text(html))
 
 
 def _as_list(value):

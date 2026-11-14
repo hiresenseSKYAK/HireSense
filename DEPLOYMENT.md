@@ -131,6 +131,8 @@ reasons without credentials.
 
 The extension can be loaded unpacked for the capstone demonstration. The exact production and localhost origins are listed in `frontend/extension/static/manifest.json` under `content_scripts.matches`; add any changed production origin there and to `bridgeContract.ts`, then rebuild and reload the extension. No extension ID is needed in the frontend build. The extension receives only a confirmed, validated applicant profile, never auth tokens or resume text. The profile expires after 24 hours in extension-local storage; optional resume file bytes remain session-only.
 
+Build the Web Store artifact from `frontend` with `npm run build:extension`, then ZIP the **contents** of `frontend/extension/dist` so `manifest.json` is at the ZIP root. Do not ZIP the `dist` directory itself. Version 0.4.1 also repairs the site bridge when the user opens the popup on a HireSense tab that was already open during an install or extension reload; this uses the existing `activeTab` permission and adds no fixed extension ID or host permission.
+
 For public installation, publish the reviewed extension in the Chrome Web Store first. Copy its exact listing URL into `VITE_CHROME_EXTENSION_STORE_URL` on the frontend host, rebuild/redeploy the frontend (Vite reads it at build time), and verify the Profile page opens that listing in a new tab. The install URL does not configure profile sync; the existing exact-origin handshake continues to do that. Unpacked-extension instructions are for development only and should not be shown to production users.
 
 ## Remaining external actions

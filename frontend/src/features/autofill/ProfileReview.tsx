@@ -16,6 +16,8 @@ import {
 import {
   detectAutofillExtension,
   clearSyncedProfile,
+  ExtensionBridgeError,
+  onAutofillExtensionReady,
   sendConfirmedProfileToExtension,
 } from './extensionBridge'
 import styles from './ProfileReview.module.css'
@@ -24,6 +26,7 @@ import {
   getConfirmedAutofillProfile,
   markAutofillProfileConfirmed,
 } from './readiness'
+import { getChromeExtensionStoreUrl } from '../../config/extension'
 
 interface ProfileReviewProps {
   resume: ResumeUploadResponse
@@ -151,6 +154,7 @@ const fields: Array<{
 ]
 
 export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
+  const extensionStoreUrl = getChromeExtensionStoreUrl()
   const [reviewState, setReviewState] = useState(() => {
     const initial = initializeProfileReviewState(resume)
     if (draft) return { ...initial, values: { ...draft } }
@@ -179,8 +183,7 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
   useEffect(() => {
     if (!isConfirmed) return
     let cancelled = false
-    setExtensionState('checking')
-    void detectAutofillExtension().then(() => {
+    const detect = () => detectAutofillExtension().then(() => {
       if (!cancelled) setExtensionState('available')
     }).catch((error: unknown) => {
       if (!cancelled) {
@@ -188,7 +191,10 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
         setBridgeStatus(error instanceof Error ? error.message : 'HireSense Autofill is unavailable.')
       }
     })
-    return () => { cancelled = true }
+    setExtensionState('checking')
+    void detect()
+    const stopListening = onAutofillExtensionReady(() => { if (!cancelled) void detect() })
+    return () => { cancelled = true; stopListening() }
   }, [isConfirmed])
 
   const replaceProfile = (values: ApplicantProfile) => {
@@ -238,7 +244,9 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
         ? `${synced} Your extension is an older version, so only your first ${LEGACY_MAX_SKILLS} skills and first ${LEGACY_MAX_PROFILE_ENTRIES} schools and jobs were sent. Update HireSense Autofill to send everything.`
         : synced)
     } catch (error) {
-      setExtensionState('unavailable')
+      const connectionFailure = error instanceof ExtensionBridgeError &&
+        ['extension_not_installed', 'content_script_missing', 'bridge_timeout', 'protocol_mismatch'].includes(error.code)
+      setExtensionState(connectionFailure ? 'unavailable' : 'available')
       setBridgeStatus(error instanceof Error ? error.message : 'Could not send the profile to the browser bridge.')
     } finally {
       setSending(false)
@@ -416,15 +424,10 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
           </button>
           {extensionState === 'unavailable' && (
             <p className={styles.confirmationHint}>
-              Install or reload the{' '}
-              <a
-                href="https://chromewebstore.google.com/detail/joikcoanlbhcleekjhgmbhaphhnhaiad?utm_source=item-share-cb"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                HireSense Chrome extension
-              </a>
-              , then refresh this page and retry. Your confirmed profile remains here.
+              {extensionStoreUrl ? <>
+                Install or reload the{' '}
+                <a href={extensionStoreUrl} target="_blank" rel="noopener noreferrer">HireSense Chrome extension</a>
+              </> : 'Install or reload the HireSense Chrome extension'}, then refresh this page and retry. Your confirmed profile remains here.
             </p>
           )}
           {bridgeStatus && <p className={styles.bridgeStatus} role="status">{bridgeStatus}</p>}

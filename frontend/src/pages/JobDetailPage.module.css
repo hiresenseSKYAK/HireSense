@@ -369,6 +369,11 @@
 .detailSkeleton span:nth-child(3) { width:94%; }
 @keyframes pulse { to { background-position:-200% 0; } }
 .applyButton { width:100%; padding:12px; justify-content:center; margin-top:auto; text-decoration:none; }
+.descriptionCard { background:var(--surface); border:1px solid var(--border); border-radius:20px; box-shadow:var(--shadow-sm); padding:24px; }
+.descriptionHeader { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; }
+.descriptionHeader h2 { margin:4px 0 0; color:var(--text-primary); font-size:1.35rem; letter-spacing:-.025em; }
+.descriptionHeader button { flex-shrink:0; }
+.descriptionBody { margin-top:24px; padding-top:22px; border-top:1px solid var(--border); }
 .interviewEntry{background:#092c60;color:#fff;border-radius:22px;padding:clamp(24px,4vw,46px);margin:8px 0 36px}.journeyLabel{color:#c4dcf8;font-size:.78rem;letter-spacing:.02em;margin-bottom:28px}.journeyLabel span{margin:0 9px;color:#8cc9ff}.journeyLabel strong{color:#fff}.interviewEntryContent{display:flex;align-items:end;justify-content:space-between;gap:30px}.interviewEntryContent>div{max-width:650px}.interviewEyebrow{color:#8cc9ff;font-size:.75rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em}.interviewEntry h2{font-size:clamp(1.8rem,3vw,2.7rem);letter-spacing:-.04em;line-height:1.15;margin:10px 0}.interviewEntry p{color:#dcecff;line-height:1.65;margin:0}.interviewEntryContent>.btn-primary{flex-shrink:0}.interviewFacts{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}.interviewFacts span{font-size:.78rem;color:#dcecff;border:1px solid rgba(255,255,255,.28);padding:7px 10px;border-radius:999px}.applicationNote{display:flex;gap:14px;align-items:start;background:rgba(255,255,255,.09);border-left:3px solid #8cc9ff;padding:16px 18px;margin-bottom:28px;border-radius:8px}.applicationNote>span{color:#8cc9ff}.applicationNote p{font-size:.9rem;margin-top:4px}
 
 @media (max-width: 1080px) {
@@ -390,6 +395,9 @@
 }
 
 @media (max-width: 700px) {
+  .descriptionCard { padding:20px; }
+  .descriptionHeader { align-items:stretch; flex-direction:column; }
+  .descriptionHeader button { width:100%; justify-content:center; }
   .interviewEntryContent{align-items:start;flex-direction:column}.interviewEntryContent>.btn-primary{width:100%}.journeyLabel{line-height:1.7}
   .heroTopRow {
     flex-direction: column;

@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 import requests
 from bs4 import BeautifulSoup
 
+from crawler.parsers.description import html_to_structured_text
 from services.job_experience import assess_job_experience
 from services.job_location import assess_job_geography
 from services.job_relevance import assess_job_relevance
@@ -37,9 +38,7 @@ def _valid_http_url(value: object) -> str | None:
 
 
 def _plain_text(value: object) -> str:
-    if not value:
-        return ""
-    return BeautifulSoup(str(value), "html.parser").get_text("\n", strip=True)
+    return html_to_structured_text(value)
 
 
 def _iso_date(value: object) -> str | None:

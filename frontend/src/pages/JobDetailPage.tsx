@@ -8,6 +8,7 @@ import { matchResumeToJob } from '../utils/jobMatcher'
 import { formatSalary } from '../utils/formatSalary'
 import { formatDiscoveryAge, formatPostedDate, sourcePostedAt } from '../utils/jobFreshness'
 import JobPreparationPanel from '../components/JobPreparationPanel'
+import JobDescription, { formatJobDescription } from '../components/JobDescription'
 import styles from './JobDetailPage.module.css'
 
 // Longer descriptions start collapsed so the match and apply sections stay close to the top.
@@ -98,6 +99,7 @@ export default function JobDetailPage() {
       .finally(() => { if (!controller.signal.aborted) setSummaryLoading(false) })
     return () => controller.abort()
   }, [jobId])
+  useEffect(() => setDescriptionExpanded(false), [id])
 
   const matchResult = useMemo(() => {
     if (!job) {
@@ -115,7 +117,10 @@ export default function JobDetailPage() {
     return formatSalary(job.salaryRange || job.salary)
   }, [job])
   const description = useMemo(() => (job ? jobDescription(job) : ''), [job])
-  const descriptionIsLong = description.length > DESCRIPTION_PREVIEW_CHARS
+  const descriptionPlainText = useMemo(() => formatJobDescription(description).flatMap((block) =>
+    'text' in block ? [block.text] : block.items
+  ).join(' '), [description])
+  const descriptionIsLong = descriptionPlainText.length > DESCRIPTION_PREVIEW_CHARS
   const hasMatchSignal = Boolean(
     matchResult && (matchResult.matchedSkills.length || matchResult.missingSkills.length)
   )
@@ -233,14 +238,20 @@ export default function JobDetailPage() {
                   {descriptionExpanded ? 'Hide full description' : 'Show full description'}
                 </button>
                 {descriptionExpanded && (
-                  <p id="role-description" className={`${styles.description} ${styles.fullDescription}`}>{description}</p>
+                  <div id="role-description" className={`${styles.descriptionBody} ${styles.fullDescription}`}>
+                    <JobDescription content={description} />
+                  </div>
                 )}
               </>
             ) : summaryLoading && description ? null : description ? (
               <>
-                <p id="role-description" className={styles.description}>
-                  {descriptionExpanded || !descriptionIsLong ? description : previewText(description)}
-                </p>
+                {descriptionExpanded || !descriptionIsLong ? (
+                  <div id="role-description" className={styles.descriptionBody}>
+                    <JobDescription content={description} />
+                  </div>
+                ) : (
+                  <p id="role-description" className={styles.description}>{previewText(descriptionPlainText)}</p>
+                )}
                 {descriptionIsLong && (
                   <button
                     type="button"
@@ -249,7 +260,7 @@ export default function JobDetailPage() {
                     aria-controls="role-description"
                     onClick={() => setDescriptionExpanded((expanded) => !expanded)}
                   >
-                    {descriptionExpanded ? 'Show less' : 'Show full description'}
+                    {descriptionExpanded ? 'Hide full description' : 'Show full description'}
                   </button>
                 )}
               </>
