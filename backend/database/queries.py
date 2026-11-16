@@ -720,13 +720,17 @@ def update_job_skills(job_id, skills):
         conn.close()
 
 
-def get_jobs_to_check():
+def get_jobs_to_check(*, linkedin_sweep=False):
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
 
     # Every visible job is link-checked, not just old ones: never-checked jobs
     # first, then "possibly closed" (recheck daily), then anything not checked
-    # in 3 days. Jobs past the age limit are skipped; the age rule removes them.
+    # in 3 days. LinkedIn jobs are rechecked daily because LinkedIn closes
+    # postings often and its guest page states that directly. With
+    # linkedin_sweep, every visible LinkedIn job is checked regardless of when
+    # it was last checked. Jobs past the age limit are skipped; the age rule
+    # removes them.
     cursor.execute(
         f"""
         SELECT id, application_link, status, source, source_job_id
@@ -736,13 +740,14 @@ def get_jobs_to_check():
           AND (
                 last_checked_at IS NULL
                 OR (status = 'possibly_closed' AND last_checked_at < (CURRENT_TIMESTAMP - INTERVAL 1 DAY))
+                OR (source = 'linkedin' AND (%s OR last_checked_at < (CURRENT_TIMESTAMP - INTERVAL 20 HOUR)))
                 OR last_checked_at < (CURRENT_TIMESTAMP - INTERVAL 3 DAY)
               )
         ORDER BY (last_checked_at IS NULL) DESC,
                  (status = 'possibly_closed') DESC,
                  last_checked_at ASC
         """,
-        (JOB_MAX_AGE_DAYS,),
+        (JOB_MAX_AGE_DAYS, bool(linkedin_sweep)),
     )
 
     jobs = cursor.fetchall()

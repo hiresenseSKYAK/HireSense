@@ -35,6 +35,44 @@ HEADERS = {
     "Referer": f"{BASE_URL}/jobs/search",
 }
 
+# LinkedIn guest posting pages (`/jobs-guest/jobs/api/jobPosting/<id>`):
+# - an open posting has an Apply control that opens the sign-in modal
+#   (`data-modal="job-details-topcard-apply-modal"`, tracked as
+#   `apply-link-offsite` or `apply-link-onsite` for Easy Apply);
+# - a closed posting has a `closed-job` block reading "No longer accepting
+#   applications" and no Apply control.
+LINKEDIN_CLOSED_PATTERN = re.compile(
+    r'class="[^"]*\bclosed-job\b'
+    r"|no longer accepting applications"
+    r"|not (?:currently )?accepting applications",
+    re.IGNORECASE,
+)
+LINKEDIN_APPLY_CONTROL_PATTERN = re.compile(
+    r"job-details-topcard-apply-modal|apply-link-(?:offsite|onsite)",
+    re.IGNORECASE,
+)
+LINKEDIN_POSTING_PAGE_PATTERN = re.compile(r"top-card-layout__title", re.IGNORECASE)
+
+
+def linkedin_posting_state(html):
+    """Classify a LinkedIn guest posting page.
+
+    Returns:
+    - "closed": LinkedIn says the posting no longer accepts applications.
+    - "open": the page has LinkedIn's Apply control.
+    - "no_apply": a real posting page with no Apply control. A job a user
+      cannot apply to is treated as unavailable and should not be shown.
+    - None: not a recognizable posting (login wall, error page); no conclusion.
+    """
+    text = html or ""
+    if LINKEDIN_CLOSED_PATTERN.search(text):
+        return "closed"
+    if LINKEDIN_APPLY_CONTROL_PATTERN.search(text):
+        return "open"
+    if LINKEDIN_POSTING_PAGE_PATTERN.search(text):
+        return "no_apply"
+    return None
+
 
 def _safe_text(node):
     return node.get_text(" ", strip=True) if node else None
@@ -531,6 +569,19 @@ def _extract_details_from_posting(job_id, session, deadline=None):
             break
         if href and not linkedin_plain_apply_fallback:
             linkedin_plain_apply_fallback = href
+
+    # Only keep postings that are taking applications. A closed posting, or one
+    # with no Apply control at all, is skipped so it never reaches the feed.
+    posting_state = linkedin_posting_state(resp.text)
+    has_apply_anchor = bool(
+        external_candidate or linkedin_easy_apply_candidate or linkedin_plain_apply_fallback
+    )
+    if posting_state == "closed" or (posting_state != "open" and not has_apply_anchor):
+        print(
+            f"[linkedin] rejected id={job_id} reason=not accepting applications",
+            flush=True,
+        )
+        return None
 
     if external_candidate:
         application_link = external_candidate

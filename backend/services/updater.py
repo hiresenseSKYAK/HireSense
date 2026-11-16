@@ -1,7 +1,7 @@
 """Check stale application links and deactivate only confirmed closed jobs."""
 
+import argparse
 import os
-import re
 import time
 from urllib.parse import urlparse
 
@@ -11,6 +11,11 @@ try:
     from database.queries import get_jobs_to_check, update_job_check_status
 except ImportError:
     from backend.database.queries import get_jobs_to_check, update_job_check_status
+
+try:
+    from crawler.parsers.linkedin import linkedin_posting_state
+except ImportError:
+    from backend.crawler.parsers.linkedin import linkedin_posting_state
 
 REQUEST_TIMEOUT_SEC = 10
 REQUEST_DELAY_SEC = 0.5
@@ -26,11 +31,9 @@ EXPIRED_HTTP_STATUSES = {404, 410}
 # requests with a redirect or a login wall, so they can never be classified.
 # LinkedIn's public guest endpoint for the same posting does show its state:
 # a closed posting contains a "closed-job" block reading "No longer accepting
-# applications", and a removed posting returns 404.
+# applications" and has no Apply control, and a removed posting returns 404.
+# See linkedin_posting_state in crawler/parsers/linkedin.py.
 LINKEDIN_GUEST_POSTING_URL = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
-LINKEDIN_CLOSED_PATTERN = re.compile(
-    r'class="[^"]*\bclosed-job\b|no longer accepting applications', re.IGNORECASE
-)
 TRANSIENT_HTTP_STATUSES = {401, 403, 408, 425, 429, 500, 502, 503, 504, 999}
 CLOSED_PAGE_MARKERS = (
     "no longer accepting applications",
@@ -68,8 +71,9 @@ def _closed_marker(html):
 def classify_linkedin_posting(source_job_id, session=None):
     """Return (expired, reason) for a LinkedIn posting using LinkedIn's guest endpoint.
 
-    LinkedIn's own "No longer accepting applications" is an explicit statement
-    from the source, so callers may close the job on this single observation.
+    LinkedIn's own "No longer accepting applications", or a posting page with
+    no Apply control, is treated as final, so callers may close the job on
+    this single observation.
     """
     job_id = str(source_job_id or "").strip()
     if not job_id.isdigit():
@@ -88,9 +92,14 @@ def classify_linkedin_posting(source_job_id, session=None):
         return True, f"linkedin posting http {status}"
     if status != 200:
         return None, f"linkedin http {status}"
-    if LINKEDIN_CLOSED_PATTERN.search(response.text or ""):
+    state = linkedin_posting_state(response.text)
+    if state == "closed":
         return True, "linkedin: no longer accepting applications"
-    return False, "linkedin posting open"
+    if state == "no_apply":
+        return True, "linkedin: posting has no apply option"
+    if state == "open":
+        return False, "linkedin posting open"
+    return None, "linkedin: unrecognized posting page"
 
 
 def classify_application_link(url, session=None):
@@ -149,8 +158,8 @@ def classify_job(job, session=None):
     return expired, reason, False
 
 
-def update_database(*, max_runtime_sec=None, clock=time.monotonic):
-    jobs = get_jobs_to_check()
+def update_database(*, max_runtime_sec=None, clock=time.monotonic, linkedin_sweep=False):
+    jobs = get_jobs_to_check(linkedin_sweep=linkedin_sweep)
     budget = MAX_RUNTIME_SEC if max_runtime_sec is None else max_runtime_sec
     started = clock()
     skipped_for_time = 0
@@ -228,7 +237,18 @@ def update_database(*, max_runtime_sec=None, clock=time.monotonic):
     }
 
 
+def _parse_args(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--linkedin-sweep",
+        action="store_true",
+        help="Check every visible LinkedIn job now, ignoring when it was last checked.",
+    )
+    return parser.parse_args(argv)
+
+
 if __name__ == "__main__":
-    result = update_database()
+    args = _parse_args()
+    result = update_database(linkedin_sweep=args.linkedin_sweep)
     if result["failed"]:
         raise SystemExit(1)

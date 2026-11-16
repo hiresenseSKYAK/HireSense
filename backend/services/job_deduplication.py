@@ -32,6 +32,48 @@ def _company_core(value: object) -> str:
     return " ".join(word for word in _normalized(value).split() if word not in ignored)
 
 
+def _place_key(row: dict) -> str:
+    """City-level place, so "Dallas, TX", "Dallas, Texas" and "Dallas" match.
+
+    LinkedIn stores only the city, while employer boards store "City, ST", so
+    the comparison uses the city. Remote roles compare as "remote".
+    """
+    location = str(row.get("location") or "")
+    work_style = _normalized(row.get("work_style") or row.get("hybrid"))
+    lowered = location.lower()
+    if "remote" in lowered or (work_style == "remote" and not location.strip()):
+        return "remote"
+    return _normalized(location.split(",")[0])
+
+
+def role_key(row: dict) -> tuple[str, str, str] | None:
+    """Company, title and city-level place of a posting."""
+    key = (
+        _company_core(row.get("company")),
+        _normalized(row.get("job_title") or row.get("title")),
+        _place_key(row),
+    )
+    return key if all(key) else None
+
+
+def _same_posting_text(first: str, second: str) -> bool:
+    """Whether two normalized descriptions are one posting, lightly edited.
+
+    True when one is an excerpt of the other, or they are at least 90% alike.
+    Different roles with the same title (two teams hiring "Software Engineer I"
+    in one city) have different descriptions and stay separate.
+    """
+    if not first or not second:
+        return False
+    shorter, longer = sorted((first, second), key=len)
+    if len(shorter) >= 160 and shorter in longer and len(shorter) / max(len(longer), 1) >= 0.25:
+        return True
+    first_words, second_words = first.split(), second.split()
+    if min(len(first_words), len(second_words)) / max(len(first_words), len(second_words), 1) < 0.8:
+        return False
+    return SequenceMatcher(None, first_words, second_words, autojunk=False).ratio() >= 0.9
+
+
 def duplicate_reason(candidate: dict, keeper: dict) -> str | None:
     """Return a reason only for exact or extremely close cross-source reposts."""
     candidate_url = str(candidate.get("canonical_url") or candidate.get("application_link") or candidate.get("applicationLink") or "").strip().lower()
@@ -42,6 +84,15 @@ def duplicate_reason(candidate: dict, keeper: dict) -> str | None:
     keeper_exact = exact_posting_key(keeper)
     if candidate_exact and candidate_exact == keeper_exact:
         return f"exact duplicate of active row {keeper.get('id')}"
+    # Reposts: same company, title and city with essentially the same text.
+    # LinkedIn reposts one opening under new job IDs with light edits, and
+    # LinkedIn stores "Dallas" where an employer board stores "Dallas, TX".
+    candidate_role = role_key(candidate)
+    if candidate_role and candidate_role == role_key(keeper) and _same_posting_text(
+        _normalized(candidate.get("job_description") or candidate.get("fullDescription")),
+        _normalized(keeper.get("job_description") or keeper.get("fullDescription")),
+    ):
+        return f"repost with the same company, title and location as active row {keeper.get('id')}"
 
     candidate_source = _normalized(candidate.get("source"))
     keeper_source = _normalized(keeper.get("source"))

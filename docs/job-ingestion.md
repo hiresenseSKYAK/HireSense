@@ -67,7 +67,11 @@ per-user last-visit marker drives “New for you.”
 Stable provider IDs and canonical URLs resolve updates. `job_source_alias`
 retains secondary provider IDs after a stronger source wins. Feed-level
 dedupe also compares normalized company/title/location and near-identical
-descriptions. Direct ATS wins over government, then Adzuna, then discovery
+descriptions. A repost (same company, same title, same city or remote, and a
+description that is an excerpt of the other or at least 90% the same words)
+is shown once, even from the same source; this catches LinkedIn reposting one
+opening under new job IDs. Roles with the same title but different
+descriptions stay separate. Direct ATS wins over government, then Adzuna, then discovery
 reposts. A provider exception is isolated and recorded without emptying the
 database. 429s trigger a one-hour provider cooldown.
 
@@ -109,10 +113,15 @@ rows keep their ID so interview history and old links keep working.
    - **LinkedIn jobs** are checked through LinkedIn's public guest endpoint
      (`/jobs-guest/jobs/api/jobPosting/<id>`), because the normal
      `linkedin.com/jobs/view/...` link always answers automated requests with
-     a redirect or login wall and could never be classified. When LinkedIn
-     itself shows "No longer accepting applications" (or the posting returns
-     404), the job is closed immediately. LinkedIn checks are spaced 2 seconds
-     apart and pause 30 seconds after a 429.
+     a redirect or login wall and could never be classified. A LinkedIn job is
+     shown only while its posting has an Apply button. When LinkedIn shows
+     "No longer accepting applications", the posting page has no Apply button,
+     or the posting returns 404, the job is closed immediately. LinkedIn jobs
+     are rechecked daily (not every 3 days). The crawler applies the same
+     rule, so closed or unappliable LinkedIn postings are never added.
+     LinkedIn checks are spaced 2 seconds apart and pause 30 seconds after a
+     429. To check every visible LinkedIn job right away, run
+     `python -m services.updater --linkedin-sweep` from `backend`.
    - **Other links** are followed through redirects. A final 404/410 or an
      explicit "no longer accepting" page marks the job `possibly_closed`, and
      a second confirmation at least a day later closes it.
