@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { getAuthSession, logout } from '../api/auth'
-import { clearAutofillProfileConfirmation } from '../features/autofill/readiness'
+import { clearAutofillProfileData } from '../features/autofill/readiness'
 import { clearSyncedProfile } from '../features/autofill/extensionBridge'
 import { jobListHref } from '../utils/jobListMemory'
 import styles from './Navbar.module.css'
@@ -46,7 +46,7 @@ export default function Navbar() {
 
   const handleLogout = async () => {
     setMenuOpen(false)
-    clearAutofillProfileConfirmation()
+    clearAutofillProfileData()
     void clearSyncedProfile().catch(() => { /* The popup also offers explicit clearing if the extension is unavailable. */ })
     await logout(session?.token)
     navigate('/login')

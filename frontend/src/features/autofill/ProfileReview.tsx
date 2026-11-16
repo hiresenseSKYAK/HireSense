@@ -24,8 +24,10 @@ import {
 import styles from './ProfileReview.module.css'
 import {
   clearAutofillProfileConfirmation,
+  getAutofillDraft,
   getConfirmedAutofillProfile,
   markAutofillProfileConfirmed,
+  saveAutofillDraft,
 } from './readiness'
 import { getChromeExtensionStoreUrl } from '../../config/extension'
 
@@ -160,9 +162,9 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
     const initial = initializeProfileReviewState(resume)
     if (draft) return { ...initial, values: { ...draft } }
     const confirmedProfile = getConfirmedAutofillProfile(resume)
-    return confirmedProfile
-      ? { ...initial, values: { ...confirmedProfile }, confirmedRevision: initial.revision }
-      : initial
+    if (confirmedProfile) return { ...initial, values: { ...confirmedProfile }, confirmedRevision: initial.revision }
+    const savedDraft = getAutofillDraft(resume)
+    return savedDraft ? { ...initial, values: savedDraft } : initial
   })
   const initialValues = useMemo(() => initializeProfileReviewState(resume).values, [resume])
   const totalResumeSkills = useMemo(() => resumeSkillCount(resume), [resume])
@@ -173,6 +175,10 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
   const [bridgeStatus, setBridgeStatus] = useState('')
   const [extensionState, setExtensionState] = useState<'checking' | 'available' | 'missing' | 'incompatible' | 'unresponsive'>('checking')
   const readyRef = useRef<HTMLDivElement>(null)
+
+  // Save every change as a draft so edits survive leaving or refreshing the page,
+  // whether or not the profile has been confirmed yet.
+  useEffect(() => { saveAutofillDraft(resume, reviewState.values) }, [resume, reviewState.values])
 
   const errors = useMemo(
     () => getProfileReviewErrors(reviewState),
