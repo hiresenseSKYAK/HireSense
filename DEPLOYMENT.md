@@ -22,7 +22,7 @@ The frontend uses `BrowserRouter`. Configure the static host to **rewrite** ever
 - Required database variables: `DB_HOST`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD`
 - Optional database variable: `DB_PORT` (defaults to `3306`)
 - Required deployment variable: `CORS_ORIGINS=https://<your-frontend-origin>`
-- Optional AI variable: `OPENAI_API_KEY` enables the AI Interview, career coaching, and AI-assisted resume parsing. One key covers all three. Without it, each feature uses its rule-based fallback. See `docs/ai-interview.md`.
+- Optional AI variable: `OPENAI_API_KEY` enables the AI Interview, career coaching, and AI-assisted resume parsing. One key covers all three. `OPENAI_MODEL` is the safe default; optional `OPENAI_RESUME_MODEL`, `OPENAI_INTERVIEW_MODEL`, and `OPENAI_LIGHT_MODEL` overrides route tasks without changing fallbacks. Without a key, each feature uses its rule-based fallback. See `docs/ai-interview.md`.
 - Optional lifecycle variable: `JOB_MAX_AGE_DAYS` (default `30`) is the maximum job age the API will show. Set the same value for the API and the crawler workflow.
 
 `CORS_ORIGINS` accepts a comma-separated list, so local development can keep `http://localhost:5173` alongside the deployed frontend URL when needed.
@@ -131,7 +131,7 @@ reasons without credentials.
 
 The extension can be loaded unpacked for the capstone demonstration. The exact production and localhost origins are listed in `frontend/extension/static/manifest.json` under `content_scripts.matches`; add any changed production origin there and to `bridgeContract.ts`, then rebuild and reload the extension. No extension ID is needed in the frontend build. The extension receives only a confirmed, validated applicant profile, never auth tokens or resume text. The profile expires after 24 hours in extension-local storage; optional resume file bytes remain session-only.
 
-Build the Web Store artifact from `frontend` with `npm run build:extension`, then ZIP the **contents** of `frontend/extension/dist` so `manifest.json` is at the ZIP root. Do not ZIP the `dist` directory itself. Version 0.4.1 also repairs the site bridge when the user opens the popup on a HireSense tab that was already open during an install or extension reload; this uses the existing `activeTab` permission and adds no fixed extension ID or host permission.
+Build the Web Store artifact from `frontend` with `npm run build:extension`, then ZIP the **contents** of `frontend/extension/dist` so `manifest.json` is at the ZIP root. Do not ZIP the `dist` directory itself. Version 0.4.2 retains the 0.4.1 site-bridge recovery for already-open HireSense tabs and adds contextual alias matching plus clearer preview mapping/review groups. It uses the existing `activeTab` permission and adds no fixed extension ID or host permission.
 
 For public installation, publish the reviewed extension in the Chrome Web Store first. Copy its exact listing URL into `VITE_CHROME_EXTENSION_STORE_URL` on the frontend host, rebuild/redeploy the frontend (Vite reads it at build time), and verify the Profile page opens that listing in a new tab. The install URL does not configure profile sync; the existing exact-origin handshake continues to do that. Unpacked-extension instructions are for development only and should not be shown to production users.
 

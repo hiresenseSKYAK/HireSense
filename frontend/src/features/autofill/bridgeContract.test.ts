@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import manifest from '../../../extension/static/manifest.json'
-import { allowedOrigins, allowedSender, profileExpired, PROFILE_TTL_MS, transferableProfile, profileFingerprint } from './bridgeContract'
+import { allowedOrigins, allowedSender, fitProfileForExtension, profileExpired, PROFILE_TTL_MS, transferableProfile, profileFingerprint } from './bridgeContract'
 import { initializeApplicantProfile } from './core/profile'
 
 describe('extension privacy and origin contract', () => {
@@ -29,5 +29,23 @@ describe('extension privacy and origin contract', () => {
   })
   it('changes the sync marker when reviewed values change', () => {
     expect(profileFingerprint(profile)).not.toBe(profileFingerprint({ ...profile, email: 'new@example.com' }))
+  })
+  it('sends expanded profiles to 0.4.1 while safely limiting older extensions', () => {
+    const expanded = { ...profile, skillList: Array.from({ length: 21 }, (_, index) => `Skill ${index}`) }
+    expect(fitProfileForExtension(expanded, '0.4.1')).toEqual({ profile: expanded, limited: false })
+    const legacy = fitProfileForExtension(expanded, '0.4.0')
+    expect(legacy.limited).toBe(true)
+    expect(legacy.profile.skillList).toHaveLength(20)
+  })
+  it('preserves validated nested education and experience through serialization', () => {
+    const nested = {
+      ...profile,
+      education: [{ school: 'UT Austin', degree: 'B.S.', fieldOfStudy: 'Computer Science', startDate: '2022-08-01', endDate: '2026-05-01', current: false }],
+      experience: [{ company: 'Acme', title: 'Engineer', location: 'Dallas', startDate: '2025-05-01', endDate: '', description: 'Built APIs.', current: true }],
+    }
+    const transferred = transferableProfile(nested)
+    expect(transferred?.education).toEqual(nested.education)
+    expect(transferred?.experience).toEqual(nested.experience)
+    expect(transferred).not.toBe(nested)
   })
 })

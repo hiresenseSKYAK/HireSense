@@ -5,7 +5,7 @@ import { hasApplicantValue, isApplicantProfile } from './review'
 export const BRIDGE_PROTOCOL_VERSION = 1
 export const PROFILE_TTL_MS = 24 * 60 * 60 * 1000
 // First extension version that accepts MAX_SKILLS skills and MAX_PROFILE_ENTRIES schools/jobs.
-export const LARGE_PROFILE_EXTENSION_VERSION = '0.5.0'
+export const LARGE_PROFILE_EXTENSION_VERSION = '0.4.1'
 
 /** Compare dotted versions such as "0.4.0". Unreadable versions count as old. */
 export function versionAtLeast(version: string, minimum: string): boolean {

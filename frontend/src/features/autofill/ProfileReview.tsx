@@ -17,6 +17,7 @@ import {
   detectAutofillExtension,
   clearSyncedProfile,
   ExtensionBridgeError,
+  extensionConnectionState,
   onAutofillExtensionReady,
   sendConfirmedProfileToExtension,
 } from './extensionBridge'
@@ -170,7 +171,7 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
   const [revoking, setRevoking] = useState(false)
   const [hasReviewed, setHasReviewed] = useState(false)
   const [bridgeStatus, setBridgeStatus] = useState('')
-  const [extensionState, setExtensionState] = useState<'checking' | 'available' | 'unavailable'>('checking')
+  const [extensionState, setExtensionState] = useState<'checking' | 'available' | 'missing' | 'incompatible' | 'unresponsive'>('checking')
   const readyRef = useRef<HTMLDivElement>(null)
 
   const errors = useMemo(
@@ -187,7 +188,7 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
       if (!cancelled) setExtensionState('available')
     }).catch((error: unknown) => {
       if (!cancelled) {
-        setExtensionState('unavailable')
+        setExtensionState(extensionConnectionState(error))
         setBridgeStatus(error instanceof Error ? error.message : 'HireSense Autofill is unavailable.')
       }
     })
@@ -245,8 +246,8 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
         : synced)
     } catch (error) {
       const connectionFailure = error instanceof ExtensionBridgeError &&
-        ['extension_not_installed', 'content_script_missing', 'bridge_timeout', 'protocol_mismatch'].includes(error.code)
-      setExtensionState(connectionFailure ? 'unavailable' : 'available')
+        ['extension_not_installed', 'content_script_missing', 'bridge_timeout', 'protocol_mismatch', 'background_rejected'].includes(error.code)
+      setExtensionState(connectionFailure ? extensionConnectionState(error) : 'available')
       setBridgeStatus(error instanceof Error ? error.message : 'Could not send the profile to the browser bridge.')
     } finally {
       setSending(false)
@@ -418,16 +419,30 @@ export default function ProfileReview({ resume, draft }: ProfileReviewProps) {
         <div ref={readyRef} tabIndex={-1} className={styles.readyState} role="status">
           <strong>Your profile is ready.</strong>
           <p>Send your reviewed details to the extension, then choose Preview in HireSense Autofill on an application page. They expire after 24 hours and can be cleared in the popup. Original resume files and sign-in credentials are not transferred.</p>
-          <p className={styles.confirmationHint} role="status">Extension: {extensionState === 'checking' ? 'checking…' : extensionState === 'available' ? 'detected' : 'not detected or unavailable'}</p>
+          <p className={styles.confirmationHint} role="status">Extension: {
+            extensionState === 'checking' ? 'checking…'
+              : extensionState === 'available' ? 'detected'
+                : extensionState === 'incompatible' ? 'update required'
+                  : extensionState === 'unresponsive' ? 'detected but not responding'
+                    : 'not detected'
+          }</p>
           <button type="button" className="btn-primary" disabled={sending || extensionState === 'checking'} onClick={() => void sendToBrowserBridge()}>
-            {sending ? 'Sending profile…' : extensionState === 'unavailable' ? 'Retry extension connection' : 'Send to extension'}
+            {sending ? 'Sending profile…'
+              : extensionState === 'incompatible' ? 'Retry after updating'
+                : extensionState === 'missing' ? 'Retry extension detection'
+                  : extensionState === 'unresponsive' ? 'Retry extension connection'
+                    : 'Send to extension'}
           </button>
-          {extensionState === 'unavailable' && (
+          {extensionState !== 'available' && extensionState !== 'checking' && (
             <p className={styles.confirmationHint}>
-              {extensionStoreUrl ? <>
-                Install or reload the{' '}
-                <a href={extensionStoreUrl} target="_blank" rel="noopener noreferrer">HireSense Chrome extension</a>
-              </> : 'Install or reload the HireSense Chrome extension'}, then refresh this page and retry. Your confirmed profile remains here.
+              {extensionState === 'incompatible'
+                ? 'Update or reload HireSense Autofill, refresh this page, then retry. Your confirmed profile remains here.'
+                : extensionState === 'unresponsive'
+                  ? 'HireSense Autofill was detected, but its background connection did not respond. Reload the extension, refresh this page, then retry.'
+                  : <>{extensionStoreUrl ? <>
+                    Install or reload the{' '}
+                    <a href={extensionStoreUrl} target="_blank" rel="noopener noreferrer">HireSense Chrome extension</a>
+                  </> : 'Install or reload the HireSense Chrome extension'}, then refresh this page and retry. Your confirmed profile remains here.</>}
             </p>
           )}
           {bridgeStatus && <p className={styles.bridgeStatus} role="status">{bridgeStatus}</p>}

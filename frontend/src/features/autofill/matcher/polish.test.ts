@@ -27,6 +27,16 @@ describe('safe labels and conventional application controls', () => {
     form('<label>GitHub URL<input type="url"></label><label>LinkedIn URL<input type="url"></label>')
     expect(matchApplicationFields(document.body, profile).map((d) => d.profileKey)).toEqual(['github', 'linkedin'])
   })
+  it('explains the confirmed profile mapping in preview reports', () => {
+    form('<label>Mobile Number<input type="tel"></label>')
+    const report = reportField(matchApplicationFields(document.body, profile)[0])
+    expect(report).toMatchObject({ section: 'ready', status: 'Ready', mapping: 'Phone', value: profile.phone })
+  })
+  it('groups conflicting mappings under review instead of filling them', () => {
+    form('<label>Email<input autocomplete="tel"></label>')
+    const report = reportField(matchApplicationFields(document.body, profile)[0])
+    expect(report).toMatchObject({ section: 'review', status: 'Needs your review' })
+  })
   it('refuses ambiguous select options', () => {
     form('<label>State<select><option value=""></option><option value="TX">Texas</option><option value="Texas">Texas region</option></select></label>')
     expect(matchApplicationFields(document.body, profile)[0].outcome).toBe('invalid')

@@ -146,12 +146,21 @@ class OpenAIProviderTests(unittest.TestCase):
         old = dict(os.environ)
         try:
             os.environ.pop("OPENAI_API_KEY", None)
-            os.environ.update(OPENAI_TIMEOUT_SECONDS="999", OPENAI_MAX_OUTPUT_TOKENS="1", OPENAI_MAX_RETRIES="99")
+            os.environ.update(OPENAI_MODEL="default-model", OPENAI_RESUME_MODEL="resume-model",
+                              OPENAI_INTERVIEW_MODEL="interview-model", OPENAI_LIGHT_MODEL="light-model",
+                              OPENAI_TIMEOUT_SECONDS="999", OPENAI_MAX_OUTPUT_TOKENS="1", OPENAI_MAX_RETRIES="99")
             configured = get_interview_ai_settings()
             self.assertFalse(configured.enabled)
+            self.assertEqual(configured.model, "interview-model")
+            self.assertEqual(configured.resume_model, "resume-model")
+            self.assertEqual(configured.light_model, "light-model")
             self.assertEqual(configured.timeout_seconds, 60)
             self.assertEqual(configured.max_output_tokens, 256)
             self.assertEqual(configured.max_retries, 2)
+
+            os.environ.pop("OPENAI_RESUME_MODEL", None)
+            configured = get_interview_ai_settings()
+            self.assertEqual(configured.resume_model, "light-model")
             self.assertIsNone(build_openai_interview_provider(configured))
         finally:
             os.environ.clear()

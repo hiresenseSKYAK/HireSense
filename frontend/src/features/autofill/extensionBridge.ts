@@ -19,6 +19,15 @@ export class ExtensionBridgeError extends Error {
   }
 }
 
+export type ExtensionConnectionState = 'missing' | 'incompatible' | 'unresponsive'
+
+export function extensionConnectionState(error: unknown): ExtensionConnectionState {
+  if (!(error instanceof ExtensionBridgeError)) return 'unresponsive'
+  if (error.code === 'protocol_mismatch') return 'incompatible'
+  if (error.code === 'extension_not_installed' || error.code === 'content_script_missing') return 'missing'
+  return 'unresponsive'
+}
+
 function diagnostic(code: BridgeErrorCode) {
   if (import.meta.env.DEV) console.info(`[HireSense extension bridge] ${code}`)
 }

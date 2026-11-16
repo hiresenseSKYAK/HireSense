@@ -20,6 +20,7 @@ export type EvidenceSource =
   | 'accessibility label'
   | 'name'
   | 'id'
+  | 'automation id'
   | 'placeholder'
   | 'section context'
   | 'input type'

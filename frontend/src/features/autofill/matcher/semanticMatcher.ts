@@ -16,7 +16,7 @@ const aliases: Record<FillKey, string[]> = {
   firstName: ['first name', 'given name', 'first'],
   lastName: ['last name', 'family name', 'surname', 'last'],
   email: ['email address', 'email'],
-  phone: ['phone number', 'mobile number', 'mobile', 'phone', 'telephone'],
+  phone: ['phone number', 'mobile number', 'cell phone', 'cell number', 'contact number', 'mobile', 'phone', 'telephone', 'cell'],
   city: ['city town', 'city'],
   state: ['state province', 'state', 'province'],
   country: ['country of residence', 'country region', 'country'],
@@ -114,6 +114,20 @@ function matchingKeys(value: string): FillKey[] {
     aliases[key].some((alias) => ['first', 'last'].includes(alias)
       ? normalize(value) === alias : containsPhrase(value, alias)),
   )
+}
+
+const educationTerms = ['education', 'academic', 'school', 'university', 'college', 'degree']
+
+function contextualMatchingKeys(value: string, context: string[]): FillKey[] {
+  const direct = matchingKeys(value)
+  if (direct.length) return direct
+  const normalized = normalize(value)
+  const hasEducationContext = context.some((text) => educationTerms.some((term) => containsPhrase(text, term)))
+  if (hasEducationContext && containsPhrase(normalized, 'institution')) return ['school']
+  if (hasEducationContext && containsPhrase(normalized, 'program')) return ['fieldOfStudy']
+  const hasLinkedInContext = context.some((text) => containsPhrase(text, 'linkedin'))
+  if (hasLinkedInContext && containsPhrase(normalized, 'professional profile')) return ['linkedin']
+  return []
 }
 
 function addEvidence(
@@ -271,6 +285,10 @@ function questionContext(element: ApplicationControl): string[] {
 
 function getMetadataEvidence(element: ApplicationControl): MatchEvidence[] {
   const evidence: MatchEvidence[] = []
+  const sectionContext = getSectionContext(element)
+  const questionCopy = questionContext(element)
+  const context = [...sectionContext, ...questionCopy]
+  const keysFor = (text: string) => contextualMatchingKeys(text, context)
   const tokens = element.getAttribute('autocomplete')?.trim().toLowerCase().split(/\s+/).filter((token) => token !== 'webauthn')
   const autocomplete = tokens?.[tokens.length - 1]
   if (autocomplete && autocompleteMap[autocomplete]) {
@@ -282,24 +300,26 @@ function getMetadataEvidence(element: ApplicationControl): MatchEvidence[] {
   }
 
   getLabelText(element).forEach((text) =>
-    addEvidence(evidence, 'label', text, matchingKeys(text)),
+    addEvidence(evidence, 'label', text, keysFor(text)),
   )
   getAriaLabelText(element).forEach((text) =>
-    addEvidence(evidence, 'accessibility label', text, matchingKeys(text)),
+    addEvidence(evidence, 'accessibility label', text, keysFor(text)),
   )
   if (element.getAttribute('name')) {
     const text = element.getAttribute('name') ?? ''
-    addEvidence(evidence, 'name', text, matchingKeys(text))
+    addEvidence(evidence, 'name', text, keysFor(text))
   }
-  if (element.id) addEvidence(evidence, 'id', element.id, matchingKeys(element.id))
+  if (element.id) addEvidence(evidence, 'id', element.id, keysFor(element.id))
+  if (element.getAttribute('data-automation-id')) {
+    const text = element.getAttribute('data-automation-id') ?? ''
+    addEvidence(evidence, 'automation id', text, keysFor(text))
+  }
   if (element.getAttribute('placeholder')) {
     const text = element.getAttribute('placeholder') ?? ''
-    addEvidence(evidence, 'placeholder', text, matchingKeys(text))
+    addEvidence(evidence, 'placeholder', text, keysFor(text))
   }
-  getSectionContext(element).forEach((text) =>
-    evidence.push({ source: 'section context', text }),
-  )
-  questionContext(element).forEach((text) => evidence.push({ source: 'question context', text }))
+  sectionContext.forEach((text) => evidence.push({ source: 'section context', text }))
+  questionCopy.forEach((text) => evidence.push({ source: 'question context', text }))
   evidence.push({ source: 'input type', text: controlType(element) })
   return evidence
 }
@@ -362,11 +382,16 @@ export function matchApplicationFields(
         reason: element.files?.length ? 'An existing attachment will be preserved.' : resume ? 'Resume attachment needs your separate approval in the extension.' : 'Choose this attachment yourself.' }
     }
     const questions = [...getLabelText(element), ...getAriaLabelText(element)]
-    if (questions.some((text) => /^(why|describe|tell|explain|how|what|which|would|have you|do you|are you|can you)\b/.test(normalize(text)) ||
+    const questionKeys = [...new Set(evidence.filter((item) => ['label', 'accessibility label'].includes(item.source) && item.profileKey)
+      .map((item) => item.profileKey))]
+    if (questions.some((text) => /^(why|describe|tell|explain|how|would|have you|do you|are you|can you)\b/.test(normalize(text)) ||
+      (/^(what|which)\b/.test(normalize(text)) && questionKeys.length !== 1) ||
       /\b(preferred|previous|manager|salary|desired|birth|first job)\b/.test(normalize(text)))) {
       return { element, outcome: 'unsupported', manual: true, reason: 'Screening questions need your own answer.', evidence }
     }
-    if (questions.some((text) => matchingKeys(text).length === 0 && normalize(text) !== 'name')) {
+    const recognizedQuestion = (text: string) => evidence.some((item) =>
+      ['label', 'accessibility label'].includes(item.source) && item.profileKey && normalize(item.text) === normalize(text))
+    if (questions.some((text) => !recognizedQuestion(text) && normalize(text) !== 'name')) {
       return { element, outcome: 'unsupported', manual: true, reason: 'The question does not clearly identify an applicant detail.', evidence }
     }
 

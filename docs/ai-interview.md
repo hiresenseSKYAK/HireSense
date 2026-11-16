@@ -25,6 +25,7 @@ Local development uses `backend/.env`:
 ```dotenv
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o-mini
+OPENAI_RESUME_MODEL=gpt-4o-mini
 OPENAI_INTERVIEW_MODEL=gpt-4o-mini
 OPENAI_LIGHT_MODEL=gpt-4o-mini
 OPENAI_TIMEOUT_SECONDS=20
@@ -32,9 +33,9 @@ OPENAI_MAX_OUTPUT_TOKENS=1800
 OPENAI_MAX_RETRIES=1
 ```
 
-Only `OPENAI_API_KEY` is required to enable OpenAI. The same key also powers AI-assisted resume parsing (see **Resume parsing** below); there is no separate key. `OPENAI_INTERVIEW_MODEL` can select a stronger interview model; `OPENAI_LIGHT_MODEL` routes resume and job preparation to a cheaper model. Both inherit `OPENAI_MODEL` when unset. Never use a `VITE_*` variable for the key.
+Only `OPENAI_API_KEY` is required to enable OpenAI. The same key also powers AI-assisted resume parsing (see **Resume parsing** below); there is no separate key. `OPENAI_INTERVIEW_MODEL` routes interview questions, evaluation, and debrief. `OPENAI_RESUME_MODEL` routes resume parsing, resume coaching, and job preparation. `OPENAI_LIGHT_MODEL` is reserved for bounded job reranking and job-description summaries. Interview and light settings inherit `OPENAI_MODEL`; when the resume setting is omitted it inherits the light setting to preserve the pre-routing behavior. Never use a `VITE_*` variable for the key.
 
-On Render, open the backend service, choose **Environment**, add `OPENAI_API_KEY`, and optionally override `OPENAI_MODEL`, `OPENAI_INTERVIEW_MODEL`, and `OPENAI_LIGHT_MODEL`. The database and `CORS_ORIGINS` variables remain required as before. Keep model names server-side; do not put the key in a `VITE_*` variable.
+On Render, open the backend service, choose **Environment**, add `OPENAI_API_KEY`, and optionally override `OPENAI_MODEL`, `OPENAI_RESUME_MODEL`, `OPENAI_INTERVIEW_MODEL`, and `OPENAI_LIGHT_MODEL`. The database and `CORS_ORIGINS` variables remain required as before. Keep model names server-side; do not put the key in a `VITE_*` variable.
 
 ## Provider operations
 
@@ -78,7 +79,7 @@ Career outputs are cached in a bounded in-process cache keyed by user ID and a f
 
 ## Resume parsing
 
-`POST /resume/upload` reuses the same OpenAI SDK client and structured completion client (`backend/services/resume_ai.py`, created in `backend/main.py` as `app.state.resume_ai_service`). It uses `OPENAI_LIGHT_MODEL`.
+`POST /resume/upload` reuses the same OpenAI SDK transport and a structured completion client (`backend/services/resume_ai.py`, created in `backend/main.py` as `app.state.resume_ai_service`). It uses `OPENAI_RESUME_MODEL`.
 
 1. **Rules first, always.** `services/resume_parser.py` runs on every upload. It reads the name (split into first/last), the applicant's "City, ST" from the contact header, email, phone, LinkedIn/GitHub (from visible text and from hyperlinks embedded in the PDF/DOCX), skills, and sections. Education is split into school, degree, and major across common layouts: school and degree on one line, "Computer Science, B.S.", "Major: …", and a "City, ST" glued onto the school name.
 2. **AI second, only when it is safe to spend the key.** If `OPENAI_API_KEY` is set and the upload carries a valid `Authorization: Bearer <token>` session, the resume text is sent with email addresses, phone numbers, and URLs removed. The model returns first/last name, city/state, education entries, and work-history entries in a strict schema.

@@ -13,7 +13,7 @@ it('packages the production origin and generated site bridge without an extensio
     version: string
     content_scripts: Array<{ matches: string[]; js: string[] }>
   }
-  expect(manifest.version).toBe('0.4.1')
+  expect(manifest.version).toBe('0.4.2')
   expect(manifest.content_scripts[0].matches).toContain('https://hiresense-9yub.onrender.com/*')
   expect(manifest.content_scripts[0].js).toEqual(['siteBridge.js'])
   expect(packageText).toContain('extension/vite.site-bridge.config.ts')

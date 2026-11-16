@@ -1,8 +1,9 @@
 import unittest
 from unittest.mock import Mock
 
-from services.career_ai import CareerAIService, fallback_job_preparation, fallback_resume_coach
+from services.career_ai import CareerAIService, build_career_ai_service, fallback_job_preparation, fallback_resume_coach
 from services.interview_settings import InterviewAISettings
+from services.resume_ai import build_resume_ai_service
 
 
 SETTINGS = InterviewAISettings(api_key='test', model='gpt-4o-mini', light_model='gpt-4o-mini',
@@ -17,6 +18,18 @@ JOB = {'title': 'Engineer', 'company': 'Acme', 'description': 'Build APIs with P
 
 
 class CareerAITests(unittest.TestCase):
+    def test_task_specific_clients_preserve_resume_and_light_model_routes(self):
+        settings = InterviewAISettings(
+            api_key='test', model='interview-model', resume_model='resume-model', light_model='light-model',
+            timeout_seconds=10, max_output_tokens=900, max_retries=0,
+        )
+        sdk = Mock()
+        career = build_career_ai_service(settings, sdk_client=sdk)
+        resume = build_resume_ai_service(settings, sdk_client=sdk)
+        self.assertEqual(career.client.settings.model, 'resume-model')
+        self.assertEqual(career.light_client.settings.model, 'light-model')
+        self.assertEqual(resume.client.settings.model, 'resume-model')
+
     def test_deterministic_resume_coach_never_invents_metrics(self):
         result = fallback_resume_coach(RESUME)
         self.assertIn('30%', str(result))

@@ -287,11 +287,11 @@ def build_resume_ai_service(settings: InterviewAISettings, sdk_client=None) -> R
     if not settings.enabled:
         return ResumeAIService(None, settings)
     try:
-        light = replace(settings, model=settings.light_model)
+        resume_settings = replace(settings, model=settings.resume_model)
         sdk = sdk_client or build_openai_sdk_client(settings)
         if sdk is None:
             return ResumeAIService(None, settings)
-        return ResumeAIService(OpenAICompletionClient(sdk, light), light)
+        return ResumeAIService(OpenAICompletionClient(sdk, resume_settings), resume_settings)
     except Exception as error:
         logger.warning("resume_ai provider=openai outcome=disabled reason=%s exception=%s",
                        provider_reason_code(error), type(error).__name__)

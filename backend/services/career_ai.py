@@ -206,20 +206,25 @@ def fallback_job_preparation(job: dict, resume: dict) -> dict:
 
 
 class CareerAIService:
-    def __init__(self, client: OpenAICompletionClient | None, settings: InterviewAISettings):
+    def __init__(self, client: OpenAICompletionClient | None, settings: InterviewAISettings,
+                 light_client: OpenAICompletionClient | None = None):
         self.client = client
+        # Resume coaching and job preparation use the resume reasoning route.
+        # Bounded recommendation reranking stays on the cheaper light route.
+        self.light_client = light_client or client
         self.settings = settings
 
-    def _complete(self, operation: str, schema, data: dict):
-        if self.client is None:
+    def _complete(self, operation: str, schema, data: dict, *, client=None):
+        completion_client = client or self.client
+        if completion_client is None:
             return None, 'provider_unconfigured'
         messages = [
             {'role': 'system', 'content': CAREER_POLICY + '\n\nOPERATION:\n' + operation},
             {'role': 'user', 'content': 'BEGIN UNTRUSTED CAREER DATA\n' + json.dumps(data, ensure_ascii=True) + '\nEND UNTRUSTED CAREER DATA'},
         ]
         try:
-            raw = self.client.complete(operation=operation.split(' ', 1)[0].lower(), messages=messages,
-                                       schema_model=schema, timeout=self.settings.timeout_seconds)
+            raw = completion_client.complete(operation=operation.split(' ', 1)[0].lower(), messages=messages,
+                                             schema_model=schema, timeout=self.settings.timeout_seconds)
             return schema.model_validate(raw).model_dump(), None
         except Exception as error:
             return None, provider_reason_code(error)
@@ -327,7 +332,7 @@ class CareerAIService:
             result, reason = self._complete(
                 'RERANK only within the supplied deterministic rank bands for semantic role fit. '
                 'Return every job ID exactly once. Never promote a different band or infer qualifications.',
-                JobRerankResult, {'candidate': context, 'jobs': compact},
+                JobRerankResult, {'candidate': context, 'jobs': compact}, client=self.light_client,
             )
             if result and len(result['ordered_ids']) == len(ranked) and set(result['ordered_ids']) == {item['id'] for item in ranked}:
                 ranked = apply_bounded_rerank(ranked, result['ordered_ids'])
@@ -344,11 +349,16 @@ def build_career_ai_service(settings: InterviewAISettings, sdk_client=None) -> C
     if not settings.enabled:
         return CareerAIService(None, settings)
     try:
+        resume_settings = replace(settings, model=settings.resume_model,
+                                  max_output_tokens=min(settings.max_output_tokens, 1600))
         light = replace(settings, model=settings.light_model, max_output_tokens=min(settings.max_output_tokens, 1600))
         sdk = sdk_client or build_openai_sdk_client(settings)
         if sdk is None:
             return CareerAIService(None, settings)
-        return CareerAIService(OpenAICompletionClient(sdk, light), light)
+        return CareerAIService(
+            OpenAICompletionClient(sdk, resume_settings), resume_settings,
+            light_client=OpenAICompletionClient(sdk, light),
+        )
     except Exception as error:
         logger.warning('career_ai provider=openai outcome=disabled reason=%s exception=%s',
                        provider_reason_code(error), type(error).__name__)

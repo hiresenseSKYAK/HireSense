@@ -62,6 +62,52 @@ describe('semantic application field matcher', () => {
     ])
   })
 
+  it('matches differently worded phone fields without an AI classifier', () => {
+    document.body.innerHTML = `
+      <label for="cell">Cell</label><input id="cell" type="tel" />
+      <label for="contact">Contact Number</label><input id="contact" />
+    `
+    expect(outcomes()).toEqual([
+      { id: 'cell', outcome: 'fill', profileKey: 'phone' },
+      { id: 'contact', outcome: 'fill', profileKey: 'phone' },
+    ])
+  })
+
+  it('uses education context for Institution and Program but does not guess elsewhere', () => {
+    document.body.innerHTML = `
+      <section aria-label="Education history">
+        <label for="institution">Institution</label><input id="institution" />
+        <label for="program">Program</label><input id="program" />
+      </section>
+      <section aria-label="Membership"><label for="other-institution">Institution</label><input id="other-institution" /></section>
+    `
+    expect(outcomes()).toEqual([
+      { id: 'institution', outcome: 'fill', profileKey: 'school' },
+      { id: 'program', outcome: 'fill', profileKey: 'fieldOfStudy' },
+      { id: 'other-institution', outcome: 'unsupported', profileKey: undefined },
+    ])
+  })
+
+  it('accepts a factual university question and Workday-style automation metadata', () => {
+    document.body.innerHTML = `
+      <label for="university-question">What university did you attend?</label><input id="university-question" />
+      <input id="workday-phone" data-automation-id="mobileNumber" type="tel" />
+    `
+    expect(outcomes()).toEqual([
+      { id: 'university-question', outcome: 'fill', profileKey: 'school' },
+      { id: 'workday-phone', outcome: 'fill', profileKey: 'phone' },
+    ])
+  })
+
+  it.each([
+    ['Lever-style label', '<label for="lever-phone">Mobile Phone</label><input id="lever-phone" type="tel" />', 'phone'],
+    ['Ashby-style accessible label', '<input id="ashby-link" aria-label="LinkedIn URL" type="url" />', 'linkedin'],
+    ['Workday-style automation id', '<input id="workday-email" data-automation-id="emailAddress" type="email" />', 'email'],
+  ])('uses generic metadata for %s controls', (_name, html, key) => {
+    document.body.innerHTML = html
+    expect(outcomes()[0]).toMatchObject({ outcome: 'fill', profileKey: key })
+  })
+
   it('marks conflicting metadata and unknown fields instead of guessing', () => {
     document.body.innerHTML = `
       <label for="conflict">Email</label><input id="conflict" autocomplete="tel" />

@@ -20,12 +20,12 @@ type Response = {
   previewId?: string; tabId?: number; host?: string; attachmentReady?: boolean; resumeStatus?: string; syncedAt?: number;
   siteBridge?: 'not-applicable' | 'injected' | 'unavailable';
   resume?: { name: string; token: string }; attached?: boolean;
-  fields?: Array<{ label: string; status: string; reason: string; value?: string; tone: string; section: string }>
+  fields?: Array<{ label: string; mapping?: string; status: string; reason: string; value?: string; tone: string; section: string }>
 }
 
 function renderReport(response: Response) {
   report.replaceChildren()
-  for (const [key, label] of [['ready', 'Ready to fill'], ['handled', 'HireSense handled / preserved'], ['manual', 'You still need to answer'], ['untouched', 'Left untouched']]) {
+  for (const [key, label] of [['ready', 'Ready to fill'], ['review', 'Needs review'], ['handled', 'Already answered / completed'], ['manual', 'Manual / unsupported'], ['untouched', 'Left untouched']]) {
     const fields = response.fields?.filter((field) => field.section === key) ?? []
     if (!fields.length) continue
     const heading = document.createElement('h2')
@@ -42,6 +42,12 @@ function renderReport(response: Response) {
       const reason = document.createElement('p')
       reason.textContent = field.reason
       row.append(title, badge)
+      if (field.mapping) {
+        const mapping = document.createElement('p')
+        mapping.className = 'mapping'
+        mapping.textContent = 'HireSense field: ' + field.mapping
+        row.append(mapping)
+      }
       if (field.value) {
         const value = document.createElement('p')
         value.className = 'value'

@@ -18,7 +18,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }button:focus-visible { outl
 button.secondary { background: var(--surface-strong); border-color: var(--caramel); color: var(--text); }
 .note { font-size: 11px; margin: 16px 0 0; }#report { max-height: 280px; overflow: auto; margin-top: 12px; }
 .field { border: 1px solid var(--border); border-radius: 10px; background: var(--cream); padding: 12px; margin-bottom: 8px; overflow-wrap: anywhere; }
-.field strong { display: block; font-size: 12px; }.field p { font-size: 11px; color: var(--text-secondary); margin: 7px 0 0; line-height: 1.5; }.field .value { color: var(--text); font-size: 12px; }
+.field strong { display: block; font-size: 12px; }.field p { font-size: 11px; color: var(--text-secondary); margin: 7px 0 0; line-height: 1.5; }.field .mapping { color: var(--burgundy); font-weight: 700; }.field .value { color: var(--text); font-size: 12px; }
 .badge { display: inline-block; border-radius: 5px; margin-top: 7px; background: var(--bg-soft); color: var(--text); padding: 4px 6px; font-size: 10px; font-weight: 700; }
 .fill { color: var(--text); background: var(--sage); }.preserve { color: var(--text); background: var(--caramel-tint); }.missing, .ambiguous, .invalid { color: var(--text); background: var(--amber-tint); }
 

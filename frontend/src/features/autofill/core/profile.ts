@@ -4,7 +4,7 @@ import type { ApplicantProfile, EducationEntry, ExperienceEntry, ProfileReviewSt
 // Keep in step with MAX_ENTRIES and MAX_SKILLS in backend/services/applicant_profile.py.
 export const MAX_PROFILE_ENTRIES = 6
 export const MAX_SKILLS = 50
-// Extensions older than 0.5.0 reject profiles above these sizes.
+// Extensions older than 0.4.1 reject profiles above these sizes.
 export const LEGACY_MAX_PROFILE_ENTRIES = 4
 export const LEGACY_MAX_SKILLS = 20
 // Applications with a single skills box receive this joined text.

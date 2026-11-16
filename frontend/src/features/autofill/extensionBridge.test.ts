@@ -75,3 +75,11 @@ it('can clear a previously synced profile without transferring data', async () =
   expect(post.mock.calls[0][0]).toMatchObject({ type: 'clear-profile' })
   expect(post.mock.calls[0][0]).not.toHaveProperty('profile')
 })
+
+it('classifies extension connection failures for actionable UI states', async () => {
+  const { ExtensionBridgeError, extensionConnectionState } = await import('./extensionBridge')
+  expect(extensionConnectionState(new ExtensionBridgeError('extension_not_installed', 'missing'))).toBe('missing')
+  expect(extensionConnectionState(new ExtensionBridgeError('protocol_mismatch', 'old'))).toBe('incompatible')
+  expect(extensionConnectionState(new ExtensionBridgeError('bridge_timeout', 'timeout'))).toBe('unresponsive')
+  expect(extensionConnectionState(new Error('unknown'))).toBe('unresponsive')
+})
