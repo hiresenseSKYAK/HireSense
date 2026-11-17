@@ -23,6 +23,10 @@ export interface Job {
   salaryRange?: string | number
   dateRange?: string | null
   applicationLink?: string
+  /** One line from the job's AI summary; absent when there is no current summary. */
+  cardSummary?: string | null
+  /** Internship term, length, and graduation window, each only when the posting states it clearly. */
+  internshipDetails?: string[]
   matchDetails?: {
     matchScore: number
     matchedSkills: string[]

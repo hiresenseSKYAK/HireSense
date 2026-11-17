@@ -44,6 +44,27 @@ function renderCard(showMatch = true, value: Job = job) {
 }
 
 describe('JobCard', () => {
+  it('shows the summary line and internship facts instead of the raw description', () => {
+    renderCard(false, {
+      ...job,
+      description: 'At Example Systems, we believe in a mission bigger than ourselves.',
+      cardSummary: 'Build internal dashboards in React for the logistics team',
+      internshipDetails: ['Summer 2027', '12 weeks', 'Graduating Fall 2027 – Summer 2028'],
+    })
+    const text = document.body.textContent ?? ''
+    expect(text).toContain('Build internal dashboards in React for the logistics team')
+    expect(text).not.toContain('we believe in a mission')
+    const facts = document.querySelector('[aria-label="Internship details"]')
+    expect(Array.from(facts?.children ?? [], (node) => node.textContent))
+      .toEqual(['Summer 2027', '12 weeks', 'Graduating Fall 2027 – Summer 2028'])
+  })
+
+  it('shows neither line when the server has nothing reliable', () => {
+    renderCard(false, { ...job, description: 'At Example Systems, we believe in a mission.' })
+    expect(document.body.textContent).not.toContain('we believe in a mission')
+    expect(document.querySelector('[aria-label="Internship details"]')).toBeNull()
+  })
+
   it('shows truthful source and dates without inventing hiring or freshness claims', () => {
     renderCard()
     expect(document.body.textContent).toContain('Greenhouse')

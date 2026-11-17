@@ -21,14 +21,13 @@ from database.models import JobAISummary
 from services.career_ai import AIRequestBudget, _numbers, _unsupported_technologies
 from services.interview_context import safe_text
 from services.interview_provider import OpenAICompletionClient, build_openai_sdk_client, provider_reason_code
-from services.interview_service import _description_text
+from services.job_card import summary_source_text
 from services.interview_settings import InterviewAISettings
 
 logger = logging.getLogger(__name__)
 
 # Shorter descriptions are already easy to read; the page shows them as they are.
 MIN_DESCRIPTION_CHARS = 400
-MAX_DESCRIPTION_CHARS = 12000
 # Failures that would repeat for the same description. They are stored as "no summary" so the
 # description is not sent again until it changes; timeouts and rate limits are retried.
 PERMANENT_FAILURES = {'evidence_validation', 'empty_output', 'schema_validation', 'malformed_output', 'refusal'}
@@ -132,7 +131,7 @@ class JobSummaryService:
         return result, None
 
     def summarize(self, db: Session, user_id: int, job) -> dict:
-        description = safe_text(_description_text({'job_description': job.job_description}), MAX_DESCRIPTION_CHARS)
+        description = summary_source_text(job.job_description)
         if len(description) < MIN_DESCRIPTION_CHARS:
             return _unavailable('short_description')
         source_hash = hashlib.sha256(description.encode('utf-8')).hexdigest()

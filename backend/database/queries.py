@@ -33,6 +33,10 @@ try:
 except ImportError:
     from services.job_location import assess_job_geography
     from services.job_deduplication import partition_unique_postings
+try:
+    from backend.services.job_card import card_summary_line, internship_details
+except ImportError:
+    from services.job_card import card_summary_line, internship_details
 
 _JOB_SUMMARY_COLUMN_READY = False
 
@@ -228,6 +232,13 @@ def _map_db_row_to_frontend_job(row):
         "description": card_description,
         "fullDescription": original_description,
         "applicationLink": row.get("application_link") or "",
+        # Only the job list query reads the stored AI summary; elsewhere this is None.
+        "cardSummary": card_summary_line(
+            row.get("ai_summary_json"), row.get("ai_summary_hash"), row.get("job_description")
+        ),
+        "internshipDetails": internship_details(
+            row.get("job_title"), row.get("job_description"), experience_level, job_type
+        ),
     }
 
 
@@ -924,7 +935,10 @@ def fetch_all_jobs_from_db(*, scope="dfw"):
             source_job_id,
             canonical_url
             ,last_verified_at
+            ,ai_summary.source_hash AS ai_summary_hash
+            ,ai_summary.summary_json AS ai_summary_json
         FROM job_data
+        LEFT JOIN job_ai_summaries AS ai_summary ON ai_summary.job_id = job_data.id
         WHERE experience_level IN ('Internship', 'Entry level')
           AND active = TRUE
           AND {JOB_AGE_DATE_SQL} >= CURRENT_DATE - INTERVAL %s DAY

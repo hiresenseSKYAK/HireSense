@@ -11,35 +11,6 @@ interface Props {
   showMatch?: boolean
 }
 
-function getCardDescription(job: Job) {
-  let text = ''
-
-  if (typeof job.description === 'string') {
-    text = job.description.trim()
-  } else if (job.description?.about) {
-    text = job.description.about.trim()
-  }
-
-  if (!text) {
-    return ''
-  }
-
-  const headingPattern =
-    /^(overview|responsibilities|requirements|qualifications|benefits|about)$/i
-  const lines = text
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-
-  const firstContent =
-    lines.find(
-      (line) =>
-        !headingPattern.test(line.replace(/^#+\s*/, '')) && !/^[-•*]\s/.test(line)
-    ) || text
-
-  return firstContent.replace(/^overview[:\s-]+/i, '').trim()
-}
-
 export default function JobCard({ job, showMatch = false }: Props) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -56,7 +27,10 @@ export default function JobCard({ job, showMatch = false }: Props) {
       ? styles.hybrid
       : styles.onsite
 
-  const description = getCardDescription(job)
+  // Both come from the server: a line from the job's AI summary (only when it matches the current
+  // description) and internship facts read directly from the posting. Missing means not shown.
+  const summaryLine = job.cardSummary?.trim() || ''
+  const internshipFacts = Array.isArray(job.internshipDetails) ? job.internshipDetails.filter(Boolean) : []
   const visibleTags = Array.isArray(job.tags) ? job.tags.slice(0, 4) : []
   const hiddenTagCount = Math.max(0, (job.tags?.length ?? 0) - visibleTags.length)
   const postedText = formatPostedDate(sourcePostedAt(job))
@@ -110,6 +84,12 @@ export default function JobCard({ job, showMatch = false }: Props) {
               <span className={`${styles.metaPill} ${hybridTone}`}>{job.hybrid}</span>
               {job.experienceLevel && <span className={styles.metaItem}><IconBriefcase /> {job.experienceLevel}</span>}
             </div>
+
+            {internshipFacts.length > 0 && (
+              <div className={styles.internshipFacts} aria-label="Internship details">
+                {internshipFacts.map((fact) => <span key={fact}>{fact}</span>)}
+              </div>
+            )}
           </div>
 
           <div className={styles.right}>
@@ -120,7 +100,7 @@ export default function JobCard({ job, showMatch = false }: Props) {
           </div>
         </div>
 
-        {description && <p className={styles.description}>{description}</p>}
+        {summaryLine && <p className={styles.description}>{summaryLine}</p>}
 
         <div className={styles.bottomRow}>
           <div className={styles.tagsWrap}>

@@ -1,4 +1,4 @@
-"""Write AI summaries for visible jobs that do not have one yet.
+"""Write AI summaries for visible jobs that have none, or an outdated one.
 
 The job page otherwise summarizes a job the first time someone opens it, which
 makes that first visitor wait a few seconds. This script does the work ahead of
@@ -25,6 +25,7 @@ from database.models import Job, JobAISummary
 from database.queries import JOB_AGE_DATE_SQL, JOB_MAX_AGE_DAYS
 from services.career_ai import AIRequestBudget
 from services.interview_settings import get_interview_ai_settings
+from services.job_card import summary_source_hash
 from services.job_summary import MIN_DESCRIPTION_CHARS, build_job_summary_service
 
 # The script is not a user; its calls are limited by --limit and --max-runtime instead.
@@ -33,23 +34,24 @@ DELAY_BETWEEN_CALLS_SEC = 0.5
 
 
 def visible_job_ids_without_summary(db) -> list[int]:
-    """Visible jobs (same age and level rules as the job list) with no stored summary, newest first.
+    """Visible jobs (same age and level rules as the job list) needing a summary, newest first.
 
-    Jobs already tried (including ones recorded as having no usable summary) are
-    skipped. A job whose description changed later is refreshed when it is opened.
+    That is jobs with no stored summary, and jobs whose description changed after
+    their summary was written (the job cards only show a summary that matches the
+    current description). Jobs already tried for their current description,
+    including ones recorded as having no usable summary, are skipped.
     """
     rows = db.execute(text(f"""
-        SELECT j.id
+        SELECT j.id, j.job_description, s.source_hash
         FROM job_data j
         LEFT JOIN job_ai_summaries s ON s.job_id = j.id
-        WHERE s.job_id IS NULL
-          AND j.active = TRUE
+        WHERE j.active = TRUE
           AND j.experience_level IN ('Internship', 'Entry level')
           AND {JOB_AGE_DATE_SQL} >= CURRENT_DATE - INTERVAL :max_age DAY
           AND CHAR_LENGTH(j.job_description) >= :min_chars
         ORDER BY j.id DESC
     """), {'max_age': JOB_MAX_AGE_DAYS, 'min_chars': MIN_DESCRIPTION_CHARS}).all()
-    return [row[0] for row in rows]
+    return [row[0] for row in rows if row[2] is None or row[2] != summary_source_hash(row[1])]
 
 
 def backfill(*, limit: int | None = None, max_runtime_sec: float = 1500, dry_run: bool = False) -> Counter:
@@ -64,7 +66,7 @@ def backfill(*, limit: int | None = None, max_runtime_sec: float = 1500, dry_run
         job_ids = visible_job_ids_without_summary(db)
         if limit is not None:
             job_ids = job_ids[:limit]
-        print(f"[summaries] {len(job_ids)} visible job(s) without a summary", flush=True)
+        print(f"[summaries] {len(job_ids)} visible job(s) without a current summary", flush=True)
         if dry_run or not job_ids:
             return outcomes
         if service.client is None:
