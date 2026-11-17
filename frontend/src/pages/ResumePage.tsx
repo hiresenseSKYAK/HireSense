@@ -13,6 +13,7 @@ import {
   restoreSavedResume,
   saveResumeAnalysis,
 } from '../utils/resumeStorage'
+import { applyUploadedResumeToAutofill } from '../features/autofill/readiness'
 import styles from './ResumePage.module.css'
 import ResumeCoachPanel from '../components/ResumeCoachPanel'
 
@@ -276,6 +277,7 @@ export default function ResumePage() {
       const result = await uploadResume(file)
       setResumeResult(result)
       saveResumeAnalysis(result)
+      applyUploadedResumeToAutofill(result)
       setUploadedAt(formatTime())
     } catch (err) {
       // A failed replacement keeps the resume that was already saved.

@@ -249,6 +249,66 @@ class ResumeParserTests(unittest.TestCase):
         self.assertEqual(parsed["skills"].count("Python"), 1)
         self.assertEqual(parsed["skills"].count("SQL"), 1)
 
+    def test_long_job_heading_after_bullet_without_period_starts_a_new_job(self):
+        parsed = parse_resume_text(
+            "Ada Lovelace\n\nExperience\n"
+            "Software Engineer Intern | HireSense | Austin, TX | June 2024 - August 2024\n"
+            "- Built a resume parser in Python\n"
+            "- Wrote unit tests for the scoring service\n"
+            "Software Engineering Intern, Data Platform and Analytics Team, Acme Corporation, "
+            "Dallas, TX June 2023 - August 2023\n"
+            "- Analyzed sales data with SQL\n"
+        )
+
+        jobs = parsed["experience_entries"]
+        self.assertEqual(len(jobs), 2)
+        self.assertEqual(jobs[0]["bullets"], ["Built a resume parser in Python", "Wrote unit tests for the scoring service"])
+        self.assertEqual(jobs[1]["bullets"], ["Analyzed sales data with SQL"])
+        self.assertEqual(jobs[1]["startDate"], "2023-06-01")
+
+    def test_unpunctuated_wrapped_bullet_still_joins(self):
+        parsed = parse_resume_text(
+            "Experience\nSoftware Engineer Intern | HireSense | June 2024 - August 2024\n"
+            "- Built a resume parser that reads PDF and DOCX files\nand scores them for recruiters\n"
+        )
+
+        self.assertEqual(
+            parsed["experience_entries"][0]["bullets"],
+            ["Built a resume parser that reads PDF and DOCX files and scores them for recruiters"],
+        )
+
+    def test_unmapped_pdf_bullet_glyphs_are_read_as_bullets(self):
+        parsed = parse_resume_text(
+            "Ada Lovelace\nada@example.com (cid:127) (512) 555-1212\n\nExperience\n"
+            "Software Engineer Intern | HireSense | Austin, TX | June 2024 - August 2024\n"
+            "(cid:127) Built a resume parser in Python\n"
+            "(cid:149) Wrote unit tests for the scoring service\n"
+        )
+
+        self.assertEqual(
+            parsed["experience_entries"][0]["bullets"],
+            ["Built a resume parser in Python", "Wrote unit tests for the scoring service"],
+        )
+        self.assertNotIn("(cid:", parsed["raw_text"])
+        self.assertEqual(parsed["phone"], "(512) 555-1212")
+
+    def test_skill_scanner_ignores_c_inside_other_languages_and_github_links(self):
+        parsed = parse_resume_text(
+            "Ada C. Lovelace\nhttps://github.com/ada\n\nProjects\n"
+            "Compiler | C++\n- Wrote a C# and Objective-C bridge\n"
+        )
+
+        self.assertNotIn("c", parsed["skills"])
+        self.assertNotIn("github", parsed["skills"])
+        self.assertIn("c++", parsed["skills"])
+        self.assertIn("c#", parsed["skills"])
+
+    def test_skill_scanner_still_finds_standalone_c_and_github(self):
+        parsed = parse_resume_text("Projects\nTools | Linux\n- Wrote drivers in C and C/C++, shared on GitHub\n")
+
+        self.assertIn("c", parsed["skills"])
+        self.assertIn("github", parsed["skills"])
+
 
 if __name__ == "__main__":
     unittest.main()

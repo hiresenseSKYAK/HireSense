@@ -118,25 +118,64 @@ export function saveAutofillDraft(resume: ResumeUploadResponse, profile: Applica
 
 const sameValue = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right)
 
-/**
- * Returns the user's saved edits for this resume. If the resume changed since the
- * draft was saved, values the user entered or edited are carried over and
- * everything else comes from the new resume.
- */
-export function getAutofillDraft(resume: ResumeUploadResponse): ApplicantProfile | null {
-  const stored = readJson(AUTOFILL_DRAFT_KEY)
-  if (!stored || !isApplicantProfile(stored.profile)) return null
-  const profile = stored.profile
-  if (stored.resumeSignature === getResumeSignature(resume)) return profile
-  if (!isApplicantProfile(stored.baseline)) return null
+const isEmptyValue = (value: unknown) =>
+  typeof value === 'string' ? value.trim() === '' : Array.isArray(value) ? value.length === 0 : !value
 
-  const baseline = stored.baseline
-  const merged: ApplicantProfile = { ...initializeApplicantProfile(resume) }
+/**
+ * Applies a new resume to a draft. The resume wins for every field it fills. Values the
+ * user entered or edited are kept only where the new resume leaves the field blank
+ * (street address, ZIP code, a name the parser missed, and so on).
+ */
+function rebaseOnResume(profile: ApplicantProfile, baseline: ApplicantProfile, resume: ResumeUploadResponse): ApplicantProfile {
+  const fresh = initializeApplicantProfile(resume)
+  const merged: ApplicantProfile = { ...fresh }
   const record = merged as unknown as Record<string, unknown>
   for (const key of Object.keys(profile) as Array<keyof ApplicantProfile>) {
-    if (!sameValue(profile[key], baseline[key])) record[key] = profile[key]
+    const userEdited = !sameValue(profile[key], baseline[key])
+    if (userEdited && isEmptyValue(fresh[key]) && !isEmptyValue(profile[key])) record[key] = profile[key]
   }
   return mirrorPrimaryEntries(merged)
+}
+
+function getStoredDraft(): StoredDraft | null {
+  const stored = readJson(AUTOFILL_DRAFT_KEY)
+  if (!stored || typeof stored.resumeSignature !== 'string' || !isApplicantProfile(stored.profile)) return null
+  return {
+    resumeSignature: stored.resumeSignature,
+    savedAt: typeof stored.savedAt === 'string' ? stored.savedAt : '',
+    profile: stored.profile,
+    // Drafts without a baseline treat every value as the user's own.
+    baseline: isApplicantProfile(stored.baseline) ? stored.baseline : initializeApplicantProfile({}),
+  }
+}
+
+/**
+ * Returns the user's saved edits for this resume. If the resume changed since the draft
+ * was saved, the new resume's values win and the user's edits fill only what it leaves blank.
+ */
+export function getAutofillDraft(resume: ResumeUploadResponse): ApplicantProfile | null {
+  const stored = getStoredDraft()
+  if (!stored) return null
+  if (stored.resumeSignature === getResumeSignature(resume)) return stored.profile
+  return rebaseOnResume(stored.profile, stored.baseline, resume)
+}
+
+/**
+ * Call after the user uploads a resume, even the same file again. The upload's values
+ * replace earlier edits; edits the resume has no value for are kept. The earlier
+ * confirmation is withdrawn, because the profile changed and needs another review.
+ */
+export function applyUploadedResumeToAutofill(resume: ResumeUploadResponse) {
+  const stored = getStoredDraft()
+  removeKey(AUTOFILL_CONFIRMATION_KEY)
+  if (!stored) return
+  const draft: StoredDraft = {
+    resumeSignature: getResumeSignature(resume),
+    savedAt: new Date().toISOString(),
+    profile: rebaseOnResume(stored.profile, stored.baseline, resume),
+    baseline: initializeApplicantProfile(resume),
+  }
+  writeJson(AUTOFILL_DRAFT_KEY, draft)
 }
 
 export function getAutofillReadiness(resume: ResumeUploadResponse | null): AutofillReadiness {

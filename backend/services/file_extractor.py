@@ -2,6 +2,8 @@ import io
 import pdfplumber
 from docx import Document
 
+from services.resume_parser import replace_pdf_glyph_codes
+
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
     text_parts = []
@@ -12,7 +14,8 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
             if page_text:
                 text_parts.append(page_text)
 
-    return "\n".join(text_parts).strip()
+    # Fix "(cid:127)" bullets here too, so the AI parser sees the same text as the rules parser.
+    return replace_pdf_glyph_codes("\n".join(text_parts)).strip()
 
 
 def extract_text_from_docx(file_bytes: bytes) -> str:

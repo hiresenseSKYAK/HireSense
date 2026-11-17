@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { ResumeUploadResponse } from '../../api/resume'
 import {
+  applyUploadedResumeToAutofill,
   clearAutofillProfileConfirmation,
   clearAutofillProfileData,
   getAutofillDraft,
@@ -56,8 +57,8 @@ describe('autofill readiness', () => {
     expect(getAutofillDraft(resume)).toEqual(edited)
   })
 
-  it('carries the user\'s own edits over to a newly uploaded resume', () => {
-    const edited = { ...initializeApplicantProfile(resume), city: 'Austin', phone: '5559990000' }
+  it('lets a new resume override edits it has values for and keeps the rest', () => {
+    const edited = { ...initializeApplicantProfile(resume), city: 'Austin', phone: '5559990000', firstName: 'Typed' }
     saveAutofillDraft(resume, edited)
     const updatedResume = {
       ...resume,
@@ -66,9 +67,30 @@ describe('autofill readiness', () => {
     }
 
     const draft = getAutofillDraft(updatedResume)
-    expect(draft?.city).toBe('Austin')
-    expect(draft?.phone).toBe('5559990000')
+    expect(draft?.phone).toBe('5551234567')
+    expect(draft?.firstName).toBe('Ada')
     expect(draft?.email).toBe('ada@new.example.com')
+    expect(draft?.city).toBe('Austin')
+  })
+
+  it('applies an upload of the same resume file over typed values and withdraws confirmation', () => {
+    const edited = { ...initializeApplicantProfile(resume), firstName: 'Typed', postalCode: '78701' }
+    markAutofillProfileConfirmed(resume, edited)
+
+    applyUploadedResumeToAutofill(resume)
+
+    expect(getConfirmedAutofillProfile(resume)).toBeNull()
+    const draft = getAutofillDraft(resume)
+    expect(draft?.firstName).toBe('Ada')
+    expect(draft?.postalCode).toBe('78701')
+  })
+
+  it('keeps user-entered values through later uploads that still leave them blank', () => {
+    saveAutofillDraft(resume, { ...initializeApplicantProfile(resume), addressLine1: '1 Main St' })
+    applyUploadedResumeToAutofill({ ...resume, filename: 'v2.pdf' })
+    applyUploadedResumeToAutofill({ ...resume, filename: 'v3.pdf' })
+
+    expect(getAutofillDraft({ ...resume, filename: 'v3.pdf' })?.addressLine1).toBe('1 Main St')
   })
 
   it('clears drafts and confirmations on logout', () => {

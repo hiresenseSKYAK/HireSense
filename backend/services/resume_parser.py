@@ -43,7 +43,28 @@ BULLET_PREFIX_PATTERN = re.compile(r"^[•●▪◦■□◆◇\-*]+\s*")
 MULTISPACE_PATTERN = re.compile(r"\s+")
 
 
+# pdfplumber writes "(cid:N)" for glyphs a PDF font does not map to Unicode. Bullets set in
+# built-in fonts such as Helvetica or Symbol come out as "(cid:127)", "(cid:149)", and similar.
+_CID_AT_LINE_START = re.compile(r"(?m)^([ \t]*)\(cid:\d+\)[ \t]*")
+_CID_STANDALONE = re.compile(r"(?<=\s)\(cid:\d+\)(?=\s)")
+_CID_ANY = re.compile(r"\(cid:\d+\)")
+
+
+def replace_pdf_glyph_codes(text: str) -> str:
+    """Turn unmapped PDF glyph codes back into bullets and separators.
+
+    A code that starts a line is a bullet; one standing alone between words is a separator
+    ("email (cid:127) phone"); one inside a word is an unreadable glyph and is dropped.
+    """
+    if "(cid:" not in text:
+        return text
+    text = _CID_AT_LINE_START.sub(r"\1• ", text)
+    text = _CID_STANDALONE.sub("•", text)
+    return _CID_ANY.sub("", text)
+
+
 def normalize_whitespace(text: str) -> str:
+    text = replace_pdf_glyph_codes(text)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = text.replace("\t", " ")
     text = re.sub(r"[ \u00A0]+", " ", text)
@@ -239,6 +260,19 @@ def extract_profile_links(text: str, links: list[str] | None = None) -> dict:
     }
 
 
+def _skill_pattern(skill: str) -> str:
+    """Match a skill as a whole token.
+
+    "C" must not match inside "C++", "C#", "Objective-C", or an initial like "C. Smith", and
+    "github" must not match the domain in "github.com/user".
+    """
+    if len(skill) == 1:
+        # Single letters only count as a standalone capital: "C", "C/C++", "C, Java".
+        return r"(?<![\w.+#-])" + re.escape(skill.upper()) + r"(?![\w.+#-])"
+    # Not followed by more of a word, "++"/"#", or domain text like ".com".
+    return r"(?<![\w.])" + re.escape(skill) + r"(?![\w+#]|\.\w)"
+
+
 def extract_skills(text: str) -> list[str]:
     found_skills: list[str] = []
 
@@ -246,8 +280,8 @@ def extract_skills(text: str) -> list[str]:
         cleaned = skill.strip()
         if not cleaned:
             continue
-        pattern = r"(?<!\w)" + re.escape(cleaned) + r"(?!\w)"
-        if re.search(pattern, text, re.IGNORECASE):
+        flags = 0 if len(cleaned) == 1 else re.IGNORECASE
+        if re.search(_skill_pattern(cleaned), text, flags):
             found_skills.append(cleaned)
 
     return sorted(set(found_skills), key=str.lower)
@@ -776,7 +810,26 @@ def _starts_new_history_entry(line: str, kind: str) -> bool:
         return True
     if _block_has_date([line], "experience") and len(words) <= 12:
         return True
+    # A long heading ("Software Engineering Intern, Data Platform Team - Acme Corporation,
+    # Dallas, TX June 2024 - August 2024") is still a heading when it carries a date range.
+    # Bullets almost never do, so this holds even when the bullet above lacks a period.
+    if _has_heading_date_range(line):
+        return True
     return bool(_is_role_line(line) and len(words) <= 8 and not line.rstrip().endswith("."))
+
+
+HEADING_MAX_WORDS = 30
+
+
+def _has_heading_date_range(line: str) -> bool:
+    if len(line.split()) > HEADING_MAX_WORDS or line.rstrip().endswith((".", "!", "?", ";")):
+        return False
+    match = DATE_RANGE_PATTERN.search(line)
+    if not match:
+        return False
+    after = line[match.end():].strip(" )]|,-")
+    # Dates close the line, or only a short location follows ("... 2024 - Present | Remote").
+    return not after or "|" in line or len(after.split()) <= 4
 
 
 def _is_bullet_continuation(line: str, previous: str, kind: str) -> bool:
