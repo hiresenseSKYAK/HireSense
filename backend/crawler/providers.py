@@ -22,6 +22,8 @@ class FetchResult:
     errors: int = 0
     rate_limited: bool = False
     error_code: str | None = None
+    # Every listing in the source's feed was examined (employer boards only).
+    complete: bool = False
 
 
 class ProviderError(Exception):
@@ -153,4 +155,5 @@ def fetch(spec: SourceSpec, *, max_jobs: int, time_limit_sec: int) -> FetchResul
         raise ProviderError("unsupported_provider")
     return FetchResult(jobs, stats.get("discovered", len(jobs)), stats.get("skipped", 0),
                        stats.get("errors", 0), bool(stats.get("rate_limited")),
-                       "rate_limited" if stats.get("rate_limited") else None)
+                       "rate_limited" if stats.get("rate_limited") else None,
+                       complete=bool(stats.get("complete")))

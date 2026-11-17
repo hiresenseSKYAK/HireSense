@@ -726,8 +726,10 @@ def get_jobs_to_check(*, linkedin_sweep=False):
 
     # Every visible job is link-checked, not just old ones: never-checked jobs
     # first, then "possibly closed" (recheck daily), then anything not checked
-    # in 3 days. LinkedIn jobs are rechecked daily because LinkedIn closes
-    # postings often and its guest page states that directly. With
+    # in 3 days. LinkedIn jobs are rechecked on every run (the checker runs
+    # every 12 hours) because LinkedIn closes postings often and its guest page
+    # states that directly. The 10-hour gap only skips jobs checked by an
+    # overlapping run. With
     # linkedin_sweep, every visible LinkedIn job is checked regardless of when
     # it was last checked. Jobs past the age limit are skipped; the age rule
     # removes them.
@@ -740,7 +742,7 @@ def get_jobs_to_check(*, linkedin_sweep=False):
           AND (
                 last_checked_at IS NULL
                 OR (status = 'possibly_closed' AND last_checked_at < (CURRENT_TIMESTAMP - INTERVAL 1 DAY))
-                OR (source = 'linkedin' AND (%s OR last_checked_at < (CURRENT_TIMESTAMP - INTERVAL 20 HOUR)))
+                OR (source = 'linkedin' AND (%s OR last_checked_at < (CURRENT_TIMESTAMP - INTERVAL 10 HOUR)))
                 OR last_checked_at < (CURRENT_TIMESTAMP - INTERVAL 3 DAY)
               )
         ORDER BY (last_checked_at IS NULL) DESC,
@@ -758,7 +760,7 @@ def get_jobs_to_check(*, linkedin_sweep=False):
     return jobs
 
 
-def record_feed_snapshot(feed_key, present_source_job_ids):
+def record_feed_snapshot(feed_key, present_source_job_ids, *, board_listed_jobs=False):
     """Close employer-board jobs missing from complete feed snapshots.
 
     Called after a complete, error-free Greenhouse/Lever/Ashby crawl of one
@@ -767,10 +769,13 @@ def record_feed_snapshot(feed_key, present_source_job_ids):
     MISSED_SNAPSHOTS_TO_CLOSE snapshots in a row (about 30 minutes at the
     15-minute ATS cadence) is marked closed and hidden.
 
+    board_listed_jobs=True means the board returned listings and none of them qualify,
+    so an empty ``present_source_job_ids`` counts every active job as missing.
+
     Returns the number of jobs closed.
     """
     present = sorted({str(value) for value in present_source_job_ids if value})
-    if not feed_key or not present:
+    if not feed_key or (not present and not board_listed_jobs):
         # An empty board response is more likely a glitch than every job closing
         # at once; leave those jobs to the age rule and link checker.
         return 0
@@ -778,17 +783,24 @@ def record_feed_snapshot(feed_key, present_source_job_ids):
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute(
-            f"UPDATE job_data SET missed_snapshots = 0 "
-            f"WHERE source_feed_key = %s AND source_job_id IN ({placeholders})",
-            (feed_key, *present),
-        )
-        cursor.execute(
-            f"UPDATE job_data SET missed_snapshots = missed_snapshots + 1 "
-            f"WHERE source_feed_key = %s AND active = TRUE "
-            f"AND (source_job_id IS NULL OR source_job_id NOT IN ({placeholders}))",
-            (feed_key, *present),
-        )
+        if present:
+            cursor.execute(
+                f"UPDATE job_data SET missed_snapshots = 0 "
+                f"WHERE source_feed_key = %s AND source_job_id IN ({placeholders})",
+                (feed_key, *present),
+            )
+            cursor.execute(
+                f"UPDATE job_data SET missed_snapshots = missed_snapshots + 1 "
+                f"WHERE source_feed_key = %s AND active = TRUE "
+                f"AND (source_job_id IS NULL OR source_job_id NOT IN ({placeholders}))",
+                (feed_key, *present),
+            )
+        else:
+            cursor.execute(
+                "UPDATE job_data SET missed_snapshots = missed_snapshots + 1 "
+                "WHERE source_feed_key = %s AND active = TRUE",
+                (feed_key,),
+            )
         cursor.execute(
             "UPDATE job_data SET active = FALSE, status = 'closed' "
             "WHERE source_feed_key = %s AND active = TRUE AND missed_snapshots >= %s",

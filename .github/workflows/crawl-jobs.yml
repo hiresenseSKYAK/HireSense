@@ -7,7 +7,7 @@ on:
     - cron: "*/15 * * * *" # direct employer ATS
     - cron: "7 * * * *"    # credentialed official APIs
     - cron: "11 */6 * * *" # legacy public discovery; keep conservative cadence
-    - cron: "17 4 * * *"   # link verification and 30-day age expiry
+    - cron: "0 6,18 * * *" # link verification and 30-day age expiry: 12 AM and 12 PM Central (CST; 1 AM/1 PM during daylight time)
 
 concurrency:
   group: production-jobs-${{ github.event.schedule || 'manual' }}
@@ -74,10 +74,10 @@ jobs:
         continue-on-error: true
         run: python -m scripts.backfill_job_summaries --limit 200 --max-runtime 600
       - name: Verify old application links
-        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '17 4 * * *'
+        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 6,18 * * *'
         run: python -m services.updater
       - name: Expire jobs older than 30 days
-        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '17 4 * * *'
+        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 6,18 * * *'
         run: python -m scripts.cleanup_stale_jobs --apply
       - name: Report provider failures
         if: always()

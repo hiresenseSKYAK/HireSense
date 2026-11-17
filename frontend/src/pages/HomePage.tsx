@@ -14,7 +14,6 @@ import type { Job } from '../types'
 import styles from './HomePage.module.css'
 
 type SortOption = 'best-match' | 'newest-posted' | 'recently-discovered' | 'company' | 'location'
-type GeoScope = 'dfw' | 'remote' | 'texas' | 'nationwide'
 
 const SORT_OPTIONS: readonly SortOption[] = ['best-match', 'newest-posted', 'recently-discovered', 'company', 'location']
 const FILTER_IDS = FILTER_DEFINITIONS.map((filter) => filter.id)
@@ -101,11 +100,13 @@ export default function HomePage() {
   const [query, setQuery] = useState(urlQuery)
   const filters = useMemo(() => readFilters(searchParams), [searchParams])
   const page = readPage(searchParams)
-  const useResume = Boolean(savedResume) && searchParams.get('resume') !== 'off'
   const sortParam = searchParams.get('sort')
+  // Newest posted is the default. Best Match is the resume-based view, so choosing it is
+  // what turns on resume ranking; there is no separate "use my resume" switch.
   const sortBy: SortOption = isSortOption(sortParam) && (sortParam !== 'best-match' || savedResume)
     ? sortParam
-    : useResume ? 'best-match' : 'recently-discovered'
+    : 'newest-posted'
+  const useResume = Boolean(savedResume) && sortBy === 'best-match'
   const [jobs, setJobs] = useState<Job[]>([])
   const [total, setTotal] = useState(0)
   const [pageSize, setPageSize] = useState(JOB_PAGE_SIZE)
@@ -115,13 +116,6 @@ export default function HomePage() {
   const [insightsLoading, setInsightsLoading] = useState(true)
   const [error, setError] = useState('')
   const [loadKey, setLoadKey] = useState(0)
-  const geoKey = `hiresense_geo_scope_${getAuthSession()?.user.id ?? 'guest'}`
-  const [geoScope, setGeoScope] = useState<GeoScope>(() => {
-    try {
-      const saved = localStorage.getItem(geoKey)
-      return saved === 'remote' || saved === 'texas' || saved === 'nationwide' ? saved : 'dfw'
-    } catch { return 'dfw' }
-  })
   const [recommendations, setRecommendations] = useState<JobRecommendationsResult | null>(null)
   const [recommendationLoading, setRecommendationLoading] = useState(false)
   const visitKey = `hiresense_job_feed_last_visit_${getAuthSession()?.user.id ?? 'guest'}`
@@ -179,15 +173,6 @@ export default function HomePage() {
   function setSortBy(next: SortOption) {
     updateParams((params) => {
       params.set('sort', next)
-      params.delete('page')
-    })
-  }
-
-  function setUseResume(enabled: boolean) {
-    updateParams((params) => {
-      if (enabled) params.delete('resume')
-      else params.set('resume', 'off')
-      params.delete('sort')
       params.delete('page')
     })
   }
@@ -271,14 +256,14 @@ export default function HomePage() {
           pageSize: JOB_PAGE_SIZE,
           query: urlQuery,
           sort: sortBy,
-          geo: geoScope,
           cities: selected(filters, 'city'),
           styles: selected(filters, 'style'),
           experience: selected(filters, 'experience'),
           salaries: selected(filters, 'salary'),
           types: selected(filters, 'type'),
           dates: selected(filters, 'date'),
-          skills: useResume ? resumeSkillsRef.current : [],
+          // Skills are always sent with a resume so cards show match scores in every sort.
+          skills: resumeSkillsRef.current,
           signal: controller.signal,
         })
         if (controller.signal.aborted) return
@@ -302,7 +287,7 @@ export default function HomePage() {
 
     void loadJobs()
     return () => controller.abort()
-  }, [urlQuery, activeFilters, sortBy, geoScope, page, loadKey, skillKey, filters, useResume, setPage])
+  }, [urlQuery, activeFilters, sortBy, page, loadKey, skillKey, filters, setPage])
 
   useEffect(() => {
     if (isJobsLoading || restoreScrollY.current === null || restoreScrollY.current === undefined) return
@@ -362,14 +347,9 @@ export default function HomePage() {
             />
           </div>
 
-          <button
-            type="button"
-            className="btn-primary"
-            style={{ height: '58px', minWidth: '136px' }}
-            onClick={() => document.getElementById('job-results')?.scrollIntoView({ behavior: 'smooth' })}
-          >
-            View {total}
-          </button>
+          <p className={styles.resultCount} role="status" aria-live="polite">
+            {isJobsLoading && total === 0 ? 'Loading jobs…' : `${total.toLocaleString()} ${total === 1 ? 'job' : 'jobs'}`}
+          </p>
         </div>
 
         <FilterBar
@@ -386,12 +366,6 @@ export default function HomePage() {
         </div>
 
         <section className={styles.jobsSection} id="job-results" aria-busy={isJobsLoading}>
-          {savedResume && <label className={styles.resumeToggle}>
-            <input type="checkbox" checked={useResume} onChange={(event) => {
-              setUseResume(event.target.checked)
-            }} />
-            <span>Use my resume</span><small>Prioritize roles using your saved skills; filters still apply.</small>
-          </label>}
           {useResume && recommendations && recommendations.items.length > 0 && <section className={styles.recommended} aria-labelledby="recommended-title">
             <div className={styles.recommendedHeading}><div><span className={styles.recommendedEyebrow}>Your next opportunities</span><h2 id="recommended-title">Recommended for you</h2></div>{newMatchCount > 0 && <span className={styles.newMatches}>{newMatchCount} new since your last visit</span>}</div>
             <p>Ranked from your resume and current role details. These are preparation priorities, not hiring odds.</p>
@@ -412,34 +386,22 @@ export default function HomePage() {
             <div>
               <h1 className={styles.jobsTitle}>{savedResume && sortBy === 'best-match' ? 'Top Matches' : 'Live Opportunities'}</h1>
               <p className={styles.jobsSubtitle}>
-                {savedResume
-                  ? 'Use truthful resume overlap, posting dates, and discovery freshness to prioritize your search.'
-                  : 'Sorted by when HireSense discovered each role. Upload a resume to add skill matching.'}
+                {sortBy === 'best-match'
+                  ? 'Ranked by how well each role matches the skills on your resume.'
+                  : savedResume
+                    ? 'Choose Best Match to rank roles by your resume.'
+                    : 'Upload a resume to rank roles by how well they match your skills.'}
               </p>
             </div>
             <div className={styles.listControls}>
-            <label className={styles.sortControl}>
-              <span>Location scope</span>
-              <select value={geoScope} onChange={(event) => {
-                const next = event.target.value as GeoScope
-                setGeoScope(next)
-                setPage(1)
-                try { localStorage.setItem(geoKey, next) } catch { /* Optional preference. */ }
-              }}>
-                <option value="dfw">Dallas / DFW + US remote</option>
-                <option value="remote">Remote only</option>
-                <option value="texas">Texas + US remote</option>
-                <option value="nationwide">Nationwide</option>
-              </select>
-            </label>
             <label className={styles.sortControl}>
               <span>Sort by</span>
               <select
                 value={sortBy}
                 onChange={(event) => setSortBy(event.target.value as SortOption)}
               >
-                <option value="best-match" disabled={!savedResume}>Best Match</option>
                 <option value="newest-posted">Newest Posted</option>
+                <option value="best-match" disabled={!savedResume}>{savedResume ? 'Best Match (your resume)' : 'Best Match (upload a resume)'}</option>
                 <option value="recently-discovered">Recently Discovered</option>
                 <option value="company">Company</option>
                 <option value="location">Location</option>

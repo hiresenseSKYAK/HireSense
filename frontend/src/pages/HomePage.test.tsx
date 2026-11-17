@@ -114,7 +114,7 @@ describe('Home job discovery', () => {
     expect(document.body.textContent).toContain('Showing 21–25 of 25')
   })
 
-  it('shows grounded recommendations and lets the user turn resume ranking off', async () => {
+  it('defaults to newest posted and switches to resume ranking only with Best Match', async () => {
     vi.mocked(getResumeAnalysis).mockReturnValue({ parsed_data: { skills: ['Python'] } } as ReturnType<typeof getResumeAnalysis>)
     localStorage.setItem('hiresense_auth_session', JSON.stringify({ token: 'test', user: { id: 41 } }))
     vi.mocked(getJobRecommendations).mockResolvedValue({
@@ -123,14 +123,21 @@ describe('Home job discovery', () => {
     })
     await renderPage()
     await settle()
+    let calls = vi.mocked(fetchJobs).mock.calls
+    expect(calls[calls.length - 1]?.[0]?.sort).toBe('newest-posted')
+    expect(calls[calls.length - 1]?.[0]?.geo).toBeUndefined()
+    expect(document.body.textContent).not.toContain('Recommended for you')
+    expect(document.body.textContent).not.toContain('Use my resume')
+    expect(document.body.textContent).not.toContain('Location scope')
+    expect(document.querySelector('input[type="checkbox"]')).toBeNull()
+
+    const sort = [...document.querySelectorAll('select')].find((select) => select.querySelector('option[value="best-match"]'))!
+    setValue(sort, 'best-match')
+    await settle()
+    calls = vi.mocked(fetchJobs).mock.calls
+    expect(calls[calls.length - 1]?.[0]?.sort).toBe('best-match')
+    expect(calls[calls.length - 1]?.[0]?.skills).toContain('Python')
     expect(document.body.textContent).toContain('Recommended for you')
     expect(document.body.textContent).toContain('Python appears in your resume')
-    expect(vi.mocked(fetchJobs).mock.calls.some(([params]) => params?.skills?.includes('Python'))).toBe(true)
-    const toggle = document.querySelector<HTMLInputElement>('input[type="checkbox"]')!
-    act(() => toggle.click())
-    await settle()
-    expect(document.body.textContent).not.toContain('Recommended for you')
-    const calls = vi.mocked(fetchJobs).mock.calls
-    expect(calls[calls.length - 1]?.[0]?.skills).toEqual([])
   })
 })

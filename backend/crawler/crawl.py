@@ -109,8 +109,11 @@ def collect_jobs(
             continue
 
         found = result.jobs
+        # Complete means the parser examined every listing on the board. (This used to
+        # compare the board's size with the per-search limit, so any board with 20+
+        # listings never counted and its removed jobs were never closed.)
         complete_snapshot = (source_name in {"greenhouse", "lever", "ashby"}
-                             and result.discovered < per_search_limit and not result.errors)
+                             and result.complete and not result.errors)
         if snapshots is not None and complete_snapshot and result.discovered > 0:
             # Same id the database stores (inferred from the URL when the feed omits one).
             identities = (build_job_identity(job) for job in found)
@@ -230,7 +233,9 @@ def run(*, dry_run=False, source="all", limit=None, skip_cleanup=False):
         # Runs after upserts so jobs seen in this crawl are already up to date.
         for feed_key, present_ids in snapshots:
             try:
-                closed_missing += record_feed_snapshot(feed_key, present_ids)
+                # Snapshots are only taken from boards that listed jobs, so an empty set
+                # here means none of them qualify any more, not a failed request.
+                closed_missing += record_feed_snapshot(feed_key, present_ids, board_listed_jobs=True)
             except Exception as exc:
                 print(f"[crawl] feed snapshot bookkeeping failed feed={feed_key}: {exc}", flush=True)
         if snapshots:

@@ -115,6 +115,24 @@ def _metadata_values(job: dict, name: str) -> list[str]:
     return values
 
 
+_REMOTE_WORDS = re.compile(r"\b(?:remote|work from home|wfh)\b", re.I)
+_HYBRID_WORDS = re.compile(r"\bhybrid\b", re.I)
+
+
+def _greenhouse_work_style(location_names: list[str]) -> str:
+    """Work style from the posting's location fields only.
+
+    Descriptions often mention remote work in passing ("occasional remote days",
+    "we support remote employees"), so they are not evidence that this role is remote.
+    """
+    text = " ".join(location_names)
+    if _HYBRID_WORDS.search(text):
+        return "Hybrid"
+    if _REMOTE_WORDS.search(text):
+        return "Remote"
+    return "On-site"
+
+
 def _normalize_greenhouse_job(job: dict, company: str) -> dict | None:
     title = str(job.get("title") or "").strip()
     description = _plain_text(job.get("content"))
@@ -124,8 +142,7 @@ def _normalize_greenhouse_job(job: dict, company: str) -> dict | None:
         candidates.append(str(location["name"]))
     offices = job.get("offices") or []
     candidates.extend(str(item.get("location")) for item in offices if isinstance(item, dict) and item.get("location"))
-    remote_evidence = " ".join(candidates + [description])
-    work_style = "Remote" if re.search(r"\b(?:remote|work from home|work remotely)\b", remote_evidence, re.I) else "On-site"
+    work_style = _greenhouse_work_style(candidates)
     selected = _pick_location(candidates, work_style, description)
     return _finish_job(
         provider="greenhouse",
@@ -201,9 +218,17 @@ def _normalize_ashby_job(job: dict, company: str) -> dict | None:
     title = str(job.get("title") or "").strip()
     description = str(job.get("descriptionPlain") or "").strip() or _plain_text(job.get("descriptionHtml"))
     workplace = str(job.get("workplaceType") or "").lower()
-    work_style = "Remote" if workplace == "remote" or job.get("isRemote") else "Hybrid" if workplace == "hybrid" else "On-site"
+    # workplaceType is the employer's explicit choice. Ashby can also set isRemote on hybrid
+    # roles (Ramp lists "Hybrid, New York HQ" with isRemote true), so isRemote only
+    # decides when workplaceType is missing.
+    if workplace in {"remote", "hybrid", "onsite", "on-site"}:
+        is_remote = workplace == "remote"
+        work_style = "Remote" if is_remote else "Hybrid" if workplace == "hybrid" else "On-site"
+    else:
+        is_remote = bool(job.get("isRemote"))
+        work_style = "Remote" if is_remote else "On-site"
     candidates: list[str] = []
-    if job.get("isRemote"):
+    if is_remote:
         for item in job.get("secondaryLocations") or []:
             if not isinstance(item, dict):
                 continue
@@ -348,8 +373,12 @@ def parse_direct_ats(
             return []
         stats["discovered"] = len(raw_jobs)
         jobs: list[dict] = []
-        for raw_job in raw_jobs:
+        # The feed returns the whole board in one response. The snapshot is complete
+        # only if every listing was examined, so a job missing from it is truly gone.
+        stats["complete"] = 1
+        for index, raw_job in enumerate(raw_jobs):
             if deadline is not None and time.monotonic() >= deadline:
+                stats["complete"] = 0
                 break
             if not isinstance(raw_job, dict):
                 stats["skipped"] += 1
@@ -361,6 +390,8 @@ def parse_direct_ats(
             jobs.append(job)
             stats["accepted"] += 1
             if len(jobs) >= max_jobs:
+                if index < len(raw_jobs) - 1:
+                    stats["complete"] = 0
                 break
 
         if jobs and not any(job.get("company_logo_url") for job in jobs):
